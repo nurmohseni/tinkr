@@ -9,7 +9,7 @@ const {firstConnection} = require('./services/connections')
 const {menu, dockMenu} = require('./menu')
 const {checkForUpdates} = require('./updater')
 require('./ipc')
-require('./protocol')
+const {serveRenderer} = require('./protocol')
 
 unhandled({
   showDialog: false,
@@ -57,6 +57,10 @@ app.on('ready', async () => {
   if (is.macos) {
     app.dock.setMenu(dockMenu)
   }
+
+  // the renderer is served over the app's own scheme, which has to be answered
+  // before a window asks for it
+  serveRenderer()
 
   // the app is the editor window of a connection, and there is always one
   await createEditorWindow(firstConnection())

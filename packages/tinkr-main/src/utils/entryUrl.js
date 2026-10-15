@@ -1,18 +1,17 @@
-const {app} = require('electron')
 const path = require('path')
-const {pathToFileURL} = require('url')
 const {is} = require('electron-util')
+
+const {rendererScheme} = require('../constants')
 
 const getEntryUrl = asset => {
   if (is.development) {
     return `http://localhost:${process.env.WEB_PORT || 8080}/${asset}`
   }
 
-  // the renderer is read from disk, and a path is not a url: on windows it
-  // carries backslashes and a drive letter. pathToFileURL is what turns one
-  // into the other, on every platform, and it escapes what a url cannot hold
-  // as it is.
-  return pathToFileURL(path.join(app.getAppPath(), 'renderer', asset)).toString()
+  // the renderer is served over the app's own scheme rather than read from a
+  // file:// url: a module script has no origin to load from there, which is
+  // what kept the app's script from running on windows
+  return `${rendererScheme}://tinkr/${asset}`
 }
 
 const getPreloadEntryUrl = () => {
