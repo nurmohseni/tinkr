@@ -16,7 +16,6 @@ const {quickConnection, appName} = require('../constants')
 const {createEditorWindow} = require('../createEditorWindow')
 const {createPty} = require('../createPty')
 const {createBackgroundPty} = require('../createBackgroundPty')
-const {getEntryUrl} = require('../utils/entryUrl')
 
 /**
  * The connections the app lists. The quick connection is the session the
@@ -83,8 +82,12 @@ const cloneConnection = id => {
  *
  * The app keeps one window, so connecting switches that window to the
  * connection: the sessions of the connection it was running are dropped, the
- * connection's own are booted, and the window is loaded again on it, so the
- * snippets, the terminal and the title all belong to the connection it shows.
+ * connection's own are booted, and the window is told which connection it is on,
+ * so the snippets, the runs and the documents it shows become that connection's.
+ *
+ * The window is not loaded again for it. What belongs to a connection changes,
+ * and what does not — the window, the preferences, the layout, the panel a
+ * result is drawn in — is left exactly as it was.
  *
  * @param {Record<string, any>} connection
  * @returns {Promise<void>}
@@ -113,7 +116,11 @@ const connectConnection = async connection => {
 
   win.setTitle(`${appName} - ${connection.name}`)
 
-  await win.loadURL(`${getEntryUrl('editor.html')}?id=${connection.id}`)
+  // the window's own connection, then the terminal it is on: the one it runs
+  // reads the new connection from here on, and the session it was watching is
+  // the one that was just booted
+  win.webContents.send('setConnection', connection.id)
+  win.webContents.send('reconnectConnection')
 }
 
 const reconnectConnection = connection => {

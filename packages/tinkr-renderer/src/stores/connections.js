@@ -3,11 +3,20 @@ import {atomWithImmer} from 'jotai-immer'
 
 import {
   allConnections,
+  allHistory,
+  allSnippets,
   connectConnection,
   createConnection,
   deleteConnection,
+  getConnection,
   updateConnection,
 } from '../utils/api'
+import {connectionAtom, outputAtom, resultAtom} from './editor'
+import {historyListAtom} from './history'
+import {aiThreadAtom} from './ai'
+import {activeSessionIdAtom, newSession, sessionsAtom} from './sessions'
+import {snippetDataAtom} from './snippets'
+import {openTabsAtom} from './tabs'
 
 const connectionDataAtom = atomWithImmer(allConnections())
 
@@ -19,6 +28,31 @@ const createConnectionAtom = atom(null, (get, set, connection) => {
   })
 
   createConnection(get(connectionDataAtom)[connection.id])
+})
+
+/**
+ * Take the connection the main process switched this window to.
+ *
+ * The window was not loaded again for it, so everything that is a fact about a
+ * connection has to be read again here: which connection the window is on, the
+ * snippets and the runs of that connection, the documents the window had open —
+ * they were the other connection's, and its code with them — the session the
+ * terminal was on, and the result and the thread, which were about code from
+ * somewhere else.
+ *
+ * What is not about a connection is not touched: the preferences, the layout,
+ * the theme, the window itself.
+ */
+const switchConnectionAtom = atom(null, (get, set) => {
+  set(connectionAtom, getConnection())
+  set(snippetDataAtom, allSnippets())
+  set(historyListAtom, allHistory())
+  set(sessionsAtom, [newSession()])
+  set(activeSessionIdAtom, null)
+  set(openTabsAtom, [])
+  set(resultAtom, null)
+  set(outputAtom, '')
+  set(aiThreadAtom, [])
 })
 
 /**
@@ -72,6 +106,7 @@ const connectionAtomWithId = id => {
 export {
   connectionDataAtom,
   connectionListAtom,
+  switchConnectionAtom,
   createConnectionAtom,
   connectConnectionAtom,
   deleteConnectionAtom,

@@ -17,12 +17,20 @@ describe('connections store', () => {
   let connections
 
   beforeEach(() => {
+    // the store also carries the switch, whose business is every store a
+    // connection owns, so the fakes those read from are here too
     api = {
       allConnections: jest.fn(() => ({[stored.id]: {...stored}})),
       createConnection: jest.fn(),
       updateConnection: jest.fn(),
       deleteConnection: jest.fn(),
       connectConnection: jest.fn(),
+      getConnection: jest.fn(() => ({...stored})),
+      allSnippets: jest.fn(() => ({})),
+      allHistory: jest.fn(() => []),
+      allConfig: jest.fn(() => ({locale: 'en', theme: 'dark'})),
+      setConfig: jest.fn(),
+      aiAsk: jest.fn(),
     }
 
     window.api = api

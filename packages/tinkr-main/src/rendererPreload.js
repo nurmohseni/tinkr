@@ -1,7 +1,16 @@
 const {contextBridge, ipcRenderer} = require('electron')
 const queryString = require('query-string')
 
-const connectionId = () => queryString.parse(global.location.search).id
+// The connection this window runs. It is the one the window was opened with
+// until the main process says otherwise: switching a connection is a fact about
+// the window, not about its url, and the window is not loaded again for it.
+let currentConnectionId = queryString.parse(global.location.search).id
+
+ipcRenderer.on('setConnection', (event, id) => {
+  currentConnectionId = id
+})
+
+const connectionId = () => currentConnectionId
 
 contextBridge.exposeInMainWorld('api', {
   selectDirectory: defaultPath => ipcRenderer.sendSync('selectDirectory', defaultPath),
@@ -64,6 +73,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('runOutput', listener)
     return {
       dispose: () => ipcRenderer.off('runOutput', listener),
+    }
+  },
+
+  onSetConnection: cb => {
+    const listener = (event, id) => cb(id)
+    ipcRenderer.on('setConnection', listener)
+    return {
+      dispose: () => ipcRenderer.off('setConnection', listener),
     }
   },
 

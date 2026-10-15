@@ -1,6 +1,6 @@
 import {useEffect} from 'react'
 import Split from 'react-split'
-import {Route} from 'wouter'
+import {Route, useLocation} from 'wouter'
 import {useAtomValue, useSetAtom} from 'jotai'
 import throttle from 'lodash/throttle'
 
@@ -19,7 +19,8 @@ import useSplit from './hooks/useSplit'
 import {sizesAtom, resultAtom, connectionAtom} from './stores/editor'
 import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
-import {onRunResult, onHistoryConnection} from './utils/api'
+import {switchConnectionAtom} from './stores/connections'
+import {onRunResult, onHistoryConnection, onSetConnection} from './utils/api'
 
 // the split handle is the design's 6px divider, not react-split's 10px default
 const splitGutter = (index, direction) => {
@@ -37,16 +38,25 @@ const EditorWindow = () => {
   const setHistory = useSetAtom(historyListAtom)
   const connection = useAtomValue(connectionAtom)
   const config = useAtomValue(configAtom)
+  const [, setLocation] = useLocation()
+  const switchConnection = useSetAtom(switchConnectionAtom)
   // anything but `stacked` is side by side, which is the default
   const side = config.editor_layout !== 'stacked'
 
   useEffect(() => {
     const onResult = onRunResult(setResult)
     const onHistory = onHistoryConnection(setHistory)
+    // the main process switched this window's connection, and the documents it
+    // was on went with the old one: the window moves to the session it now has
+    const onConnection = onSetConnection(() => {
+      switchConnection()
+      setLocation('/')
+    })
 
     return () => {
       onResult.dispose()
       onHistory.dispose()
+      onConnection.dispose()
     }
   }, [])
 

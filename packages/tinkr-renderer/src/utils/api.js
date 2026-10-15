@@ -26,6 +26,7 @@ export const onSetConfig = api.onSetConfig
 export const onDeleteConnectionConfirm = api.onDeleteConnectionConfirm
 export const onOutputConnection = api.onOutputConnection
 export const onRunOutput = api.onRunOutput
+export const onSetConnection = api.onSetConnection
 export const onRunResult = api.onRunResult
 export const onHistoryConnection = api.onHistoryConnection
 export const onReconnectConnection = api.onReconnectConnection
