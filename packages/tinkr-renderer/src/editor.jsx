@@ -15,3 +15,11 @@ createRoot(document.querySelector('#app')).render(
   </Provider>)
 
 console.log('[renderer] the app was handed to react')
+
+// A render is scheduled, not done, so a window that shows nothing after that
+// line is either one whose render never got a turn or one whose loop stopped.
+// These two answer which: a task runs on the next turn, a frame is drawn on the
+// next paint, and neither can happen if the loop is not turning.
+setTimeout(() => console.log('[renderer] the page can still run a task'), 0)
+
+requestAnimationFrame(() => console.log('[renderer] the page can still draw a frame'))
