@@ -8,6 +8,7 @@
     "start:main": "yarn workspace tinkr-main start",
     "start:renderer": "yarn workspace tinkr-renderer start",
     "start": "run-p start:main start:renderer",
+    "mcp": "node packages/tinkr-mcp/src/cli.js",
     "build": "yarn workspaces run build",
     "prepackage": "run-s build",
     "package": "node ./scripts/package.js",

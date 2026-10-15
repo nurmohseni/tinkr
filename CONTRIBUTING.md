@@ -54,6 +54,19 @@ NODE_MODULE_VERSION 85. Please try re-compiling or re-installing
 it will package the app depend on your OS
 
 
+#### yarn mcp
+
+it runs the MCP server (`packages/tinkr-mcp`) with plain node — the same process
+an AI tool starts when it is pointed at it, and the way to try a tool by hand:
+
+```bash
+yarn mcp --path /path/to/your/project
+```
+
+The tools, and the options that say which connection to run in, are in the
+README.
+
+
 #### yarn release
 
 upload the built app to github release
@@ -64,3 +77,8 @@ every push builds the app and uploads the installers to a release, tagged
 commit, so every commit keeps its own downloads. The release goes to the
 repository the workflow runs in (`scripts/config.js` reads
 `GITHUB_REPOSITORY`), so a fork releases into the fork.
+
+A version lives in the root `package.json` and in each `packages/*/package.json`,
+and in the workspace dependency one package has on another — yarn links a
+workspace only when the version a package asks for is the version the other one
+has, so a bump that misses one is an install that cannot resolve.

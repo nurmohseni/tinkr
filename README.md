@@ -34,6 +34,7 @@ Installers are published to the Releases page of the repository that builds the 
 - [x] **Fresh session**: every run boots a new Tinker session, so the code you just changed on disk is the code that runs;
 - [x] **Snippet Form**: Switch the editor to the form, so that you can modify your variable value via form, like an admin panel;
 - [x] **Dark mode**: a warm dark palette for the whole app, the terminals and the editor;
+- [x] **MCP server**: your AI tools run code in the same connections the app runs it in, over the [Model Context Protocol](https://modelcontextprotocol.io);
 
 ## Tech Stack
 
@@ -59,6 +60,62 @@ Installers are published to the Releases page of the repository that builds the 
 * [node-pty](https://github.com/microsoft/node-pty)
 * [electron-store](https://github.com/sindresorhus/electron-store)
 * [ncc](https://github.com/vercel/ncc) (build the main process code)
+
+## MCP server
+
+Tinkr comes with a [Model Context Protocol](https://modelcontextprotocol.io) server, so the AI tool
+you already work in can run code the way you do: in a project on this machine or over one of your
+ssh connections, in that project's own Tinker session, and with the value the run returned as data
+rather than as the text it printed.
+
+Every call boots a session of its own and closes it when the run answers — the same rule the app's
+Run follows — so the code on disk is the code that runs.
+
+A client starts it, and the directory it is started in is the project code runs in:
+
+```json
+{
+  "mcpServers": {
+    "tinkr": {
+      "command": "node",
+      "args": ["/path/to/tinkr/packages/tinkr-mcp/src/cli.js"]
+    }
+  }
+}
+```
+
+The same thing from a terminal, which is also how to see what a tool answers on its own:
+
+```sh
+yarn mcp --path /path/to/your/project
+```
+
+When Tinkr has a connection for that directory, the server runs in that connection, so the snippets
+it reads and keeps are the app's own. When it does not, the directory is a connection of its own and
+the app's connections are still reachable by name.
+
+### Tools
+
+| Tool | What it does |
+| --- | --- |
+| `tinkr_run_php` | Run PHP in a project on this machine: what every statement returned, and what the code printed |
+| `tinkr_run_php_over_ssh` | The same, on a server, through one of Tinkr's ssh connections |
+| `tinkr_list_connections` | The connections saved in the app, with the command each session is started with |
+| `tinkr_list_snippets` | The snippets saved for a connection |
+| `tinkr_save_snippet` | Keep code as a snippet of a connection |
+
+### Options
+
+| Option | What it is |
+| --- | --- |
+| `--connection <id\|name>` | run in a connection the app knows, by id or by name |
+| `--path <directory>` | the project to run in (default: where the client started it) |
+| `--command <command>` | what the session is started with (default: the connection's own, or the app's preference, `php artisan tinker`) |
+| `--data-dir <directory>` | where the app keeps its connections and snippets, when it is not where the server looks |
+| `--timeout <ms>` | how long a run may take before it is given up on (default: 60000) |
+
+The server needs no API token and no running window: it boots the session itself, in the project,
+with `node` and the project's own `php`.
 
 ## Contributing to Tinkr
 

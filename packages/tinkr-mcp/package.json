@@ -1,0 +1,23 @@
+{
+  "name": "tinkr-mcp",
+  "version": "0.1.0-beta.3",
+  "description": "The Tinkr MCP server: run PHP in a project, for an MCP client",
+  "license": "MIT",
+  "private": true,
+  "main": "src/server.js",
+  "bin": {
+    "tinkr-mcp": "src/cli.js"
+  },
+  "scripts": {
+    "lint": "eslint ./src",
+    "test": "jest"
+  },
+  "dependencies": {
+    "tinkr-core": "0.1.0-beta.3"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.1",
+    "eslint-config-billyct": "^1.2.0",
+    "jest": "^27.3.1"
+  }
+}
