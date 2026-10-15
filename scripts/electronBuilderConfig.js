@@ -12,6 +12,12 @@ module.exports = {
   productName: config.productName,
   copyright: `Copyright © ${new Date().getFullYear()} Nurullah Mohseni`,
 
+  // a build made for another system cannot compile that system's native modules
+  // here: node-gyp refuses to cross-compile. node-pty ships them built for every
+  // system and they are N-API, so a build for another system carries the
+  // prebuilt ones rather than a rebuild of this machine's.
+  npmRebuild: !process.env.BUILD_PLATFORM,
+
   extraMetadata: {
     name: config.productName,
     description: config.description,

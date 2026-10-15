@@ -12,7 +12,10 @@ const PLATFORM_MAP = {
 
 const pkg = () => {
   const config = electronBuilderConfig
-  const targetPlatform = PLATFORM_MAP[process.platform]
+  // a build is for the system it runs on unless one is named. electron-builder
+  // can make another system's installers, which is how a windows build is made
+  // from here instead of waiting for a windows machine
+  const targetPlatform = PLATFORM_MAP[process.env.BUILD_PLATFORM || process.platform]
 
   const target = process.env.BUILD_TARGETS
     ? process.env.BUILD_TARGETS.split(',')
