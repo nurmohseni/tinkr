@@ -34,6 +34,23 @@ const createEditorWindow = async connection => {
 
   const url = `${getEntryUrl('editor.html')}?id=${id}`
 
+  // what the page says goes into the same log. A window that hangs without a
+  // word is what this is for: a script that failed, a preload that never ran and
+  // a renderer that went away are each one line here.
+  win.webContents.on('console-message', e => {
+    const write = e.level === 'error' ? log.error : log.info
+
+    write('[renderer]', e.message, e.lineNumber ? `(${e.sourceId}:${e.lineNumber})` : '')
+  })
+
+  win.webContents.on('preload-error', (event, preloadPath, error) => {
+    log.error('[window] the preload did not run:', preloadPath, '-', error.message)
+  })
+
+  win.webContents.on('render-process-gone', (event, details) => {
+    log.error('[window] the renderer went away:', details.reason)
+  })
+
   log.info('[window] loading', url)
 
   try {
