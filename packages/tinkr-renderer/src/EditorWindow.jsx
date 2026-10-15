@@ -49,6 +49,8 @@ const splitGutter = (index, direction) => {
 }
 
 const EditorWindow = () => {
+  console.log('[renderer] the window is rendering')
+
   const {splitRef} = useSplit()
   const setSizes = useSetAtom(sizesAtom)
   const setResult = useSetAtom(resultAtom)
@@ -63,6 +65,8 @@ const EditorWindow = () => {
   const setUpdateDownloaded = useSetAtom(updateDownloadedAtom)
   const setUpdateFailed = useSetAtom(updateFailedAtom)
   const setPhpVersion = useSetAtom(phpVersionAnsweredAtom)
+  console.log('[renderer] the window read its stores')
+
   const updates = {
     updateAvailable: setUpdateAvailable,
     updateNotAvailable: setUpdateNotAvailable,

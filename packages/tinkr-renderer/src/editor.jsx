@@ -13,3 +13,5 @@ createRoot(document.querySelector('#app')).render(
   <Provider>
     <EditorWindow/>
   </Provider>)
+
+console.log('[renderer] the app was handed to react')

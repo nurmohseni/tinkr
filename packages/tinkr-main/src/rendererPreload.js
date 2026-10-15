@@ -6,6 +6,19 @@ const queryString = require('query-string')
 // the window, not about its url, and the window is not loaded again for it.
 let currentConnectionId = queryString.parse(global.location.search).id
 
+// Every question the window asks the main process with is a synchronous one, so
+// one that is never answered stops the window dead. Each is announced here, which
+// is how the one that stopped it is named.
+const sync = (channel, ...args) => {
+  console.log('[preload] asking', channel)
+
+  const answer = ipcRenderer.sendSync(channel, ...args)
+
+  console.log('[preload]', channel, 'was answered')
+
+  return answer
+}
+
 ipcRenderer.on('setConnection', (event, id) => {
   currentConnectionId = id
 })
@@ -13,13 +26,13 @@ ipcRenderer.on('setConnection', (event, id) => {
 const connectionId = () => currentConnectionId
 
 contextBridge.exposeInMainWorld('api', {
-  selectDirectory: defaultPath => ipcRenderer.sendSync('selectDirectory', defaultPath),
-  selectFile: defaultPath => ipcRenderer.sendSync('selectFile', defaultPath),
+  selectDirectory: defaultPath => sync('selectDirectory', defaultPath),
+  selectFile: defaultPath => sync('selectFile', defaultPath),
   setLocale: locale => ipcRenderer.send('setLocale', locale),
-  getLocale: () => ipcRenderer.sendSync('getLocale'),
-  allConfig: () => ipcRenderer.sendSync('allConfig'),
+  getLocale: () => sync('getLocale'),
+  allConfig: () => sync('allConfig'),
   setConfig: data => ipcRenderer.send('setConfig', data),
-  allLocales: () => ipcRenderer.sendSync('allLocales'),
+  allLocales: () => sync('allLocales'),
   getIntlConfig: () => ipcRenderer.send('getIntlConfig'),
   checkForUpdates: () => ipcRenderer.send('checkForUpdates'),
   downloadUpdate: () => ipcRenderer.send('downloadUpdate'),
@@ -40,9 +53,9 @@ contextBridge.exposeInMainWorld('api', {
     }
   },
   createConnection: connection => ipcRenderer.send('createConnection', connection),
-  getConnection: () => ipcRenderer.sendSync('getConnection', connectionId()),
+  getConnection: () => sync('getConnection', connectionId()),
   deleteConnection: id => ipcRenderer.send('deleteConnection', id),
-  allConnections: () => ipcRenderer.sendSync('allConnections'),
+  allConnections: () => sync('allConnections'),
   updateConnection: connection => ipcRenderer.send('updateConnection', connection),
   connectConnection: connection => ipcRenderer.send('connectConnection', connection),
   reconnectConnection: connection => ipcRenderer.send('reconnectConnection', connection),
@@ -53,7 +66,7 @@ contextBridge.exposeInMainWorld('api', {
   runConnection: code => ipcRenderer.send('runConnection', connectionId(), code),
   closeConnection: () => ipcRenderer.send('closeConnection', connectionId()),
 
-  aiProviders: () => ipcRenderer.sendSync('aiProviders'),
+  aiProviders: () => sync('aiProviders'),
   aiComplete: code => ipcRenderer.invoke('aiComplete', code),
   aiAsk: request => ipcRenderer.invoke('aiAsk', request),
   aiCheck: () => ipcRenderer.invoke('aiCheck'),
@@ -145,8 +158,8 @@ contextBridge.exposeInMainWorld('api', {
   createSnippet: snippet => ipcRenderer.send('createSnippet', connectionId(), snippet),
   updateSnippet: snippet => ipcRenderer.send('updateSnippet', connectionId(), snippet),
   deleteSnippet: id => ipcRenderer.send('deleteSnippet', connectionId(), id),
-  allSnippets: () => ipcRenderer.sendSync('allSnippets', connectionId()),
+  allSnippets: () => sync('allSnippets', connectionId()),
 
-  allHistory: () => ipcRenderer.sendSync('allHistory', connectionId()),
-  clearHistory: () => ipcRenderer.sendSync('clearHistory', connectionId()),
+  allHistory: () => sync('allHistory', connectionId()),
+  clearHistory: () => sync('clearHistory', connectionId()),
 })
