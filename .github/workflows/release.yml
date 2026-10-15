@@ -1,11 +1,26 @@
 name: Release
 
 on:
-  # every push builds, but only a version tag publishes a release
-  # (scripts/release.js skips the upload on anything else)
+  # a version tag is the only push that builds, and the only thing that
+  # publishes: scripts/release.js skips the upload on anything else, so pushing
+  # a branch or a fix costs nothing and releases nothing.
   push:
-  # a build can be started by hand, without a new commit
+    tags:
+      - 'v*'
+  # anything else is asked for by hand, one system at a time if that is what is
+  # wanted. A run that is not on a tag builds and keeps what it built without
+  # publishing, which is how a system is tried before a version is tagged for it.
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Which system to build for
+        type: choice
+        default: all
+        options:
+          - all
+          - windows
+          - mac
+          - linux
 
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -13,6 +28,11 @@ env:
 jobs:
   release:
     runs-on: ${{ matrix.os }}
+    # a tag builds everywhere; a run by hand builds the systems it was asked for
+    if: >-
+      github.event_name == 'push'
+      || inputs.platform == 'all'
+      || inputs.platform == matrix.platform
     permissions:
       # the release and its assets are created with the workflow token
       contents: write
@@ -23,15 +43,16 @@ jobs:
       # a system that fails to build must not cancel the others
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
         include:
-          # snapcraft is not installed on the runner, so the linux build makes
-          # the other installers (scripts/package.js reads BUILD_TARGETS)
           - os: ubuntu-latest
+            platform: linux
+            # snapcraft is not installed on the runner, so the linux build makes
+            # the other installers (scripts/package.js reads BUILD_TARGETS)
             targets: AppImage,deb,rpm,tar.gz
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: windows
     name: Release on ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -57,13 +78,13 @@ jobs:
       - run: yarn release
         env:
           BUILD_TARGETS: ${{ matrix.targets }}
-      # a push builds without publishing, so this is how what it built is read:
-      # the installers stay on the run for two weeks
+      # a build without a tag publishes nothing, so this is how what it built is
+      # read: the installers stay on the run for two weeks
       - name: Keep what was built
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-installers
+          name: tinkr-${{ matrix.platform }}-installers
           retention-days: 14
           if-no-files-found: ignore
           path: |
