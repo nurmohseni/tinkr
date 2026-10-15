@@ -24,23 +24,13 @@ const getTag = () => `v${version}`
  */
 const isRelease = () => !process.env.GITHUB_SHA || process.env.GITHUB_REF_TYPE === 'tag'
 
-/**
- * Whether the version is a beta.
- *
- * A version carrying a pre-release part — `0.1.0-beta.1` — is one, and it is
- * published as a pre-release: github does not hand it to anyone following the
- * repository's releases, and the app's own updater does not offer it to an
- * installed copy. The plain version that follows it does both.
- *
- * @return {Boolean}
- */
-const isPrerelease = () => version.includes('-')
-
 const getOrCreateRelease = async tag => {
-  const releaseName = `${productName} ${tag} 📦`
-  // a version tag is the only thing that publishes a release, and a version
-  // that says beta is published as one
-  const prerelease = isPrerelease()
+  const releaseName = `${productName} ${tag}`
+  // A version tag is the only thing that publishes a release, and it publishes
+  // it as *the* release: github only draws a version on the repository's page
+  // for a release that is not a pre-release, and a beta whose version says beta
+  // is better shown there than a count of tags. The version is the signal.
+  const prerelease = false
   const body = process.env.GITHUB_SHA
     ? `Built from ${owner}/${repo}@${process.env.GITHUB_SHA.slice(0, 7)}`
     : 'See the changelog in the repository that builds the app'
