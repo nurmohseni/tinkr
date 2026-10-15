@@ -16,6 +16,9 @@ jobs:
     permissions:
       # the release and its assets are created with the workflow token
       contents: write
+      # and each build keeps what it made, so a system can be tried before a
+      # version is tagged for it
+      actions: write
     strategy:
       # a system that fails to build must not cancel the others
       fail-fast: false
@@ -54,3 +57,23 @@ jobs:
       - run: yarn release
         env:
           BUILD_TARGETS: ${{ matrix.targets }}
+      # a push builds without publishing, so this is how what it built is read:
+      # the installers stay on the run for two weeks
+      - name: Keep what was built
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-installers
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            build/*.exe
+            build/*.dmg
+            build/*.zip
+            build/*.AppImage
+            build/*.deb
+            build/*.rpm
+            build/*.tar.gz
+            build/*.nupkg
+            build/RELEASES
+            build/latest*.yml
