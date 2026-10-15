@@ -1,6 +1,7 @@
 const pty = require('node-pty')
 const defaultShell = require('default-shell')
 const osLocale = require('os-locale')
+const os = require('os')
 const fs = require('fs')
 
 const {version} = require('../../package.json')
@@ -69,7 +70,10 @@ class Pty {
     )
 
     const options = {
-      cwd: env.HOME,
+      // a session starts in the home directory. Windows has no HOME in its
+      // environment to read it from, so the session was spawned there with no
+      // working directory at all: os.homedir() answers on every platform.
+      cwd: env.HOME || os.homedir(),
       env,
       encoding: 'utf-8',
     }
