@@ -26,13 +26,37 @@ env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
+  # which systems to build for. A tag builds all of them and so does asking for
+  # all; asking for one builds one. It has to be decided here rather than in the
+  # release job's own if: a job's if runs before its matrix exists, so matrix is
+  # not a context it can read.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        run: |
+          {
+            case "${{ inputs.platform }}" in
+              windows)
+                echo 'matrix={"include":[{"os":"windows-latest","platform":"windows"}]}'
+                ;;
+              mac)
+                echo 'matrix={"include":[{"os":"macos-latest","platform":"mac"}]}'
+                ;;
+              linux)
+                echo 'matrix={"include":[{"os":"ubuntu-latest","platform":"linux","targets":"AppImage,deb,rpm,tar.gz"}]}'
+                ;;
+              *)
+                echo 'matrix={"include":[{"os":"ubuntu-latest","platform":"linux","targets":"AppImage,deb,rpm,tar.gz"},{"os":"macos-latest","platform":"mac"},{"os":"windows-latest","platform":"windows"}]}'
+                ;;
+            esac
+          } >> "$GITHUB_OUTPUT"
+
   release:
+    needs: plan
     runs-on: ${{ matrix.os }}
-    # a tag builds everywhere; a run by hand builds the systems it was asked for
-    if: >-
-      github.event_name == 'push'
-      || inputs.platform == 'all'
-      || inputs.platform == matrix.platform
     permissions:
       # the release and its assets are created with the workflow token
       contents: write
@@ -42,17 +66,7 @@ jobs:
     strategy:
       # a system that fails to build must not cancel the others
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-            # snapcraft is not installed on the runner, so the linux build makes
-            # the other installers (scripts/package.js reads BUILD_TARGETS)
-            targets: AppImage,deb,rpm,tar.gz
-          - os: macos-latest
-            platform: mac
-          - os: windows-latest
-            platform: windows
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     name: Release on ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
