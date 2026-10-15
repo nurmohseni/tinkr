@@ -21,6 +21,9 @@ const SettingButton = () => {
       aria-label={label}
       onClick={() => openPreference()}
     >
+      {/* a cog, not a sun: eight trapezoid teeth around a hole, which is what
+          tells the two apart at fourteen pixels — the rayed ring this used to
+          be read as a brightness toggle */}
       <svg
         width='14'
         height='14'
@@ -28,13 +31,10 @@ const SettingButton = () => {
         aria-hidden='true'
         fill='none'
         stroke='currentColor'
-        strokeWidth='1.2'
+        strokeWidth='1.1'
+        strokeLinejoin='round'
       >
-        <circle cx='8' cy='8' r='2.4'/>
-        <path
-          d='M8 1.4v1.8M8 12.8v1.8M1.4 8h1.8M12.8 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3'
-          strokeLinecap='round'
-        />
+        <path d='M6.0 3.3 6.3 1.2 9.7 1.2 10.0 3.3 10.0 3.3 11.6 2.0 14.0 4.4 12.7 6.0 12.7 6.0 14.8 6.3 14.8 9.7 12.7 10.0 12.7 10.0 14.0 11.6 11.6 14.0 10.0 12.7 10.0 12.7 9.7 14.8 6.3 14.8 6.0 12.7 6.0 12.7 4.4 14.0 2.0 11.6 3.3 10.0 3.3 10.0 1.2 9.7 1.2 6.3 3.3 6.0 3.3 6.0 2.0 4.4 4.4 2.0 6.0 3.3ZM8.0 5.8a2.1 2.1 0 1 0 0 4.30a2.1 2.1 0 1 0 0 -4.30Z'/>
       </svg>
     </button>
   )
