@@ -26,6 +26,7 @@ const {phpCompletions} = require('./completion')
 const {complete, ask, check} = require('./services/ai')
 const {providers} = require('./aiProviders')
 const {checkForUpdates, downloadUpdate, installUpdate} = require('./updater')
+const {info: mcpInfo, configureClient} = require('./services/mcp')
 
 ipcMain.on('selectDirectory', (event, defaultPath) => {
   event.returnValue = selectDirectory(defaultPath)
@@ -120,6 +121,10 @@ ipcMain.on('openPreference', () => {
   createPreferenceWindow()
 })
 
+ipcMain.on('mcpInfo', event => {
+  event.returnValue = mcpInfo()
+})
+
 ipcMain.on('popupConnectionContextMenu', (event, id) => {
   connectionContextMenu(id).popup()
 })
@@ -170,6 +175,10 @@ ipcMain.handle('aiAsk', async (event, request) => {
 
 ipcMain.handle('aiCheck', async event => {
   return await check()
+})
+
+ipcMain.handle('configureMcp', async (event, id) => {
+  return configureClient(id)
 })
 
 ipcMain.handle('parsePhpForm', async (event, connectionId, code) => {

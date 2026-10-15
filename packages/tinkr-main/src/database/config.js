@@ -53,6 +53,9 @@ const defaults = {
   // how long the editor waits after the last keystroke before it asks for a
   // suggestion, in milliseconds
   ai_delay: 400,
+  // the connection the MCP server runs code in when a client does not say which
+  // project it is working on: nothing means the client's own directory
+  mcp_connection: '',
 }
 
 const config = new Store({

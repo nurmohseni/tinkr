@@ -21,6 +21,9 @@ async function build (file) {
 async function main () {
   await build('index.js')
   await build('rendererPreload.js')
+  // the MCP server a client is pointed at, built here so that it sits beside the
+  // main process's bundle and finds node-pty's binary where that one does
+  await build('mcp-server.js')
   return 'success'
 }
 

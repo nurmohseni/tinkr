@@ -85,11 +85,13 @@ module.exports = {
       'snap'
     ],
   },
-  // Two things cannot be read from inside an asar and are unpacked beside it:
-  // a woff2, which the renderer reads as a file, and a native module, which is
-  // loaded as a library rather than read. The session's pty is the second, and
-  // winpty needs its own two files next to it.
+  // Three things cannot be read from inside an asar and are unpacked beside it:
+  // a woff2, which the renderer reads as a file, a native module, which is loaded
+  // as a library rather than read, and the MCP server, which a client starts with
+  // a plain `node` — nothing in that process can read an asar. The session's pty
+  // is the native one, and winpty needs its own two files next to it.
   asarUnpack: [
+    '**/mcp-server.js',
     '**/*.woff2',
     '**/fonts/**',
     '**/*.node',

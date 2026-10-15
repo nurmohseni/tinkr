@@ -144,6 +144,79 @@ button.tree-nav__row {
     overflow: hidden;
 }
 
+/* ---- the MCP section -----------------------------------------------------
+   The rows say which client is pointed at the server and where it stands. What
+   is left is the entry a client the app does not know is given, and the list of
+   what the server offers: both are blocks of lines rather than controls, so both
+   are one panel with a head — a label, the path the entry runs, and the action —
+   over a mono body. The json is the one place in the app where a line is long
+   enough to need its own scroll. */
+
+.mcppane {
+    border-top: 1px solid var(--border);
+    background: var(--panel-inset);
+}
+
+.mcppane__head {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    padding: var(--s2) var(--s3);
+}
+
+.mcppane__head .field__label {
+    flex: none;
+}
+
+/* the path the entry runs, on the head's own line, cut rather than wrapped */
+.mcppane__head .mono {
+    color: var(--text-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcppane__head .btn {
+    margin-left: auto;
+    flex: none;
+}
+
+/* what to do with the entry, over the entry itself */
+.mcppane__note {
+    padding: 0 var(--s3) var(--s2);
+    font-size: var(--fs-sm);
+    color: var(--text-faint);
+}
+
+.mcppane__body {
+    margin: 0;
+    padding: 0 var(--s3) var(--s3);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: var(--fs-code);
+    line-height: var(--lh-code);
+    color: var(--text-muted);
+    white-space: pre;
+}
+
+/* one tool a row: its name at the app's own ink, what it does beside it */
+.mcppane__row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s3);
+    white-space: normal;
+}
+
+.mcppane__row + .mcppane__row {
+    margin-top: var(--s1);
+}
+
+.mcppane__name {
+    flex: none;
+    min-width: 168px;
+    color: var(--text);
+}
+
 /* ---- the editor window's code well ---------------------------------------
    tinkr.css carries the failed-run surface, the trace and the empty state, and
    they are used from there. What the app adds is the code well's type size: the

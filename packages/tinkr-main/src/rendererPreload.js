@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('api', {
   reconnectConnection: connection => ipcRenderer.send('reconnectConnection', connection),
   quickConnect: () => ipcRenderer.send('quickConnect'),
   openPreference: () => ipcRenderer.send('openPreference'),
+  mcpInfo: () => ipcRenderer.sendSync('mcpInfo'),
+  configureMcp: id => ipcRenderer.invoke('configureMcp', id),
   popupConnectionContextMenu: id => ipcRenderer.send('popupConnectionContextMenu', id),
   inputConnection: code => ipcRenderer.send('inputConnection', connectionId(), code),
   runConnection: code => ipcRenderer.send('runConnection', connectionId(), code),

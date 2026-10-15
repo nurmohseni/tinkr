@@ -2,9 +2,11 @@ import GeneralForm from './GeneralForm'
 import ShortcutsForm from './ShortcutsForm'
 import LabForm from './LabForm'
 import AiForm from './AiForm'
+import McpForm from './McpForm'
 
 // the design's rail icons, drawn inline: a gear for the general settings, a
-// keyboard for the shortcuts, a flask for the experiments and a sparkle for AI
+// keyboard for the shortcuts, a flask for the experiments, a sparkle for AI and
+// a plug for the clients that run code through the app
 const CogIcon = () => (
   <svg
     width='13'
@@ -72,6 +74,24 @@ const SparkleIcon = () => (
   </svg>
 )
 
+const PlugIcon = () => (
+  <svg
+    width='13'
+    height='13'
+    viewBox='0 0 16 16'
+    aria-hidden='true'
+    fill='none'
+    stroke='currentColor'
+    strokeWidth='1.2'
+    strokeLinecap='round'
+    strokeLinejoin='round'
+  >
+    <path d='M6 1.8v2.4M10 1.8v2.4'/>
+    <rect x='3.6' y='4.2' width='8.8' height='5' rx='1.4'/>
+    <path d='M8 9.2v3.4M6.4 14.4h3.2'/>
+  </svg>
+)
+
 /**
  * The settings the app has, in the order the rail lists them. The index is what
  * `preferenceTabIndexAtom` holds, so the rail and the column read one list.
@@ -100,6 +120,12 @@ const sections = [
     labelId: 'preference.ai',
     Icon: SparkleIcon,
     Form: AiForm,
+  },
+  {
+    id: 'mcp',
+    labelId: 'preference.mcp',
+    Icon: PlugIcon,
+    Form: McpForm,
   },
 ]
 

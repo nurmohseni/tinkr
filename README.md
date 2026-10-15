@@ -71,6 +71,13 @@ rather than as the text it printed.
 Every call boots a session of its own and closes it when the run answers — the same rule the app's
 Run follows — so the code on disk is the code that runs.
 
+The app is also what configures a client, from **Settings → MCP**: it lists the clients it knows —
+Claude Code, Claude Desktop, Cursor, Windsurf/Devin Desktop, VS Code — with the file each one would
+be written to, writes the entry for the one you configure, marks the ones that already point at
+Tinkr, and hands the same entry over as json for any other client. Which connection a client's calls
+run in is a preference on that screen; with none chosen, a call runs in the project the client is
+working in.
+
 A client starts it, and the directory it is started in is the project code runs in:
 
 ```json
@@ -115,7 +122,9 @@ the app's connections are still reachable by name.
 | `--timeout <ms>` | how long a run may take before it is given up on (default: 60000) |
 
 The server needs no API token and no running window: it boots the session itself, in the project,
-with `node` and the project's own `php`.
+with `node` and the project's own `php`. A packaged app carries its own copy of it beside the main
+process — outside the asar, where a plain `node` can read it — and a checkout runs the same server
+from `packages/tinkr-mcp`.
 
 ## Contributing to Tinkr
 
