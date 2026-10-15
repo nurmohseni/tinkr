@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tinkr — design foundation</title>
+
+<!--
+  The primitive sheet: every class and token here lives in tinkr.css, which the
+  app carries as packages/tinkr-renderer/public/tinkr.css. The demo labels are
+  samples, so where a demo names a pane the app does not have (Queries, Logs) or
+  a figure it does not measure (a run time, memory, a PHP version) that is sample
+  content, not a promise. See design/index.html for what each sheet is.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<link rel="stylesheet" href="tinkr.css">
+</head>
+<body>
+
+<div class="doc">
+  <h1 class="doc__title">Tinkr · foundation</h1>
+  <p class="doc__lede">
+    The primitives every screen draws from, rendered twice: once with the dark tokens and once with
+    <span class="mono">data-theme="light"</span> on the container. Same class names, same markup —
+    switching a screen between themes is one attribute, never a second stylesheet.
+  </p>
+  <p class="doc__note">
+    Class list per demo sits above each box. Buttons, fields and rows are real form controls:
+    tabs and the segmented control switch with radios, disclosures open without a script.
+  </p>
+
+  <div class="doc__compare">
+
+    <!-- ======================= DARK COLUMN ======================= -->
+    <section class="theme-col" data-theme="dark">
+      <div class="theme-col__head"><span>Dark · default</span><span class="faint mono">:root</span></div>
+
+      <div class="demo__label">tokens — surfaces, brand, text, state</div>
+      <div class="swatches">
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg)"></div><div class="swatch__meta">--bg</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--panel)"></div><div class="swatch__meta">--panel</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--panel-raised)"></div><div class="swatch__meta">--panel-raised</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--primary-gradient)"></div><div class="swatch__meta">--primary-gradient</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--accent)"></div><div class="swatch__meta">--accent</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--text)"></div><div class="swatch__meta">--text</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--text-muted)"></div><div class="swatch__meta">--text-muted</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--error)"></div><div class="swatch__meta">--error</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--warning)"></div><div class="swatch__meta">--warning</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--success)"></div><div class="swatch__meta">--success</div></div>
+      </div>
+
+      <div class="demo__label">.btn · .btn--primary · .btn--secondary · .btn--ghost · [disabled]</div>
+      <div class="demo">
+        <button class="btn btn--primary" type="button">Run <kbd class="keycap keycap--on-primary">⌘</kbd><kbd class="keycap keycap--on-primary">↩</kbd></button>
+        <button class="btn btn--secondary" type="button">Run selection</button>
+        <button class="btn btn--ghost" type="button">Cancel</button>
+        <button class="btn" type="button" disabled>Disabled</button>
+      </div>
+
+      <div class="demo__label">.input · .textarea · .field · .select</div>
+      <div class="demo demo--grid">
+        <label class="field">
+          <span class="field__label">Database connection</span>
+          <input class="input" type="text" value="mysql://forge@127.0.0.1:3306/my-app" spellcheck="false">
+          <span class="field__help">Read from the app's .env when the session boots.</span>
+        </label>
+        <label class="field">
+          <span class="field__label">Notes</span>
+          <textarea class="textarea" rows="2" spellcheck="false">Checking order totals after the EU tax rule change.</textarea>
+        </label>
+        <div class="field" style="max-width:220px">
+          <span class="field__label">Output format</span>
+          <select class="select">
+            <option>Pretty print</option>
+            <option>Raw</option>
+            <option>JSON</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="demo__label">.segmented · .segmented__item › input[type=radio]</div>
+      <div class="demo">
+        <div class="segmented" role="radiogroup" aria-label="Session type">
+          <label class="segmented__item"><input type="radio" name="demo-seg-dark" checked>Local</label>
+          <label class="segmented__item"><input type="radio" name="demo-seg-dark">SSH</label>
+          <label class="segmented__item"><input type="radio" name="demo-seg-dark">Docker</label>
+        </div>
+      </div>
+
+      <div class="demo__label">.tabset · .tabset__list · .tabset__tab · .tabset__panel</div>
+      <div class="demo demo--stack" style="padding-top:0;padding-bottom:0">
+        <div class="tabset">
+          <div class="tabset__list output__tabs" role="tablist" aria-label="Demo tabs">
+            <label class="output__tab tabset__tab"><input type="radio" name="demo-tabs-dark" checked>Result <span class="badge badge--success">ok</span></label>
+            <label class="output__tab tabset__tab"><input type="radio" name="demo-tabs-dark">Queries <span class="badge badge--solid">3</span></label>
+            <label class="output__tab tabset__tab"><input type="radio" name="demo-tabs-dark">Logs</label>
+          </div>
+          <div class="tabset__panel" style="padding:var(--s3) 0"><span class="mono">Result panel — 5 orders</span></div>
+          <div class="tabset__panel" style="padding:var(--s3) 0"><span class="mono">Queries panel — 3 statements</span></div>
+          <div class="tabset__panel" style="padding:var(--s3) 0"><span class="mono">Logs panel — session.boot, query.log</span></div>
+        </div>
+      </div>
+
+      <div class="demo__label">.switch · .checkbox · .radio</div>
+      <div class="demo" style="gap:var(--s4)">
+        <label class="switch"><input type="checkbox" checked><span class="switch__track"></span></label>
+        <label class="switch"><input type="checkbox"><span class="switch__track"></span></label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox__box"></span>Auto-run on save</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox__box"></span>Confirm on close</label>
+        <label class="radio"><input type="radio" name="demo-radio-dark" checked><span class="radio__dot"></span>Pretty print</label>
+        <label class="radio"><input type="radio" name="demo-radio-dark"><span class="radio__dot"></span>Raw</label>
+      </div>
+
+      <div class="demo__label">.setting — label + description left, control right</div>
+      <div class="demo demo--grid" style="padding:0">
+        <div class="setting">
+          <div><div class="setting__label">Watch snippets on disk</div><div class="setting__desc">Re-run when the file changes outside the editor.</div></div>
+          <div class="setting__control"><label class="switch"><input type="checkbox" checked><span class="switch__track"></span></label></div>
+        </div>
+        <div class="setting">
+          <div><div class="setting__label">Default session</div><div class="setting__desc">Used when a snippet does not name its own connection.</div></div>
+          <div class="setting__control">
+            <select class="select"><option>my-app · local</option><option>forge-web-1 · SSH</option></select>
+          </div>
+        </div>
+        <div class="setting">
+          <div><div class="setting__label">Clear history</div><div class="setting__desc">Removes 12 entries from today.</div></div>
+          <div class="setting__control"><button class="btn btn--secondary" type="button">Clear</button></div>
+        </div>
+      </div>
+
+      <div class="demo__label">.form-grid · .form-row · .form-row__label · .form-row__control · .input--error · .field__error</div>
+      <div class="demo">
+        <div class="form-grid" style="width:100%">
+          <div class="form-row">
+            <label class="form-row__label form-row__label--required">Host</label>
+            <div class="form-row__control"><input class="input" type="text" value="127.0.0.1" aria-label="Host" spellcheck="false"></div>
+          </div>
+          <div class="form-row">
+            <label class="form-row__label">Port</label>
+            <div class="form-row__control"><input class="input" type="text" value="3306" aria-label="Port" spellcheck="false"></div>
+          </div>
+          <div class="form-row">
+            <label class="form-row__label">Database</label>
+            <div class="form-row__control">
+              <input class="input input--error" type="text" value="my-app-prod" aria-label="Database" spellcheck="false">
+              <p class="field__error">No database named “my-app-prod” on this host.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__label">.modal-overlay · .modal (560) · .modal--narrow (420) · __header · __body · __footer</div>
+      <div class="demo-stage">
+        <div class="modal-overlay">
+          <div class="modal">
+            <div class="modal__header">New connection</div>
+            <div class="modal__body">
+              <div class="form-grid">
+                <div class="form-row">
+                  <label class="form-row__label form-row__label--required">Host</label>
+                  <div class="form-row__control"><input class="input" type="text" value="forge-web-1" aria-label="Host" spellcheck="false"></div>
+                </div>
+                <div class="form-row">
+                  <label class="form-row__label">Port</label>
+                  <div class="form-row__control"><input class="input" type="text" value="22" aria-label="Port" spellcheck="false"></div>
+                </div>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" type="button">Cancel</button>
+              <button class="btn btn--primary" type="button">Connect</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__label">.modal--narrow — confirmation, 420px</div>
+      <div class="demo-stage" style="height:200px">
+        <div class="modal-overlay">
+          <div class="modal modal--narrow">
+            <div class="modal__header">Delete snippet</div>
+            <div class="modal__body">
+              <p><span class="mono">OrderStats.php</span> will be removed from the Models folder. Runs already in history stay.</p>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" type="button">Cancel</button>
+              <button class="btn btn--primary" type="button">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__label">.keycap · .keycap--on-primary · .badge · .dot · .toast · .tooltip</div>
+      <div class="demo demo--stack">
+        <div class="row">
+          <kbd class="keycap">⌘</kbd><kbd class="keycap">K</kbd>
+          <span class="muted">search</span>
+          <span class="divider-v" style="height:12px"></span>
+          <kbd class="keycap">⌘</kbd><kbd class="keycap">↩</kbd>
+          <span class="muted">run</span>
+          <span class="divider-v" style="height:12px"></span>
+          <kbd class="keycap">esc</kbd>
+          <span class="muted">dismiss</span>
+        </div>
+        <div class="keycap-row">
+          <span class="muted">Run snippet</span>
+          <span class="keycap-row__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">↩</kbd></span>
+        </div>
+        <div class="keycap-row">
+          <span class="muted">New snippet</span>
+          <span class="keycap-row__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">N</kbd></span>
+        </div>
+        <div class="row">
+          <span class="badge"><span class="dot dot--live"></span>local</span>
+          <span class="badge badge--solid">5 rows</span>
+          <span class="badge badge--success">ok</span>
+          <span class="badge badge--warning">slow query</span>
+          <span class="badge badge--error">failed</span>
+          <span class="dot dot--live dot--ring"></span>
+          <span class="dot dot--accent"></span>
+          <span class="dot dot--idle"></span>
+          <span class="dot dot--off"></span>
+        </div>
+        <div class="toast">
+          <span class="dot dot--live"></span>
+          <span class="toast__body">Copied 5 orders as a PHP array.</span>
+          <button class="btn btn--ghost btn--sm" type="button">Undo</button>
+        </div>
+        <div class="row">
+          <span class="tooltip">
+            <button class="btn btn--secondary btn--sm" type="button">Hover me</button>
+            <span class="tooltip__bubble">Runs the whole snippet — ⌘↩</span>
+          </span>
+          <span class="muted" style="font-size:var(--fs-xs)">.tooltip reveals .tooltip__bubble on hover or focus</span>
+        </div>
+        <div class="row">
+          <span class="tooltip">
+            <button class="btn btn--secondary btn--sm" type="button">Hover for a sentence</button>
+            <span class="tooltip__bubble tooltip__bubble--wrap">Runs every snippet in the Models folder, oldest first, and stops at the first failure.</span>
+          </span>
+          <span class="muted" style="font-size:var(--fs-xs)">.tooltip__bubble--wrap lets a hint wrap to 220px instead of one line</span>
+        </div>
+      </div>
+
+      <div class="demo__label">.tree · .tree__row · .tree__copy · .t-string / .t-number / .t-class / .t-bool / .t-null</div>
+      <div class="demo" style="padding:0">
+        <div class="tree" style="width:100%">
+          <details open>
+            <summary class="tree__row">
+              <span class="tree__caret"></span>
+              <span class="t-class">Illuminate\Database\Eloquent\Collection</span><span class="tree__sep"> · </span><span class="t-number">5</span><span class="muted"> items</span>
+              <button class="tree__copy" type="button" title="Copy value">copy</button>
+            </summary>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">number</span><span class="tree__sep">:</span><span class="t-string">"ORD-10428"</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">total_cents</span><span class="tree__sep">:</span><span class="t-number">24900</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">is_priority</span><span class="tree__sep">:</span><span class="t-bool">true</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">refunded_at</span><span class="tree__sep">:</span><span class="t-null">null</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="demo__label">.error-surface · .trace · .trace__snippet · .trace__group · .empty · .empty--benign · .editor__line--error</div>
+      <div class="demo demo--stack" style="padding:0;gap:0">
+        <div class="error-surface" style="margin-top:var(--s3)" role="alert">
+          <div class="error-surface__class mono">Illuminate\Database\Eloquent\RelationNotFoundException</div>
+          <p class="error-surface__message mono">Call to undefined relationship [lines] on model [App\Models\Order].</p>
+        </div>
+        <div class="trace" style="margin-bottom:var(--s3)">
+          <div class="trace__head">
+            <span class="trace__title">Stack trace</span>
+            <span class="badge">18 frames</span>
+            <span class="truncate">eval()'d in the running session</span>
+          </div>
+          <div class="trace__frames">
+            <div class="trace__row"><span class="trace__idx">#0</span><span class="trace__file">vendor/laravel/framework/src/Illuminate/Database/Eloquent/Builder.php:878</span><span class="trace__fn">RelationNotFoundException::make()</span></div>
+            <div class="trace__snippet">
+              <div class="trace__row"><span class="trace__idx">#4</span><span class="trace__file">OrderStats.php:15</span><span class="trace__fn">Model-&gt;load()</span></div>
+              <div class="trace__row"><span class="trace__idx">15</span><span class="trace__code"><span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">load</span><span class="c-op">(</span><span class="trace__offender">'lines'</span><span class="c-op">);</span></span></div>
+            </div>
+            <details class="trace__group">
+              <summary><span class="tree__caret"></span>Show 13 more frames — PsySH, Symfony, Artisan</summary>
+              <div class="trace__row"><span class="trace__idx">#5</span><span class="trace__file">vendor/psy/psysh/src/ExecutionLoopClosure.php(51) : eval()'d code(1)</span><span class="trace__fn">eval()</span></div>
+            </details>
+          </div>
+        </div>
+        <div class="empty">
+          <span class="empty__icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+              <circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v4.4M8 11.4v.2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <div>
+            <p>Nothing to show — the run raised an exception, so it never returned a value.</p>
+            <div class="empty__row mono"><span class="empty__n">1</span><span class="c-var">$orders</span><span class="c-op">:</span><span class="t-class">Illuminate\Database\Eloquent\Collection</span><span class="muted">· 5 items</span></div>
+            <div class="empty__row mono"><span class="empty__n">2</span><span class="c-var">$value</span><span class="c-op">:</span><span class="t-null">null</span><span class="muted">· never assigned</span></div>
+          </div>
+        </div>
+        <div class="empty empty--benign">
+          <span class="empty__icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+              <circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v4.4M8 11.4v.2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <div>
+            <p>The run finished and returned nothing — nothing failed, there is simply no value.</p>
+            <div class="empty__row mono"><span class="empty__n">1</span><span class="c-var">$orders</span><span class="c-op">:</span><span class="t-class">Illuminate\Database\Eloquent\Collection</span><span class="muted">· 5 items</span></div>
+          </div>
+        </div>
+        <div class="editor" style="width:100%;height:72px;margin-bottom:var(--s3)">
+          <div class="editor__gutter" aria-hidden="true">
+            <div class="editor__ln">14</div>
+            <div class="editor__ln editor__ln--error">15</div>
+            <div class="editor__ln">16</div>
+          </div>
+          <pre class="editor__code"><div class="editor__line"> </div><div class="editor__line editor__line--error"><span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">load</span><span class="c-op">(</span><span class="c-str">'lines'</span><span class="c-op">);</span></div><div class="editor__line"> </div></pre>
+        </div>
+      </div>
+
+      <div class="demo__label">::selection — --selection tint, token colours keep their own values</div>
+      <div class="demo">
+        <span class="mono"><span class="c-keyword">return</span> <span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">pluck</span><span class="c-op">(</span><span class="c-str">'number'</span><span class="c-op">);</span></span>
+        <span class="muted" style="font-size:var(--fs-xs)">Drag-select this line to see the tint in this theme</span>
+      </div>
+
+      <div class="demo__label">.c-keyword .c-type .c-fn .c-str .c-num .c-prop .c-comment — editor palette</div>
+      <div class="demo demo--grid">
+        <span class="mono"><span class="c-keyword">return</span> <span class="c-type">Order</span><span class="c-op">::</span><span class="c-fn">where</span><span class="c-op">(</span><span class="c-str">'status'</span><span class="c-op">,</span> <span class="c-str">'paid'</span><span class="c-op">)-&gt;</span><span class="c-fn">sum</span><span class="c-op">(</span><span class="c-prop">'total_cents'</span><span class="c-op">)</span> <span class="c-op">/</span> <span class="c-num">100</span><span class="c-op">;</span></span>
+        <span class="mono c-comment">// 5 orders</span>
+      </div>
+
+      <div class="demo__label">spacing scale — --s1 4 … --s7 48 · radius 8 / 6 / 12</div>
+      <div class="demo demo--grid">
+        <div class="row" style="gap:var(--s3)">
+          <span class="mono faint" style="width:52px">--s1 4</span><span style="height:8px;width:4px;background:var(--primary-2)"></span>
+          <span class="mono faint" style="width:52px">--s3 12</span><span style="height:8px;width:12px;background:var(--primary-2)"></span>
+          <span class="mono faint" style="width:52px">--s5 24</span><span style="height:8px;width:24px;background:var(--primary-2)"></span>
+          <span class="mono faint" style="width:52px">--s7 48</span><span style="height:8px;width:48px;background:var(--primary-2)"></span>
+        </div>
+        <div class="row" style="gap:var(--s3)">
+          <span class="mono faint" style="width:52px">8 panel</span><span style="height:24px;width:48px;border:1px solid var(--border);border-radius:var(--r-panel);background:var(--panel)"></span>
+          <span class="mono faint" style="width:52px">6 button</span><span style="height:24px;width:48px;border:1px solid var(--border);border-radius:var(--r-btn);background:var(--panel-raised)"></span>
+          <span class="mono faint" style="width:52px">12 modal</span><span style="height:24px;width:48px;border:1px solid var(--border);border-radius:var(--r-modal);background:var(--panel-raised)"></span>
+        </div>
+      </div>
+
+      <div class="demo__label">type — Inter for UI, JetBrains Mono 13/1.6 for code</div>
+      <div class="demo demo--grid">
+        <span style="font-size:var(--fs-xl);font-weight:600">Run 24 snippets</span>
+        <span style="font-size:var(--fs-lg);font-weight:500">Snippet library</span>
+        <span style="font-size:var(--fs-md)">Default body copy at 13 px.</span>
+        <span style="font-size:var(--fs-sm)" class="muted">Panel copy at 12 px.</span>
+        <span style="font-size:var(--fs-xs)" class="faint">Metadata and keycaps at 11 px.</span>
+        <span class="mono">$order-&gt;total_cents =&gt; 24900</span>
+      </div>
+    </section>
+
+    <!-- ======================= LIGHT COLUMN ======================= -->
+    <section class="theme-col" data-theme="light">
+      <div class="theme-col__head"><span>Light · one attribute swap</span><span class="faint mono">[data-theme="light"]</span></div>
+
+      <div class="demo__label">tokens — same names, paper surfaces</div>
+      <div class="swatches">
+        <div class="swatch"><div class="swatch__chip" style="background:var(--bg)"></div><div class="swatch__meta">--bg</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--panel)"></div><div class="swatch__meta">--panel</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--panel-raised)"></div><div class="swatch__meta">--panel-raised</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--primary-gradient)"></div><div class="swatch__meta">--primary-gradient</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--accent)"></div><div class="swatch__meta">--accent</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--text)"></div><div class="swatch__meta">--text</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--text-muted)"></div><div class="swatch__meta">--text-muted</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--error)"></div><div class="swatch__meta">--error</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--warning)"></div><div class="swatch__meta">--warning</div></div>
+        <div class="swatch"><div class="swatch__chip" style="background:var(--success)"></div><div class="swatch__meta">--success</div></div>
+      </div>
+
+      <div class="demo__label">.btn · .btn--primary · .btn--secondary · .btn--ghost · [disabled]</div>
+      <div class="demo">
+        <button class="btn btn--primary" type="button">Run <kbd class="keycap keycap--on-primary">⌘</kbd><kbd class="keycap keycap--on-primary">↩</kbd></button>
+        <button class="btn btn--secondary" type="button">Run selection</button>
+        <button class="btn btn--ghost" type="button">Cancel</button>
+        <button class="btn" type="button" disabled>Disabled</button>
+      </div>
+
+      <div class="demo__label">.input · .textarea · .field · .select</div>
+      <div class="demo demo--grid">
+        <label class="field">
+          <span class="field__label">Database connection</span>
+          <input class="input" type="text" value="mysql://forge@127.0.0.1:3306/my-app" spellcheck="false">
+          <span class="field__help">Read from the app's .env when the session boots.</span>
+        </label>
+        <label class="field">
+          <span class="field__label">Notes</span>
+          <textarea class="textarea" rows="2" spellcheck="false">Checking order totals after the EU tax rule change.</textarea>
+        </label>
+        <div class="field" style="max-width:220px">
+          <span class="field__label">Output format</span>
+          <select class="select">
+            <option>Pretty print</option>
+            <option>Raw</option>
+            <option>JSON</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="demo__label">.segmented · .segmented__item › input[type=radio]</div>
+      <div class="demo">
+        <div class="segmented" role="radiogroup" aria-label="Session type">
+          <label class="segmented__item"><input type="radio" name="demo-seg-light" checked>Local</label>
+          <label class="segmented__item"><input type="radio" name="demo-seg-light">SSH</label>
+          <label class="segmented__item"><input type="radio" name="demo-seg-light">Docker</label>
+        </div>
+      </div>
+
+      <div class="demo__label">.tabset · .tabset__list · .tabset__tab · .tabset__panel</div>
+      <div class="demo demo--stack" style="padding-top:0;padding-bottom:0">
+        <div class="tabset">
+          <div class="tabset__list output__tabs" role="tablist" aria-label="Demo tabs">
+            <label class="output__tab tabset__tab"><input type="radio" name="demo-tabs-light" checked>Result <span class="badge badge--success">ok</span></label>
+            <label class="output__tab tabset__tab"><input type="radio" name="demo-tabs-light">Queries <span class="badge badge--solid">3</span></label>
+            <label class="output__tab tabset__tab"><input type="radio" name="demo-tabs-light">Logs</label>
+          </div>
+          <div class="tabset__panel" style="padding:var(--s3) 0"><span class="mono">Result panel — 5 orders</span></div>
+          <div class="tabset__panel" style="padding:var(--s3) 0"><span class="mono">Queries panel — 3 statements</span></div>
+          <div class="tabset__panel" style="padding:var(--s3) 0"><span class="mono">Logs panel — session.boot, query.log</span></div>
+        </div>
+      </div>
+
+      <div class="demo__label">.switch · .checkbox · .radio</div>
+      <div class="demo" style="gap:var(--s4)">
+        <label class="switch"><input type="checkbox" checked><span class="switch__track"></span></label>
+        <label class="switch"><input type="checkbox"><span class="switch__track"></span></label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox__box"></span>Auto-run on save</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox__box"></span>Confirm on close</label>
+        <label class="radio"><input type="radio" name="demo-radio-light" checked><span class="radio__dot"></span>Pretty print</label>
+        <label class="radio"><input type="radio" name="demo-radio-light"><span class="radio__dot"></span>Raw</label>
+      </div>
+
+      <div class="demo__label">.setting — label + description left, control right</div>
+      <div class="demo demo--grid" style="padding:0">
+        <div class="setting">
+          <div><div class="setting__label">Watch snippets on disk</div><div class="setting__desc">Re-run when the file changes outside the editor.</div></div>
+          <div class="setting__control"><label class="switch"><input type="checkbox" checked><span class="switch__track"></span></label></div>
+        </div>
+        <div class="setting">
+          <div><div class="setting__label">Default session</div><div class="setting__desc">Used when a snippet does not name its own connection.</div></div>
+          <div class="setting__control">
+            <select class="select"><option>my-app · local</option><option>forge-web-1 · SSH</option></select>
+          </div>
+        </div>
+        <div class="setting">
+          <div><div class="setting__label">Clear history</div><div class="setting__desc">Removes 12 entries from today.</div></div>
+          <div class="setting__control"><button class="btn btn--secondary" type="button">Clear</button></div>
+        </div>
+      </div>
+
+      <div class="demo__label">.form-grid · .form-row · .form-row__label · .form-row__control · .input--error · .field__error</div>
+      <div class="demo">
+        <div class="form-grid" style="width:100%">
+          <div class="form-row">
+            <label class="form-row__label form-row__label--required">Host</label>
+            <div class="form-row__control"><input class="input" type="text" value="127.0.0.1" aria-label="Host" spellcheck="false"></div>
+          </div>
+          <div class="form-row">
+            <label class="form-row__label">Port</label>
+            <div class="form-row__control"><input class="input" type="text" value="3306" aria-label="Port" spellcheck="false"></div>
+          </div>
+          <div class="form-row">
+            <label class="form-row__label">Database</label>
+            <div class="form-row__control">
+              <input class="input input--error" type="text" value="my-app-prod" aria-label="Database" spellcheck="false">
+              <p class="field__error">No database named “my-app-prod” on this host.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__label">.modal-overlay · .modal (560) · .modal--narrow (420) · __header · __body · __footer</div>
+      <div class="demo-stage">
+        <div class="modal-overlay">
+          <div class="modal">
+            <div class="modal__header">New connection</div>
+            <div class="modal__body">
+              <div class="form-grid">
+                <div class="form-row">
+                  <label class="form-row__label form-row__label--required">Host</label>
+                  <div class="form-row__control"><input class="input" type="text" value="forge-web-1" aria-label="Host" spellcheck="false"></div>
+                </div>
+                <div class="form-row">
+                  <label class="form-row__label">Port</label>
+                  <div class="form-row__control"><input class="input" type="text" value="22" aria-label="Port" spellcheck="false"></div>
+                </div>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" type="button">Cancel</button>
+              <button class="btn btn--primary" type="button">Connect</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__label">.modal--narrow — confirmation, 420px</div>
+      <div class="demo-stage" style="height:200px">
+        <div class="modal-overlay">
+          <div class="modal modal--narrow">
+            <div class="modal__header">Delete snippet</div>
+            <div class="modal__body">
+              <p><span class="mono">OrderStats.php</span> will be removed from the Models folder. Runs already in history stay.</p>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" type="button">Cancel</button>
+              <button class="btn btn--primary" type="button">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__label">.keycap · .keycap--on-primary · .badge · .dot · .toast · .tooltip</div>
+      <div class="demo demo--stack">
+        <div class="row">
+          <kbd class="keycap">⌘</kbd><kbd class="keycap">K</kbd>
+          <span class="muted">search</span>
+          <span class="divider-v" style="height:12px"></span>
+          <kbd class="keycap">⌘</kbd><kbd class="keycap">↩</kbd>
+          <span class="muted">run</span>
+          <span class="divider-v" style="height:12px"></span>
+          <kbd class="keycap">esc</kbd>
+          <span class="muted">dismiss</span>
+        </div>
+        <div class="keycap-row">
+          <span class="muted">Run snippet</span>
+          <span class="keycap-row__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">↩</kbd></span>
+        </div>
+        <div class="keycap-row">
+          <span class="muted">New snippet</span>
+          <span class="keycap-row__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">N</kbd></span>
+        </div>
+        <div class="row">
+          <span class="badge"><span class="dot dot--live"></span>local</span>
+          <span class="badge badge--solid">5 rows</span>
+          <span class="badge badge--success">ok</span>
+          <span class="badge badge--warning">slow query</span>
+          <span class="badge badge--error">failed</span>
+          <span class="dot dot--live dot--ring"></span>
+          <span class="dot dot--accent"></span>
+          <span class="dot dot--idle"></span>
+          <span class="dot dot--off"></span>
+        </div>
+        <div class="toast">
+          <span class="dot dot--live"></span>
+          <span class="toast__body">Copied 5 orders as a PHP array.</span>
+          <button class="btn btn--ghost btn--sm" type="button">Undo</button>
+        </div>
+        <div class="row">
+          <span class="tooltip">
+            <button class="btn btn--secondary btn--sm" type="button">Hover me</button>
+            <span class="tooltip__bubble">Runs the whole snippet — ⌘↩</span>
+          </span>
+          <span class="muted" style="font-size:var(--fs-xs)">.tooltip reveals .tooltip__bubble on hover or focus</span>
+        </div>
+        <div class="row">
+          <span class="tooltip">
+            <button class="btn btn--secondary btn--sm" type="button">Hover for a sentence</button>
+            <span class="tooltip__bubble tooltip__bubble--wrap">Runs every snippet in the Models folder, oldest first, and stops at the first failure.</span>
+          </span>
+          <span class="muted" style="font-size:var(--fs-xs)">.tooltip__bubble--wrap lets a hint wrap to 220px instead of one line</span>
+        </div>
+      </div>
+
+      <div class="demo__label">.tree · .tree__row · .tree__copy · .t-string / .t-number / .t-class / .t-bool / .t-null</div>
+      <div class="demo" style="padding:0">
+        <div class="tree" style="width:100%">
+          <details open>
+            <summary class="tree__row">
+              <span class="tree__caret"></span>
+              <span class="t-class">Illuminate\Database\Eloquent\Collection</span><span class="tree__sep"> · </span><span class="t-number">5</span><span class="muted"> items</span>
+              <button class="tree__copy" type="button" title="Copy value">copy</button>
+            </summary>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">number</span><span class="tree__sep">:</span><span class="t-string">"ORD-10428"</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">total_cents</span><span class="tree__sep">:</span><span class="t-number">24900</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">is_priority</span><span class="tree__sep">:</span><span class="t-bool">true</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+            <div class="tree__row tree__row--d1"><span class="tree__caret"></span><span class="tree__key">refunded_at</span><span class="tree__sep">:</span><span class="t-null">null</span><button class="tree__copy" type="button" title="Copy value">copy</button></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="demo__label">.error-surface · .trace · .trace__snippet · .trace__group · .empty · .empty--benign · .editor__line--error</div>
+      <div class="demo demo--stack" style="padding:0;gap:0">
+        <div class="error-surface" style="margin-top:var(--s3)" role="alert">
+          <div class="error-surface__class mono">Illuminate\Database\Eloquent\RelationNotFoundException</div>
+          <p class="error-surface__message mono">Call to undefined relationship [lines] on model [App\Models\Order].</p>
+        </div>
+        <div class="trace" style="margin-bottom:var(--s3)">
+          <div class="trace__head">
+            <span class="trace__title">Stack trace</span>
+            <span class="badge">18 frames</span>
+            <span class="truncate">eval()'d in the running session</span>
+          </div>
+          <div class="trace__frames">
+            <div class="trace__row"><span class="trace__idx">#0</span><span class="trace__file">vendor/laravel/framework/src/Illuminate/Database/Eloquent/Builder.php:878</span><span class="trace__fn">RelationNotFoundException::make()</span></div>
+            <div class="trace__snippet">
+              <div class="trace__row"><span class="trace__idx">#4</span><span class="trace__file">OrderStats.php:15</span><span class="trace__fn">Model-&gt;load()</span></div>
+              <div class="trace__row"><span class="trace__idx">15</span><span class="trace__code"><span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">load</span><span class="c-op">(</span><span class="trace__offender">'lines'</span><span class="c-op">);</span></span></div>
+            </div>
+            <details class="trace__group">
+              <summary><span class="tree__caret"></span>Show 13 more frames — PsySH, Symfony, Artisan</summary>
+              <div class="trace__row"><span class="trace__idx">#5</span><span class="trace__file">vendor/psy/psysh/src/ExecutionLoopClosure.php(51) : eval()'d code(1)</span><span class="trace__fn">eval()</span></div>
+            </details>
+          </div>
+        </div>
+        <div class="empty">
+          <span class="empty__icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+              <circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v4.4M8 11.4v.2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <div>
+            <p>Nothing to show — the run raised an exception, so it never returned a value.</p>
+            <div class="empty__row mono"><span class="empty__n">1</span><span class="c-var">$orders</span><span class="c-op">:</span><span class="t-class">Illuminate\Database\Eloquent\Collection</span><span class="muted">· 5 items</span></div>
+            <div class="empty__row mono"><span class="empty__n">2</span><span class="c-var">$value</span><span class="c-op">:</span><span class="t-null">null</span><span class="muted">· never assigned</span></div>
+          </div>
+        </div>
+        <div class="empty empty--benign">
+          <span class="empty__icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+              <circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v4.4M8 11.4v.2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <div>
+            <p>The run finished and returned nothing — nothing failed, there is simply no value.</p>
+            <div class="empty__row mono"><span class="empty__n">1</span><span class="c-var">$orders</span><span class="c-op">:</span><span class="t-class">Illuminate\Database\Eloquent\Collection</span><span class="muted">· 5 items</span></div>
+          </div>
+        </div>
+        <div class="editor" style="width:100%;height:72px;margin-bottom:var(--s3)">
+          <div class="editor__gutter" aria-hidden="true">
+            <div class="editor__ln">14</div>
+            <div class="editor__ln editor__ln--error">15</div>
+            <div class="editor__ln">16</div>
+          </div>
+          <pre class="editor__code"><div class="editor__line"> </div><div class="editor__line editor__line--error"><span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">load</span><span class="c-op">(</span><span class="c-str">'lines'</span><span class="c-op">);</span></div><div class="editor__line"> </div></pre>
+        </div>
+      </div>
+
+      <div class="demo__label">::selection — --selection tint, token colours keep their own values</div>
+      <div class="demo">
+        <span class="mono"><span class="c-keyword">return</span> <span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">pluck</span><span class="c-op">(</span><span class="c-str">'number'</span><span class="c-op">);</span></span>
+        <span class="muted" style="font-size:var(--fs-xs)">Drag-select this line to see the tint in this theme</span>
+      </div>
+
+      <div class="demo__label">.c-keyword .c-type .c-fn .c-str .c-num .c-prop .c-comment — editor palette</div>
+      <div class="demo demo--grid">
+        <span class="mono"><span class="c-keyword">return</span> <span class="c-type">Order</span><span class="c-op">::</span><span class="c-fn">where</span><span class="c-op">(</span><span class="c-str">'status'</span><span class="c-op">,</span> <span class="c-str">'paid'</span><span class="c-op">)-&gt;</span><span class="c-fn">sum</span><span class="c-op">(</span><span class="c-prop">'total_cents'</span><span class="c-op">)</span> <span class="c-op">/</span> <span class="c-num">100</span><span class="c-op">;</span></span>
+        <span class="mono c-comment">// 5 orders</span>
+      </div>
+
+      <div class="demo__label">spacing scale — --s1 4 … --s7 48 · radius 8 / 6 / 12</div>
+      <div class="demo demo--grid">
+        <div class="row" style="gap:var(--s3)">
+          <span class="mono faint" style="width:52px">--s1 4</span><span style="height:8px;width:4px;background:var(--primary-2)"></span>
+          <span class="mono faint" style="width:52px">--s3 12</span><span style="height:8px;width:12px;background:var(--primary-2)"></span>
+          <span class="mono faint" style="width:52px">--s5 24</span><span style="height:8px;width:24px;background:var(--primary-2)"></span>
+          <span class="mono faint" style="width:52px">--s7 48</span><span style="height:8px;width:48px;background:var(--primary-2)"></span>
+        </div>
+        <div class="row" style="gap:var(--s3)">
+          <span class="mono faint" style="width:52px">8 panel</span><span style="height:24px;width:48px;border:1px solid var(--border);border-radius:var(--r-panel);background:var(--panel)"></span>
+          <span class="mono faint" style="width:52px">6 button</span><span style="height:24px;width:48px;border:1px solid var(--border);border-radius:var(--r-btn);background:var(--panel-raised)"></span>
+          <span class="mono faint" style="width:52px">12 modal</span><span style="height:24px;width:48px;border:1px solid var(--border);border-radius:var(--r-modal);background:var(--panel-raised)"></span>
+        </div>
+      </div>
+
+      <div class="demo__label">type — Inter for UI, JetBrains Mono 13/1.6 for code</div>
+      <div class="demo demo--grid">
+        <span style="font-size:var(--fs-xl);font-weight:600">Run 24 snippets</span>
+        <span style="font-size:var(--fs-lg);font-weight:500">Snippet library</span>
+        <span style="font-size:var(--fs-md)">Default body copy at 13 px.</span>
+        <span style="font-size:var(--fs-sm)" class="muted">Panel copy at 12 px.</span>
+        <span style="font-size:var(--fs-xs)" class="faint">Metadata and keycaps at 11 px.</span>
+        <span class="mono">$order-&gt;total_cents =&gt; 24900</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Screen 1</h2>
+    <p class="doc__note">
+      The main window assembled from these primitives, dark tokens:
+      <a class="accent" href="screen-1-main.html">screen-1-main.html</a>.
+    </p>
+  </section>
+</div>
+
+</body>
+</html>

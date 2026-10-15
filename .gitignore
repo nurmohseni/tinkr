@@ -1,0 +1,12 @@
+.idea
+node_modules
+build/
+
+.DS_Store
+.envrc
+.actrc
+
+yarn-error.log
+
+# a local index of this checkout, written by the editor tooling
+codedb.snapshot

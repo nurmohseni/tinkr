@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tinkr — design index</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<link rel="stylesheet" href="tinkr.css">
+</head>
+<body>
+
+<div class="doc">
+  <h1 class="doc__title">Tinkr · screens</h1>
+  <p class="doc__lede">
+    Static design sheets for the Tinkr desktop app, drawn from
+    <span class="mono">design/tinkr.css</span>. Every page opens straight from disk, at 1440×900,
+    with no build step and no script.
+  </p>
+
+  <p class="doc__note">
+    The app builds these sheets: <span class="mono">screen-1-main.html</span> (the window),
+    <span class="mono">screen-2-error.html</span> (a run that failed, as its result panel draws it),
+    <span class="mono">screen-4-connection.html</span> (the connection dialog, for a local or an SSH
+    connection), <span class="mono">screen-5-settings.html</span> (the preference window, with the
+    sections the app has: General, Shortcuts, Lab and AI), <span class="mono">screen-6-light.html</span>
+    and <span class="mono">foundation.html</span>, whose primitives the app's own stylesheet,
+    <span class="mono">packages/tinkr-renderer/public/tinkr.css</span>, is a copy of.
+    <span class="mono">screen-3-palette.html</span> is reference only: the app has no command palette.
+  </p>
+
+  <p class="doc__note">
+    Where a sheet draws what the app does not have — a command palette, the Dump, Queries and Logs
+    panes, a stack trace, the sidebar's folder tree and its Local, SSH and Docker switch, a Saved
+    Sessions list, the Docker connection type, and every run time, memory figure and PHP or Laravel
+    version — it is sample data: nothing in the app collects or measures those, so the app shows no
+    such row or figure anywhere.
+  </p>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Screen 1 — main window</h2>
+    <p class="doc__note">
+      Title bar, connection sidebar, split editor and output panel, status bar.
+      Runs on dark tokens; <span class="mono">foundation.html</span> holds the light values of the same tokens.
+    </p>
+    <div class="doc__grid">
+      <div class="doc__preview">
+        <iframe src="screen-1-main.html" title="Screen 1 — main window, live preview" loading="lazy"></iframe>
+      </div>
+      <p><a class="btn btn--primary" href="screen-1-main.html">Open screen 1 — 1440×900</a></p>
+    </div>
+  </section>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Screen 2 — a run that failed</h2>
+    <p class="doc__note">
+      The same window as screen 1 with the run in its error state: the snippet's failing line marked
+      in the editor, the result tab showing the exception class and message on the error surface, a
+      real stack trace with the snippet frame picked out of the vendor frames, and the status bar
+      reporting the failure.
+    </p>
+    <div class="doc__grid">
+      <div class="doc__preview">
+        <iframe src="screen-2-error.html" title="Screen 2 — run failed, live preview" loading="lazy"></iframe>
+      </div>
+      <p><a class="btn btn--primary" href="screen-2-error.html">Open screen 2 — 1440×900</a></p>
+    </div>
+  </section>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Foundation</h2>
+    <p class="doc__note">
+      Every shared primitive, dark and light side by side: buttons, fields, select, segmented control,
+      tabs, switch, checkbox, radio, settings row, modal, keycaps, badge, status dot, toast, tooltip,
+      and the output tree row.
+    </p>
+    <div class="doc__grid">
+      <p><a class="btn btn--secondary" href="foundation.html">Open foundation.html</a></p>
+    </div>
+  </section>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Screen 3 — command palette</h2>
+    <p class="doc__note">
+      The main window dimmed and frosted behind the glass palette: query row, actions grouped under
+      section labels, shortcut chips in one column, selection on the raised surface.
+    </p>
+    <div class="doc__grid">
+      <div class="doc__preview">
+        <iframe src="screen-3-palette.html" title="Screen 3 — command palette, live preview" loading="lazy"></iframe>
+      </div>
+      <p><a class="btn btn--primary" href="screen-3-palette.html">Open screen 3 — 1440×900</a></p>
+    </div>
+  </section>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Screen 4 — new connection</h2>
+    <p class="doc__note">
+      The main window dimmed behind the new-connection dialog: Local, SSH and Docker tabs, the local
+      form on one shared label column, an inline validation message under the path, and the one
+      gradient control in the footer.
+    </p>
+    <div class="doc__grid">
+      <div class="doc__preview">
+        <iframe src="screen-4-connection.html" title="Screen 4 — new connection dialog, live preview" loading="lazy"></iframe>
+      </div>
+      <p><a class="btn btn--primary" href="screen-4-connection.html">Open screen 4 — 1440×900</a></p>
+    </div>
+  </section>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Screen 6 — main window, light mode</h2>
+    <p class="doc__note">
+      Screen 1 with <span class="mono">data-theme="light"</span> on the root: identical markup, identical
+      measurements, the light values of every token. The same chrome, editor well, output tree and
+      status bar with the lights on.
+    </p>
+    <div class="doc__grid">
+      <div class="doc__preview">
+        <iframe src="screen-6-light.html" title="Screen 6 — main window, light mode, live preview" loading="lazy"></iframe>
+      </div>
+      <p><a class="btn btn--primary" href="screen-6-light.html">Open screen 6 — 1440×900</a></p>
+    </div>
+  </section>
+
+  <section class="doc__section">
+    <h2 class="doc__h2">Screen 5 — settings</h2>
+    <p class="doc__note">
+      A window of its own: the settings rail with six sections on the left, and Appearance (theme,
+      editor font size, a live PHP line at the chosen size), Editor (font size, tabs, wrap, minimap,
+      autocomplete, terminal renderer) and Keybindings (seven bindings, the caps in one column, one
+      row recording a new combination) stacked in a single column on the right.
+    </p>
+    <div class="doc__grid">
+      <div class="doc__preview">
+        <iframe src="screen-5-settings.html" title="Screen 5 — settings, live preview" loading="lazy"></iframe>
+      </div>
+      <p><a class="btn btn--primary" href="screen-5-settings.html">Open screen 5 — 1440×900</a></p>
+    </div>
+  </section>
+</div>
+
+</body>
+</html>

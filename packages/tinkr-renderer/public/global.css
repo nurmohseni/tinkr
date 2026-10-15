@@ -1,0 +1,204 @@
+body {
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: hidden;
+}
+
+/* for react-split */
+.gutter {
+    position: relative;
+}
+.gutter-horizontal {
+    cursor: col-resize;
+}
+
+.gutter-vertical {
+    cursor: row-resize;
+}
+
+/* tinkr.css draws the design's fixed 1440x900 stage; in the app the window is
+   the frame, so the frame fills it. That rule is a single class in tinkr.css
+   and this sheet loads before it, so the selector carries `body` to out-
+   specify it rather than merely follow it. Everything else stays a token. */
+body .app {
+    width: 100%;
+    height: 100vh;
+}
+
+/* a list row that navigates is a real button: reset the shell, keep the row */
+button.tree-nav__row {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+}
+
+/* the sidebar's connections, snippets and library scroll between the search
+   row and the pinned footer, on the scrollbar tinkr.css gives .sidebar */
+.sidebar__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+/* the active tab's label is the snippet's rename field: it reads as the pill */
+.tab__name {
+    field-sizing: content;
+    min-width: 3ch;
+    max-width: 160px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    outline: none;
+}
+
+/* ---- the settings window's layout ----------------------------------------
+   screen-5 draws its rail, scrolling column, section head and section card in a
+   <style> block of its own; they arrange one window rather than a primitive, so
+   they live here for now. Every value is a token: the rail is the app sidebar,
+   at the width tinkr.css gives it, and the keycap rows are tinkr.css's own
+   .keycap-row. */
+
+.rail .sidebar__item {
+    background: transparent;
+    border: 0;
+    width: 100%;
+    text-align: left;
+}
+
+.rail .sidebar__item--active {
+    position: relative;
+    font-weight: 500;
+}
+
+.rail .sidebar__item--active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 7px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--primary-2);
+}
+
+.rail .sidebar__item svg {
+    flex: none;
+    color: var(--text-faint);
+}
+
+.rail .sidebar__item--active svg {
+    color: var(--accent);
+}
+
+/* the content column: one scrolling column of section groups */
+.settings {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+.settings__inner {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: var(--s5) var(--s4) var(--s6);
+}
+
+/* section head: the title on the rule its rows hang from */
+.sgroup + .sgroup {
+    margin-top: var(--s5);
+}
+
+.sgroup__head {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    padding-bottom: var(--s2);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--s3);
+}
+
+.sgroup__titles {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s3);
+    min-width: 0;
+}
+
+.sgroup__title {
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    flex: none;
+}
+
+/* section card: the rows of one section on one panel */
+.scard {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-panel);
+    overflow: hidden;
+}
+
+/* ---- the editor window's code well ---------------------------------------
+   tinkr.css carries the failed-run surface, the trace and the empty state, and
+   they are used from there. What the app adds is the code well's type size: the
+   design sets --fs-code for anything mono, and monaco needs it as a number for
+   its own font size, so the editor reads one token of its own. */
+
+:root {
+    --editor-font-size: var(--fs-code);
+}
+
+/* ---- the snippet menu ----------------------------------------------------
+   The design's floating list (.autocomplete) is the app's one popover surface:
+   the palette opens it under a caret, the snippet menu at the pointer, which is
+   what it has to be positioned by — everything else is the design's. Its rows
+   are buttons here rather than list rows, so they need the reset the app's
+   other clickable rows carry, and a pointer on one is the active row.
+   The panel is named twice over because tinkr.css loads after this sheet: a
+   single class of the same weight would lose to .autocomplete's own. */
+
+.autocomplete.snippet-menu {
+    position: fixed;
+    min-width: 180px;
+}
+
+.snippet-menu .autocomplete__item {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+}
+
+.snippet-menu .autocomplete__item:hover {
+    background: var(--primary-soft);
+    color: var(--text);
+}
+
+/* ---- the close-session prompt ---------------------------------------------
+   The prompt's body says one more thing than the app's other confirmations do:
+   under its text sits a "do not show this warning again" checkbox. The design's
+   .modal__body is a plain block, and the checkbox is a .checkbox as it is, so
+   the body is only made a stack of its two children here — nothing about either
+   is restated. */
+
+.close-session .modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+}
+
+/* monaco's suggestion rows: the widget colours its rows from its own
+   --vscode-* variables, which leave the label and the detail invisible on this
+   theme, so both are pinned to the app's own ink */
+.suggest-widget .monaco-list-row .monaco-highlighted-label,
+.suggest-widget .monaco-list-row .label-name { color: var(--text) !important; }
+.suggest-widget .monaco-list-row .details-label { color: var(--text-muted) !important; }
+.suggest-widget .monaco-list-row .monaco-highlighted-label .highlight { color: var(--accent) !important; }
+.suggest-widget .monaco-list-row.focused .monaco-highlighted-label,
+.suggest-widget .monaco-list-row.focused .label-name { color: var(--text) !important; }

@@ -1,0 +1,58 @@
+import {atom, useAtomValue} from 'jotai'
+import {useRoute} from 'wouter'
+
+import {connectionAtom, resultAtom} from '../stores/editor'
+import {configAtom} from '../stores/config'
+import {snippetAtomWithId} from '../stores/snippets'
+import appVersion from '../utils/appVersion'
+
+// the status bar is mounted above the router, so on the root route there is no
+// snippet to read a caret position from
+const noSnippetAtom = atom(null)
+
+/**
+ * The app's bottom strip.
+ *
+ * It prints what the app knows: the connection this window was opened with,
+ * where the caret is in the open snippet, whether the AI completions are on,
+ * and the version. Run time, memory and the PHP version are shown by the
+ * design but nothing in the app measures them, so they are left out.
+ */
+const Statusbar = () => {
+  const connection = useAtomValue(connectionAtom)
+  const config = useAtomValue(configAtom)
+  const result = useAtomValue(resultAtom)
+  const [, params] = useRoute('/snippets/:id/:mode')
+  const snippet = useAtomValue(params?.id ? snippetAtomWithId(params.id) : noSnippetAtom)
+  const position = snippet?.position
+
+  return (
+    <footer className='statusbar'>
+      {result && result.error && (
+        <span className='statusbar__item error'>
+          <span className='dot dot--error'/>
+          Run failed · {result.error.class}
+        </span>
+      )}
+      {connection.name && (
+        <span className='statusbar__item'>
+          <span className='dot dot--live'/>
+          Connected · {connection.name} ({connection.is_over_ssh ? 'ssh' : 'local'})
+        </span>
+      )}
+
+      {position && (
+        <span className='statusbar__item'>Ln {position.lineNumber}, Col {position.column}</span>
+      )}
+
+      <span className='grow'/>
+
+      <span className='statusbar__item faint'>
+        autocomplete {config.ai_model && config.ai_autocomplete ? 'on' : 'off'}
+      </span>
+      <span className='statusbar__item faint'>Tinkr {appVersion}</span>
+    </footer>
+  )
+}
+
+export default Statusbar

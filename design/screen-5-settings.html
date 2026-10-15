@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Tinkr — Settings</title>
+
+<!--
+  A static sheet: the app's preference window has this rail and this column with
+  the sections it has (General, Shortcuts, Lab, AI), and no status bar of its
+  own, so the other rail rows and the status bar at the foot, PHP version
+  included, are sample data. See design/index.html.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<link rel="stylesheet" href="tinkr.css">
+<style>
+  /* Screen-specific layout only: every colour, size and radius comes from tinkr.css. */
+
+  /* settings rail: the app sidebar, with the section rows rendered as real buttons */
+  .rail .sidebar__item { background: transparent; border: 0; width: 100%; text-align: left; }
+  .rail .sidebar__item--active { position: relative; font-weight: 500; }
+  .rail .sidebar__item--active::before {
+    content: ""; position: absolute; left: 0; top: 7px; bottom: 7px;
+    width: 2px; border-radius: 2px; background: var(--primary-2);
+  }
+  .rail .sidebar__item svg { flex: none; color: var(--text-faint); }
+  .rail .sidebar__item--active svg { color: var(--accent); }
+
+  /* content column: one scrolling column of section groups */
+  .settings { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+  .settings::-webkit-scrollbar { width: 11px; }
+  .settings::-webkit-scrollbar-thumb { background: var(--border-strong); border: 4px solid transparent; background-clip: content-box; border-radius: var(--r-pill); }
+  .settings__inner { max-width: 920px; margin: 0 auto; padding: var(--s5) var(--s4) var(--s6); }
+
+  /* section head: title + one-line description + section action, one baseline */
+  .sgroup + .sgroup { margin-top: var(--s5); }
+  .sgroup__head {
+    display: flex; align-items: center; gap: var(--s3);
+    padding-bottom: var(--s2); border-bottom: 1px solid var(--border); margin-bottom: var(--s3);
+  }
+  .sgroup__titles { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+  .sgroup__title { font-size: var(--fs-lg); font-weight: 600; flex: none; }
+  .sgroup__desc { font-size: var(--fs-sm); }
+  .sgroup__head .btn { margin-left: auto; flex: none; }
+
+  /* section card: the rows of one section on one panel */
+  .scard { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-panel); overflow: hidden; }
+
+  /* keycap column: every shortcut row puts its caps in the same 88px band */
+  .kbkeys { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); }
+  .kbkeys__keys { display: flex; align-items: center; justify-content: flex-start; gap: var(--s1); min-width: 88px; }
+  .kbkeys__hint { font-size: var(--fs-xs); color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+  .setting--editing { position: relative; background: var(--primary-soft); }
+  .setting--editing::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--primary-2);
+  }
+  .keycap--capture { background: var(--primary-soft); border-color: var(--primary-2); color: var(--text); }
+
+  /* live preview inside Appearance: a small code well at the chosen size */
+  .preview { border-top: 1px solid var(--border); padding: var(--s3); }
+  .preview__head { display: flex; align-items: baseline; gap: var(--s3); margin-bottom: var(--s2); }
+  .preview__head .field__help { margin-left: auto; font-family: var(--font-mono); }
+  .preview .editor { flex: none; min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-btn); padding: var(--s1) 0; }
+  .preview .editor__code { font-size: 14px; }
+</style>
+</head>
+<body class="stage">
+
+<div class="app">
+
+  <!-- ================= title bar ================= -->
+  <header class="titlebar">
+    <div class="titlebar__controls">
+      <button class="winctl" type="button" title="Minimise" aria-label="Minimise">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </button>
+      <button class="winctl" type="button" title="Maximise" aria-label="Maximise">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.2" rx="1"/></svg>
+      </button>
+      <button class="winctl winctl--close" type="button" title="Close" aria-label="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div class="titlebar__side">
+      <span class="brand" title="Tinkr 0.1.0-beta.1">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <defs><linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#4F46E5"/><stop offset="1" stop-color="#7C3AED"/>
+          </linearGradient></defs>
+          <rect x="0.5" y="0.5" width="17" height="17" rx="5" fill="url(#brandGrad)"/>
+          <path d="M6 4.6L11 9l-5 4.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M14.2 3.4l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="#22D3EE"/>
+        </svg>
+        <span class="brand__word">Tinkr</span>
+      </span>
+    </div>
+
+    <div class="titlebar__center">
+      <span class="mono" style="font-size:12px;color:var(--text)">settings.json</span>
+      <span class="muted">·</span>
+      <span class="muted">saved 21:24</span>
+      <span class="muted">·</span>
+      <span class="muted">applies to my-app · local</span>
+    </div>
+
+    <div class="titlebar__side titlebar__side--end">
+      <button class="btn btn--secondary btn--icon" type="button" title="Settings" aria-label="Settings" aria-current="page">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2">
+          <circle cx="8" cy="8" r="2.4"/>
+          <path d="M8 1.4v1.8M8 12.8v1.8M1.4 8h1.8M12.8 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="app__body">
+
+    <!-- ================= settings rail ================= -->
+    <aside class="sidebar rail" aria-label="Settings sections">
+
+      <div class="sidebar__section">
+        <label class="search">
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3">
+            <circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4L14 14" stroke-linecap="round"/>
+          </svg>
+          <input type="search" placeholder="Search settings" aria-label="Search settings" title="Search settings — ⌘, then type">
+          <span class="search__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">,</kbd></span>
+        </label>
+      </div>
+
+      <nav class="sidebar__section" aria-label="Settings sections">
+        <div class="sidebar__title"><span>Settings</span><span class="sidebar__meta">6</span></div>
+
+        <button class="sidebar__item sidebar__item--active" type="button" aria-current="page" title="Appearance — theme and type size">
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2">
+            <circle cx="8" cy="8" r="6.2"/>
+            <path d="M8 1.8a6.2 6.2 0 000 12.4z" fill="currentColor" stroke="none" opacity="0.45"/>
+          </svg>
+          <span>Appearance</span>
+        </button>
+
+        <button class="sidebar__item" type="button" title="Connection — hosts, tunnels and credentials">
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+            <path d="M6.4 9.6l3.2-3.2"/>
+            <path d="M6.6 5.6l1.2-1.2a2.4 2.4 0 013.4 3.4l-1.2 1.2"/>
+            <path d="M9.4 10.4l-1.2 1.2a2.4 2.4 0 01-3.4-3.4l1.2-1.2"/>
+          </svg>
+          <span>Connection</span>
+        </button>
+
+        <button class="sidebar__item" type="button" title="Editor — font, tabs, wrap and the terminal renderer">
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5.8 4.2L2.6 8l3.2 3.8M10.2 4.2L13.4 8l-3.2 3.8"/>
+          </svg>
+          <span>Editor</span>
+        </button>
+
+        <button class="sidebar__item" type="button" title="Keybindings — every shortcut, remappable">
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+            <rect x="1.6" y="4.2" width="12.8" height="7.6" rx="1.6"/>
+            <path d="M4.2 6.6h.01M6.6 6.6h.01M9 6.6h.01M11.4 6.6h.01M5.4 9.6h5.2"/>
+          </svg>
+          <span>Keybindings</span>
+        </button>
+
+        <button class="sidebar__item" type="button" title="AI — snippet suggestions and explanations">
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
+            <path d="M7 2.8l1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1z"/>
+            <path d="M11.8 9.6l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/>
+          </svg>
+          <span>AI</span>
+        </button>
+
+        <button class="sidebar__item" type="button" title="About — version, licences and the update channel">
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+            <circle cx="8" cy="8" r="6.2"/>
+            <path d="M8 7.4v3.6"/>
+            <circle cx="8" cy="5.4" r="0.7" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>About</span>
+        </button>
+      </nav>
+
+      <div class="grow"></div>
+
+      <div class="sidebar__section" style="padding-bottom:var(--s2)">
+        <div class="tree-nav__row" title="Written by the desktop app, not the project">
+          <span class="dot dot--live"></span>
+          <span class="faint" style="font-size:var(--fs-xs)">Saved 21:24 · settings.json</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ================= content column ================= -->
+    <main class="main">
+      <div class="settings">
+        <div class="settings__inner">
+
+          <!-- ---------- Appearance ---------- -->
+          <section class="sgroup" id="appearance" aria-labelledby="appearance-title">
+            <header class="sgroup__head">
+              <div class="sgroup__titles">
+                <h2 class="sgroup__title" id="appearance-title">Appearance</h2>
+                <p class="sgroup__desc muted">Theme and type size for the window. Applies to every connection.</p>
+              </div>
+              <button class="btn btn--ghost" type="button" title="Reset the appearance settings">Restore defaults</button>
+            </header>
+
+            <div class="scard">
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Interface theme</div>
+                  <div class="setting__desc">Dark is the default. Light uses the same tokens; System follows the OS.</div>
+                </div>
+                <div class="setting__control">
+                  <div class="segmented" role="radiogroup" aria-label="Interface theme">
+                    <label class="segmented__item"><input type="radio" name="theme" checked>Dark</label>
+                    <label class="segmented__item"><input type="radio" name="theme">Light</label>
+                    <label class="segmented__item"><input type="radio" name="theme">System</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="setting" style="border-bottom:0">
+                <div>
+                  <div class="setting__label">Editor font size</div>
+                  <div class="setting__desc">Sets the code well, the output tree and the preview below.</div>
+                </div>
+                <div class="setting__control">
+                  <div class="segmented" role="radiogroup" aria-label="Editor font size">
+                    <label class="segmented__item"><input type="radio" name="fontsize">13 px</label>
+                    <label class="segmented__item"><input type="radio" name="fontsize" checked>14 px</label>
+                    <label class="segmented__item"><input type="radio" name="fontsize">16 px</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="preview">
+                <div class="preview__head">
+                  <span class="field__label">Preview</span>
+                  <span class="field__help">JetBrains Mono · 14 px · line height 1.6</span>
+                </div>
+                <div class="editor">
+                  <div class="editor__gutter" aria-hidden="true">
+                    <div class="editor__ln">9</div>
+                    <div class="editor__ln">10</div>
+                    <div class="editor__ln editor__ln--caret">11</div>
+                  </div>
+                  <pre class="editor__code"><div class="editor__line"><span class="c-var">$orders</span> <span class="c-op">=</span> <span class="c-type">Order</span><span class="c-op">::</span><span class="c-fn">whereBetween</span><span class="c-op">(</span><span class="c-str">'paid_at'</span><span class="c-op">, [</span><span class="c-fn">now</span><span class="c-op">()-&gt;</span><span class="c-fn">subDays</span><span class="c-op">(</span><span class="c-num">7</span><span class="c-op">),</span> <span class="c-fn">now</span><span class="c-op">()])-&gt;</span><span class="c-fn">get</span><span class="c-op">();</span></div>
+<div class="editor__line"><span class="c-var">$units</span> <span class="c-op">=</span> <span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">sum</span><span class="c-op">(</span><span class="c-keyword">fn</span> <span class="c-op">(</span><span class="c-type">Order</span> <span class="c-var">$order</span><span class="c-op">) =&gt;</span> <span class="c-var">$order</span><span class="c-op">-&gt;</span><span class="c-prop">items</span><span class="c-op">-&gt;</span><span class="c-fn">sum</span><span class="c-op">(</span><span class="c-str">'quantity'</span><span class="c-op">));</span></div>
+<div class="editor__line editor__line--caret"><span class="c-var">$total</span> <span class="c-op">=</span> <span class="c-var">$orders</span><span class="c-op">-&gt;</span><span class="c-fn">sum</span><span class="c-op">(</span><span class="c-str">'total_cents'</span><span class="c-op">) /</span> <span class="c-num">100</span><span class="c-op">;</span>  <span class="c-comment">// 2 483.00 SEK</span><span class="editor__caret"></span></div></pre>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- Editor ---------- -->
+          <section class="sgroup" id="editor" aria-labelledby="editor-title">
+            <header class="sgroup__head">
+              <div class="sgroup__titles">
+                <h2 class="sgroup__title" id="editor-title">Editor</h2>
+                <p class="sgroup__desc muted">How the code well, the gutter and the run's terminal output are drawn.</p>
+              </div>
+              <button class="btn btn--ghost" type="button" title="Reset the editor settings">Restore defaults</button>
+            </header>
+
+            <div class="scard">
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Font size</div>
+                  <div class="setting__desc">Code well and output panel. The Appearance preview follows this value.</div>
+                </div>
+                <div class="setting__control">
+                  <select class="select" aria-label="Font size">
+                    <option>12 px</option>
+                    <option>13 px</option>
+                    <option selected>14 px</option>
+                    <option>15 px</option>
+                    <option>16 px</option>
+                    <option>18 px</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Tab size</div>
+                  <div class="setting__desc">Indentation inserted for one tab keypress.</div>
+                </div>
+                <div class="setting__control">
+                  <select class="select" aria-label="Tab size">
+                    <option>2 spaces</option>
+                    <option selected>4 spaces</option>
+                    <option>8 spaces</option>
+                    <option>Tab character</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Word wrap</div>
+                  <div class="setting__desc">Wrap long query chains instead of scrolling sideways.</div>
+                </div>
+                <div class="setting__control">
+                  <label class="switch">
+                    <input type="checkbox" checked aria-label="Word wrap">
+                    <span class="switch__track"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Show minimap</div>
+                  <div class="setting__desc">A scaled outline of the snippet down the right edge of the editor.</div>
+                </div>
+                <div class="setting__control">
+                  <label class="switch">
+                    <input type="checkbox" aria-label="Show minimap">
+                    <span class="switch__track"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Autocomplete</div>
+                  <div class="setting__desc">Suggests Eloquent methods, class names and column names as you type.</div>
+                </div>
+                <div class="setting__control">
+                  <label class="switch">
+                    <input type="checkbox" checked aria-label="Autocomplete">
+                    <span class="switch__track"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Terminal renderer</div>
+                  <div class="setting__desc">How the run's terminal output is drawn. WebGL needs a working GPU buffer.</div>
+                </div>
+                <div class="setting__control">
+                  <select class="select" aria-label="Terminal renderer">
+                    <option selected>WebGL (GPU)</option>
+                    <option>DOM (software)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- Keybindings ---------- -->
+          <section class="sgroup" id="keybindings" aria-labelledby="keybindings-title">
+            <header class="sgroup__head">
+              <div class="sgroup__titles">
+                <h2 class="sgroup__title" id="keybindings-title">Keybindings</h2>
+                <p class="sgroup__desc muted">Every shortcut in Tinkr is remappable. Open a keycap to record a new combination.</p>
+              </div>
+              <button class="btn btn--ghost" type="button" title="Reset every binding to its default">Reset all bindings</button>
+            </header>
+
+            <div class="scard">
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Run snippet</div>
+                  <div class="setting__desc">Sends the whole buffer to the active connection.</div>
+                </div>
+                <div class="setting__control kbkeys">
+                  <div class="kbkeys__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">↩</kbd></div>
+                </div>
+              </div>
+
+              <div class="setting setting--editing">
+                <div>
+                  <div class="setting__label">Run selection</div>
+                  <div class="setting__desc">Runs only the highlighted lines, in place.</div>
+                </div>
+                <div class="setting__control kbkeys">
+                  <span class="kbkeys__hint"><span class="dot dot--accent"></span>Listening — press the keys, Esc to cancel</span>
+                  <div class="kbkeys__keys"><kbd class="keycap keycap--capture">⌘</kbd><kbd class="keycap keycap--capture">⇧</kbd><kbd class="keycap keycap--capture">↩</kbd></div>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">New connection</div>
+                  <div class="setting__desc">Opens the form for a local app, an SSH host or a container.</div>
+                </div>
+                <div class="setting__control kbkeys">
+                  <div class="kbkeys__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">⇧</kbd><kbd class="keycap">N</kbd></div>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Search snippets</div>
+                  <div class="setting__desc">Jumps to any saved snippet or scratch buffer.</div>
+                </div>
+                <div class="setting__control kbkeys">
+                  <div class="kbkeys__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">P</kbd></div>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Focus connection search</div>
+                  <div class="setting__desc">Puts the cursor in the sidebar search field.</div>
+                </div>
+                <div class="setting__control kbkeys">
+                  <div class="kbkeys__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">K</kbd></div>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Toggle output layout</div>
+                  <div class="setting__desc">Flips the output panel between stacked and side by side.</div>
+                </div>
+                <div class="setting__control kbkeys">
+                  <div class="kbkeys__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">J</kbd></div>
+                </div>
+              </div>
+
+              <div class="setting">
+                <div>
+                  <div class="setting__label">Clear output</div>
+                  <div class="setting__desc">Empties the panel; history keeps the run.</div>
+                </div>
+                <div class="setting__control kbkeys">
+                  <div class="kbkeys__keys"><kbd class="keycap">⌘</kbd><kbd class="keycap">⌫</kbd></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= status bar ================= -->
+  <footer class="statusbar">
+    <span class="statusbar__item"><span class="dot dot--live"></span>Connected · my-app (local)</span>
+    <span class="statusbar__item">Settings saved 21:24</span>
+    <span class="grow"></span>
+    <span class="statusbar__item faint">editor 14 px · tab 4 spaces</span>
+    <span class="statusbar__item faint">autocomplete on · minimap off</span>
+    <span class="statusbar__item faint">Tinkr 0.1.0-beta.1</span>
+  </footer>
+</div>
+
+</body>
+</html>
