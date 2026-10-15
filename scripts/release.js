@@ -67,6 +67,21 @@ const getOrCreateRelease = async tag => {
   }
 }
 
+/**
+ * The name github stores an asset under.
+ *
+ * Github normalises the name it is handed, and a space is one of the characters
+ * it replaces with a dot: `Tinkr Setup 0.1.0-beta.1.exe` is stored as
+ * `Tinkr.Setup.0.1.0-beta.1.exe`. Uploading one it already holds under that name
+ * is a 422, so the two have to be compared as it would store them — otherwise a
+ * build that has to replace its own windows artifacts never finds them, and the
+ * release fails on a name the platform changed.
+ *
+ * @param {String} name
+ * @return {String}
+ */
+const storedName = name => name.replace(/\s+/g, '.')
+
 const upload = async (releaseId, file) => {
   const name = path.basename(file)
   const data = fs.readFileSync(file)
@@ -95,7 +110,7 @@ const upload = async (releaseId, file) => {
       per_page: 100,
     })
 
-    const asset = assets.find(a => a.name === name)
+    const asset = assets.find(a => storedName(a.name) === storedName(name))
 
     if (!asset) {
       throw err
