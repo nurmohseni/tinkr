@@ -26,3 +26,19 @@ export function isMatchShortcut(event, shortcuts) {
     return value === event.key && res
   }, true)
 }
+
+// the accelerators the app stores, written the way a tooltip names them
+const KEY_LABELS = {
+  Control: 'Ctrl',
+  Meta: '⌘',
+  Shift: '⇧',
+  Alt: 'Alt',
+}
+
+/**
+ * A shortcut the app holds, as one string: `Ctrl R`, `⌘ ⇧ N`.
+ *
+ * @param {Array<String>} keys
+ * @return {String}
+ */
+export const shortcutLabel = keys => keys.map(key => KEY_LABELS[key] || key.toUpperCase()).join(' ')

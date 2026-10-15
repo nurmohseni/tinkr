@@ -1,20 +1,22 @@
 import {useCallback} from 'react'
-import {FormattedMessage, useIntl} from 'react-intl'
+import {useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {useRoute} from 'wouter'
 import debounce from 'lodash/debounce'
 
-import ShortcutKeys from './ShortcutKeys'
 import {activeSessionAtom, documentAtomWithId} from '../../stores/sessions'
 import {runAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
+import {shortcutLabel} from '../../utils/isMatchShortcut'
 
 /**
  * The screen's one gradient control: runs what the well holds — the snippet the
- * route names, or the session the window is on when no snippet is — and carries
- * the shortcut that does the same from the editor.
+ * route names, or the session the window is on when no snippet is.
  *
- * It is hidden in form mode, where the form has the run button.
+ * It is an icon, and the words it would take the room of are in its tooltip
+ * along with the shortcut that runs from the editor, so the row stays as short
+ * as the actions in it. It is hidden in form mode, where the form has the run
+ * button.
  */
 const RunButton = () => {
   const intl = useIntl()
@@ -35,15 +37,18 @@ const RunButton = () => {
 
   return (
     <button
-      className='btn btn--primary'
+      className='btn btn--primary btn--icon'
       type='button'
-      title={label}
+      title={`${label} · ${shortcutLabel(config.shortcut_run)}`}
+      aria-label={label}
       onClick={() => runDebounced(code)}
       disabled={isDisabled}
       style={isFormMode ? {display: 'none'} : undefined}
     >
-      <FormattedMessage id='editor.run'/>
-      <ShortcutKeys keys={config.shortcut_run}/>
+      {/* the play the whole world reads as run */}
+      <svg width='14' height='14' viewBox='0 0 16 16' aria-hidden='true' fill='currentColor'>
+        <path d='M4.8 3.1l7.6 4.9-7.6 4.9z'/>
+      </svg>
     </button>
   )
 }
