@@ -23,6 +23,7 @@ import {sizesAtom, resultAtom, connectionAtom} from './stores/editor'
 import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
 import {switchConnectionAtom} from './stores/connections'
+import {phpVersionAnsweredAtom} from './stores/php'
 import {
   updateAvailableAtom,
   updateDownloadedAtom,
@@ -30,7 +31,13 @@ import {
   updateNotAvailableAtom,
   updateProgressAtom,
 } from './stores/update'
-import {onRunResult, onHistoryConnection, onSetConnection, onUpdateState} from './utils/api'
+import {
+  onRunResult,
+  onHistoryConnection,
+  onSetConnection,
+  onPhpVersion,
+  onUpdateState,
+} from './utils/api'
 
 // the split handle is the design's 6px divider, not react-split's 10px default
 const splitGutter = (index, direction) => {
@@ -55,6 +62,7 @@ const EditorWindow = () => {
   const setUpdateProgress = useSetAtom(updateProgressAtom)
   const setUpdateDownloaded = useSetAtom(updateDownloadedAtom)
   const setUpdateFailed = useSetAtom(updateFailedAtom)
+  const setPhpVersion = useSetAtom(phpVersionAnsweredAtom)
   const updates = {
     updateAvailable: setUpdateAvailable,
     updateNotAvailable: setUpdateNotAvailable,
@@ -79,11 +87,16 @@ const EditorWindow = () => {
     // before it installs, and both questions are the panel below
     const onUpdate = Object.entries(updates).map(([channel, set]) => onUpdateState(channel)(set))
 
+    // what the connection answered about php, which the status bar shows and the
+    // pane warns about when there was no answer
+    const onPhp = onPhpVersion(setPhpVersion)
+
     return () => {
       onResult.dispose()
       onHistory.dispose()
       onConnection.dispose()
       onUpdate.forEach(dispose => dispose.dispose())
+      onPhp.dispose()
     }
   }, [])
 

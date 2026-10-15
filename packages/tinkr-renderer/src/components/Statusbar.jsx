@@ -3,6 +3,7 @@ import {useIntl} from 'react-intl'
 import {useRoute} from 'wouter'
 
 import {connectionAtom, resultAtom} from '../stores/editor'
+import {phpVersionAtom} from '../stores/php'
 import {configAtom} from '../stores/config'
 import {snippetAtomWithId} from '../stores/snippets'
 import appVersion from '../utils/appVersion'
@@ -22,6 +23,7 @@ const noSnippetAtom = atom(null)
 const Statusbar = () => {
   const intl = useIntl()
   const connection = useAtomValue(connectionAtom)
+  const php = useAtomValue(phpVersionAtom)
   const config = useAtomValue(configAtom)
   const result = useAtomValue(resultAtom)
   const [, params] = useRoute('/snippets/:id/:mode')
@@ -43,6 +45,12 @@ const Statusbar = () => {
             name: connection.name,
             kind: intl.formatMessage({id: connection.is_over_ssh ? 'connections.kind_ssh' : 'connections.kind_local'}),
           })}
+        </span>
+      )}
+
+      {php.status === 'found' && (
+        <span className='statusbar__item mono'>
+          {intl.formatMessage({id: 'statusbar.php'}, {version: php.version})}
         </span>
       )}
 

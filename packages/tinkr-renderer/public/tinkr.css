@@ -513,6 +513,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint);
 }
 
+/* the pane's own warning: over the code, never over the window, so the terminal
+   and the output of the connection stay readable — they are where the reason is.
+   It has to clear the editor's own chrome, which is why the number is what it is:
+   Monaco puts the minimap at 5, the overview ruler at 6 and the scrollbars around
+   11, and all of them are positioned, so they paint by z-index against this one.
+   Anything below the modal overlay's 20 is free. */
+.pane-warning {
+  position: absolute; inset: 0; z-index: 15;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s4);
+  background: color-mix(in srgb, var(--bg) 74%, transparent);
+}
+.pane-warning__card {
+  max-width: 420px;
+  padding: var(--s4);
+  border: 1px solid var(--border-strong); border-radius: var(--r-panel);
+  background: var(--panel-raised); box-shadow: var(--shadow-pop);
+}
+.pane-warning__title { font-size: var(--fs-md); font-weight: 600; }
+.pane-warning__text { margin: var(--s2) 0 var(--s3); font-size: var(--fs-sm); color: var(--text-muted); }
+
 /* the ai panel: what was asked, what came back, and the code it proposes */
 .ai { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .ai__thread { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--s2) var(--s3) 0; }

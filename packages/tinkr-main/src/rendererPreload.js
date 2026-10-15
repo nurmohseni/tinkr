@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdates: () => ipcRenderer.send('checkForUpdates'),
   downloadUpdate: () => ipcRenderer.send('downloadUpdate'),
   installUpdate: () => ipcRenderer.send('installUpdate'),
+  onPhpVersion: cb => {
+    const listener = (event, payload) => cb(payload)
+    ipcRenderer.on('phpVersion', listener)
+    return {
+      dispose: () => ipcRenderer.off('phpVersion', listener),
+    }
+  },
+
   onUpdateState: channel => cb => {
     const listener = (event, payload) => cb(payload)
     ipcRenderer.on(channel, listener)

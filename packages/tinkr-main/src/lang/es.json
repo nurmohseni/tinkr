@@ -82,7 +82,10 @@
     "failed": "falló",
     "history_clear": "Borrar el historial",
     "history_clear_title": "¿Olvidar las ejecuciones de esta conexión?",
-    "history_clear_content": "Se olvidará el código que se ejecutó, cuándo y qué devolvió. Nada más cambia, y no se puede recuperar."
+    "history_clear_content": "Se olvidará el código que se ejecutó, cuándo y qué devolvió. Nada más cambia, y no se puede recuperar.",
+    "php_missing_title": "Aquí no respondió ningún php",
+    "php_missing_content": "Esta conexión no respondió a `php -v`, así que puede que tinker no funcione en ella. En el terminal puedes ver qué dijo.",
+    "php_run_anyway": "Ejecutar tinker igualmente"
   },
   "preference": {
     "preferences": "Preferencias",
@@ -190,7 +193,8 @@
     "caret": "Lín. {line}, Col. {column}",
     "autocomplete": "autocompletado {state}",
     "on": "activado",
-    "off": "desactivado"
+    "off": "desactivado",
+    "php": "PHP {version}"
   },
   "update": {
     "available_title": "Hay una versión nueva",

@@ -2,6 +2,7 @@ import {useIntl} from 'react-intl'
 import {Route, Switch} from 'wouter'
 
 import Editor from './editor/Editor'
+import PhpMissing from './editor/PhpMissing'
 import Tabbar from './editor/Tabbar'
 import Form from './editor/Form'
 
@@ -27,6 +28,8 @@ const EditorPage = () => {
         <Route path='/snippets/:id/form' component={Form}/>
         <Route path='/' component={Editor}/>
       </Switch>
+
+      <PhpMissing/>
     </div>
   </section>
   )

@@ -82,7 +82,10 @@
     "failed": "失败",
     "history_clear": "清空运行记录",
     "history_clear_title": "忘记这个连接的运行记录？",
-    "history_clear_content": "运行过的代码、时间和返回结果都会被忘记。除此之外不会改变，也无法找回。"
+    "history_clear_content": "运行过的代码、时间和返回结果都会被忘记。除此之外不会改变，也无法找回。",
+    "php_missing_title": "没有找到 PHP",
+    "php_missing_content": "这个连接没有回应 `php -v`，tinker 可能无法在这里运行。命令行里可以看到它说了什么。",
+    "php_run_anyway": "仍然运行 tinker"
   },
   "preference": {
     "preferences": "偏好设置",
@@ -190,7 +193,8 @@
     "caret": "第 {line} 行，第 {column} 列",
     "autocomplete": "自动补全 {state}",
     "on": "开",
-    "off": "关"
+    "off": "关",
+    "php": "PHP {version}"
   },
   "update": {
     "available_title": "有新版本可用",

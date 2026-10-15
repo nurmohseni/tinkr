@@ -82,7 +82,10 @@
     "failed": "failed",
     "history_clear": "Clear history",
     "history_clear_title": "Forget this connection's runs?",
-    "history_clear_content": "The code that ran, when, and what came back will be forgotten. Nothing else changes, and it cannot be brought back."
+    "history_clear_content": "The code that ran, when, and what came back will be forgotten. Nothing else changes, and it cannot be brought back.",
+    "php_missing_title": "No php answered here",
+    "php_missing_content": "This connection did not answer `php -v`, so tinker may not work on it. The terminal is the place to see what it said.",
+    "php_run_anyway": "Run tinker anyway"
   },
   "preference": {
     "preferences": "Preferences",
@@ -190,7 +193,8 @@
     "caret": "Ln {line}, Col {column}",
     "autocomplete": "autocomplete {state}",
     "on": "on",
-    "off": "off"
+    "off": "off",
+    "php": "PHP {version}"
   },
   "update": {
     "available_title": "A new version is ready",

@@ -1,3 +1,4 @@
+const {detectPhpVersion} = require('./phpVersion')
 const {connections} = require('../database/connections')
 const {
   getPtyProcess,
@@ -96,6 +97,7 @@ const connectConnection = async connection => {
   const win = getCurrentEditorWindow()
 
   if (!win) {
+    // the window the app opens for a connection asks it for its php itself
     await createEditorWindow(connection)
     return
   }
@@ -121,6 +123,8 @@ const connectConnection = async connection => {
   // the one that was just booted
   win.webContents.send('setConnection', connection.id)
   win.webContents.send('reconnectConnection')
+
+  detectPhpVersion(connection, win)
 }
 
 const reconnectConnection = connection => {
@@ -130,6 +134,8 @@ const reconnectConnection = connection => {
   }
   createPty(connection)
   getEditorWindow(connection.id).webContents.send('reconnectConnection')
+
+  detectPhpVersion(connection, getEditorWindow(connection.id))
 }
 
 /**

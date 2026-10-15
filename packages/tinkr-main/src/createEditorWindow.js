@@ -1,6 +1,7 @@
 const {BrowserWindow} = require('electron')
 
 const {createPty} = require('./createPty')
+const {detectPhpVersion} = require('./services/phpVersion')
 const {createBackgroundPty} = require('./createBackgroundPty')
 const {
   setEditorWindow,
@@ -57,6 +58,8 @@ const createEditorWindow = async connection => {
 
   createPty(connection)
   createBackgroundPty(connection)
+
+  detectPhpVersion(connection, win)
 
   return win
 }

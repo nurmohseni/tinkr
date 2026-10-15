@@ -46,6 +46,7 @@ export const checkForUpdates = api.checkForUpdates
 export const downloadUpdate = api.downloadUpdate
 export const installUpdate = api.installUpdate
 export const onUpdateState = api.onUpdateState
+export const onPhpVersion = api.onPhpVersion
 export const aiAsk = api.aiAsk
 export const aiCheck = api.aiCheck
 

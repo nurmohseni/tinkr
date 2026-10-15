@@ -46,8 +46,11 @@ class Pty {
 
   /**
    * 初始化 connection pty 进程
+   *
+   * @param {String} [command] what to run once the shell is up, or the
+   * connection's own command when there is nothing else to run
    */
-  connect() {
+  connect(command = null) {
     const shell = defaultShell
     const args = [
       '--login',
@@ -87,9 +90,10 @@ class Pty {
     }
 
     // 默认使用配置中的 default command
-    const command = this.connection.command || config.get('command_default')
-    if (command) {
-      this.pty.write(`${withoutPager(command)}\r`)
+    const line = command || this.connection.command || config.get('command_default')
+
+    if (line) {
+      this.pty.write(`${withoutPager(line)}\r`)
     }
   }
 
