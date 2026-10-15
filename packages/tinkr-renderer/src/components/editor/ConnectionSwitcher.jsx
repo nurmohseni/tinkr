@@ -2,7 +2,8 @@ import {useEffect} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {nanoid} from 'nanoid'
-import {useLocation} from 'wouter'
+import useHashLocation from '../../utils/useHashLocation'
+
 
 import CreateButton from '../connections/CreateButton'
 import QuickButton from '../connections/QuickButton'
@@ -26,7 +27,7 @@ const ConnectionSwitcher = () => {
   const connection = useAtomValue(connectionAtom)
   const connections = useAtomValue(connectionListAtom)
   const createConnection = useSetAtom(createConnectionAtom)
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
 
   useEffect(() => {
     const onClone = onCloneConnection(cloned => {

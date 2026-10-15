@@ -130,4 +130,5 @@ contextBridge.exposeInMainWorld('api', {
   allSnippets: () => ipcRenderer.sendSync('allSnippets', connectionId()),
 
   allHistory: () => ipcRenderer.sendSync('allHistory', connectionId()),
+  clearHistory: () => ipcRenderer.sendSync('clearHistory', connectionId()),
 })

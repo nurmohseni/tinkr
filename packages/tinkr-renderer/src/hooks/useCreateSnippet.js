@@ -1,5 +1,5 @@
 import {useSetAtom} from 'jotai'
-import {useLocation} from 'wouter'
+import useHashLocation from '../utils/useHashLocation'
 
 import {createSnippetAtom, newSnippet} from '../stores/snippets'
 
@@ -14,7 +14,7 @@ import {createSnippetAtom, newSnippet} from '../stores/snippets'
  */
 const useCreateSnippet = () => {
   const createSnippet = useSetAtom(createSnippetAtom)
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
 
   return snippet => {
     const created = newSnippet(snippet)

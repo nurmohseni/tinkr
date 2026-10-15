@@ -31,6 +31,21 @@ const outcomeOf = result => {
 const allHistory = connectionId => history(connectionId).get('entries', [])
 
 /**
+ * Forget the runs of a connection.
+ *
+ * It is the list the sidebar draws and the store behind it: a connection that
+ * has run nothing looks like one that never has, because that is what it now is.
+ *
+ * @param {String} connectionId
+ * @return {Array<Object>} the list, which is empty
+ */
+const clearHistory = connectionId => {
+  history(connectionId).set('entries', [])
+
+  return allHistory(connectionId)
+}
+
+/**
  * Record a run: the code the session was given, when, and what it did.
  *
  * @param {String} connectionId
@@ -56,5 +71,6 @@ const appendHistory = (connectionId, code, result) => {
 module.exports = {
   outcomeOf,
   allHistory,
+  clearHistory,
   appendHistory,
 }

@@ -79,7 +79,10 @@
     "output_views": "Output views",
     "pane": "Editor",
     "ok": "ok",
-    "failed": "failed"
+    "failed": "failed",
+    "history_clear": "Clear history",
+    "history_clear_title": "Forget this connection's runs?",
+    "history_clear_content": "The code that ran, when, and what came back will be forgotten. Nothing else changes, and it cannot be brought back."
   },
   "preference": {
     "preferences": "Preferences",

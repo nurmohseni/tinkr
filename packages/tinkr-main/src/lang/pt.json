@@ -79,7 +79,10 @@
     "output_views": "Visões da saída",
     "pane": "Editor",
     "ok": "ok",
-    "failed": "falhou"
+    "failed": "falhou",
+    "history_clear": "Limpar o histórico",
+    "history_clear_title": "Esquecer as execuções desta conexão?",
+    "history_clear_content": "O código executado, quando e o que retornou serão esquecidos. Nada mais muda, e não dá para recuperar."
   },
   "preference": {
     "preferences": "Preferências",

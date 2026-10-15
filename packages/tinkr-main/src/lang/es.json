@@ -79,7 +79,10 @@
     "output_views": "Vistas de la salida",
     "pane": "Editor",
     "ok": "ok",
-    "failed": "falló"
+    "failed": "falló",
+    "history_clear": "Borrar el historial",
+    "history_clear_title": "¿Olvidar las ejecuciones de esta conexión?",
+    "history_clear_content": "Se olvidará el código que se ejecutó, cuándo y qué devolvió. Nada más cambia, y no se puede recuperar."
   },
   "preference": {
     "preferences": "Preferencias",

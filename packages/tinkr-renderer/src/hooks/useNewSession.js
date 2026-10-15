@@ -1,5 +1,5 @@
 import {useStore} from 'jotai'
-import {useLocation} from 'wouter'
+import useHashLocation from '../utils/useHashLocation'
 
 import {addSessionAtom, newSession} from '../stores/sessions'
 
@@ -22,7 +22,7 @@ import {addSessionAtom, newSession} from '../stores/sessions'
  */
 const useNewSession = () => {
   const store = useStore()
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
 
   return ({name = '', code = ''} = {}) => {
     store.set(addSessionAtom, newSession({name, code}))

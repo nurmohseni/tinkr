@@ -1,6 +1,7 @@
 import {useEffect} from 'react'
 import {useIntl} from 'react-intl'
-import {useLocation} from 'wouter'
+import useHashLocation from '../../utils/useHashLocation'
+
 import {useAtomValue} from 'jotai'
 
 import {configAtom} from '../../stores/config'
@@ -15,7 +16,7 @@ import {newConnectionId} from '../../utils/newConnection'
  * behind. The shortcut is the same as clicking the +.
  */
 const CreateButton = () => {
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
   const config = useAtomValue(configAtom)
   const intl = useIntl()
 

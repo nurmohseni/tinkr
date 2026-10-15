@@ -79,7 +79,10 @@
     "output_views": "输出视图",
     "pane": "编辑器",
     "ok": "成功",
-    "failed": "失败"
+    "failed": "失败",
+    "history_clear": "清空运行记录",
+    "history_clear_title": "忘记这个连接的运行记录？",
+    "history_clear_content": "运行过的代码、时间和返回结果都会被忘记。除此之外不会改变，也无法找回。"
   },
   "preference": {
     "preferences": "偏好设置",

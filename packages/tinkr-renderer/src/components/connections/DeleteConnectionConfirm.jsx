@@ -1,8 +1,9 @@
 import {useEffect, useState} from 'react'
 import {createPortal} from 'react-dom'
 import {FormattedMessage, useIntl} from 'react-intl'
-import {useLocation, useRoute} from 'wouter'
+import {useRoute} from 'wouter'
 import {useAtomValue, useSetAtom} from 'jotai'
+import useHashLocation from '../../utils/useHashLocation'
 
 import {connectConnection, closeConnection, onDeleteConnectionConfirm} from '../../utils/api'
 import {connectionAtom} from '../../stores/editor'
@@ -23,7 +24,7 @@ const DeleteConnectionConfirm = () => {
   const connections = useAtomValue(connectionListAtom)
   const intl = useIntl()
   const [match, params] = useRoute('/connections/:id')
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
   const deleteConnection = useSetAtom(deleteConnectionAtom)
 
   const confirm = () => {

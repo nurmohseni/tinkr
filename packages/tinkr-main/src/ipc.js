@@ -20,7 +20,7 @@ const {
 } = require('./services/connections')
 const {setLocale, getLocale, allConfig, setConfig} = require('./services/config')
 const {createSnippet, allSnippets, updateSnippet, deleteSnippet} = require('./services/snippets')
-const {allHistory} = require('./services/history')
+const {allHistory, clearHistory} = require('./services/history')
 const {parsePhpForm, stringifyPhpForm} = require('./services/php')
 const {phpCompletions} = require('./completion')
 const {complete, ask, check} = require('./services/ai')
@@ -141,6 +141,10 @@ ipcMain.on('deleteSnippet', (event, connectionId, snippetId) => {
 
 ipcMain.on('allHistory', (event, connectionId) => {
   event.returnValue = allHistory(connectionId)
+})
+
+ipcMain.on('clearHistory', (event, connectionId) => {
+  event.returnValue = clearHistory(connectionId)
 })
 
 ipcMain.handle('aiComplete', async (event, code) => {

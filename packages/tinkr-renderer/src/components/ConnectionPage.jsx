@@ -2,7 +2,8 @@ import {useMemo} from 'react'
 import PropTypes from 'prop-types'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {useIntl} from 'react-intl'
-import {useLocation} from 'wouter'
+import useHashLocation from '../utils/useHashLocation'
+
 
 import ConnectionFormProvider from './connections/ConnectionFormProvider'
 import ConnectionForm from './connections/ConnectionForm'
@@ -26,7 +27,7 @@ const ConnectionPage = ({params}) => {
   const stored = useAtomValue(connectionAtomWithId(params.id))
   const updateConnection = useSetAtom(updateConnectionAtom)
   const intl = useIntl()
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
 
   const isDraft = params.id === newConnectionId
 

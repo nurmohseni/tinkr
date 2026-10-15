@@ -79,7 +79,10 @@
     "output_views": "Ausgabeansichten",
     "pane": "Editor",
     "ok": "ok",
-    "failed": "fehlgeschlagen"
+    "failed": "fehlgeschlagen",
+    "history_clear": "Verlauf löschen",
+    "history_clear_title": "Die Läufe dieser Verbindung vergessen?",
+    "history_clear_content": "Der ausgeführte Code, wann er lief und was zurückkam, wird vergessen. Sonst ändert sich nichts, und zurückholen lässt es sich nicht."
   },
   "preference": {
     "preferences": "Einstellungen",

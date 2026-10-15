@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import {useSetAtom} from 'jotai'
-import {useLocation} from 'wouter'
+import useHashLocation from '../../utils/useHashLocation'
+
 
 import {snippetMenuAtom} from '../../stores/snippetMenu'
 
@@ -9,7 +10,7 @@ import {snippetMenuAtom} from '../../stores/snippetMenu'
  * right click, at the pointer.
  */
 const SnippetItem = ({snippet, active}) => {
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
   const setMenu = useSetAtom(snippetMenuAtom)
 
   return (

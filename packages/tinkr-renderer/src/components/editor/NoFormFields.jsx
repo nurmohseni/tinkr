@@ -1,7 +1,8 @@
 import PropTypes from 'prop-types'
-import {useLocation, useRoute} from 'wouter'
+import {useRoute} from 'wouter'
 import {FormattedMessage} from 'react-intl'
 import {useAtomValue} from 'jotai'
+import useHashLocation from '../../utils/useHashLocation'
 
 import {configAtom} from '../../stores/config'
 
@@ -22,7 +23,7 @@ const InfoIcon = () => (
 const NoFormFields = ({error}) => {
   const config = useAtomValue(configAtom)
   const [, params] = useRoute('/snippets/:id/:mode')
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
 
   const openCode = () => setLocation(`/snippets/${params.id}/editor`)
 

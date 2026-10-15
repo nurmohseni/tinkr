@@ -1,6 +1,7 @@
 import {useCallback, useEffect} from 'react'
 import {useAtomValue, useSetAtom} from 'jotai'
-import {useLocation, useRoute} from 'wouter'
+import {useRoute} from 'wouter'
+import useHashLocation from '../utils/useHashLocation'
 
 import {snippetListAtom} from '../stores/snippets'
 import {
@@ -27,7 +28,7 @@ import {closeTabAtom, openTabAtom, openTabsAtom} from '../stores/tabs'
  * @return {{documents: Array, activeId: String|null, activate: Function, close: Function}}
  */
 const useOpenDocuments = () => {
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
   const [, params] = useRoute('/snippets/:id/:mode')
   const snippets = useAtomValue(snippetListAtom)
   const sessions = useAtomValue(sessionsAtom)

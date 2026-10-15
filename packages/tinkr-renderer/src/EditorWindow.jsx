@@ -1,8 +1,9 @@
 import {useEffect} from 'react'
 import Split from 'react-split'
-import {Route, useLocation} from 'wouter'
+import {Route} from 'wouter'
 import {useAtomValue, useSetAtom} from 'jotai'
 import throttle from 'lodash/throttle'
+import useHashLocation from './utils/useHashLocation'
 
 import EditorPage from './components/EditorPage'
 import WindowContainer from './components/WindowContainer'
@@ -38,7 +39,7 @@ const EditorWindow = () => {
   const setHistory = useSetAtom(historyListAtom)
   const connection = useAtomValue(connectionAtom)
   const config = useAtomValue(configAtom)
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
   const switchConnection = useSetAtom(switchConnectionAtom)
   // anything but `stacked` is side by side, which is the default
   const side = config.editor_layout !== 'stacked'

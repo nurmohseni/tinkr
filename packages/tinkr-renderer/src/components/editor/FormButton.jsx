@@ -1,5 +1,6 @@
 import {useIntl} from 'react-intl'
-import {useLocation, useRoute} from 'wouter'
+import {useRoute} from 'wouter'
+import useHashLocation from '../../utils/useHashLocation'
 
 /**
  * The quieter action next to Run: opens the snippet's form, and closes it
@@ -10,7 +11,7 @@ import {useLocation, useRoute} from 'wouter'
  */
 const FormButton = () => {
   const intl = useIntl()
-  const [, setLocation] = useLocation()
+  const [, setLocation] = useHashLocation()
   const [, params] = useRoute('/snippets/:id/:mode')
 
   const isFormMode = params?.mode === 'form'
