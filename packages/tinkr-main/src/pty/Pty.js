@@ -54,9 +54,10 @@ class Pty {
    */
   connect(command = null) {
     const shell = defaultShell
-    const args = [
-      '--login',
-    ]
+    // A login shell is a posix shell's idea. cmd.exe reads --login as a program
+    // to run, fails, and leaves a session that does nothing else: no prompt, no
+    // command, no php. Windows gets no arguments.
+    const args = process.platform === 'win32' ? [] : ['--login']
 
     const env = Object.assign(
       {},
