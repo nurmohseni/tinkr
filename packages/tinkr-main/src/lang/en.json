@@ -22,7 +22,14 @@
     "delete_confirm_title": "Are you absolutely sure?",
     "delete_confirm_content": "This action <strong>cannot</strong> be undone. This will permanently delete the <strong>{name}</strong> connection.",
     "delete_connection": "Delete Connection",
-    "plural": "Connections"
+    "plural": "Connections",
+    "kind_local": "local",
+    "kind_ssh": "ssh",
+    "tag_local": "local",
+    "tag_testing": "testing",
+    "tag_development": "development",
+    "tag_staging": "staging",
+    "tag_production": "production"
   },
   "editor": {
     "ai": "AI",
@@ -177,8 +184,6 @@
   "statusbar": {
     "run_failed": "Run failed · {class}",
     "connected": "Connected · {name} ({kind})",
-    "local": "local",
-    "ssh": "ssh",
     "caret": "Ln {line}, Col {column}",
     "autocomplete": "autocomplete {state}",
     "on": "on",

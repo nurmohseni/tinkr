@@ -41,7 +41,7 @@ const Statusbar = () => {
           <span className='dot dot--live'/>
           {intl.formatMessage({id: 'statusbar.connected'}, {
             name: connection.name,
-            kind: intl.formatMessage({id: connection.is_over_ssh ? 'statusbar.ssh' : 'statusbar.local'}),
+            kind: intl.formatMessage({id: connection.is_over_ssh ? 'connections.kind_ssh' : 'connections.kind_local'}),
           })}
         </span>
       )}

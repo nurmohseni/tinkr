@@ -22,7 +22,14 @@
     "delete_confirm_title": "Bist du dir absolut sicher?",
     "delete_confirm_content": "Diese Aktion kann <strong>nicht</strong> rückgängig gemacht werden. Die Verbindung <strong>{name}</strong> wird endgültig gelöscht.",
     "delete_connection": "Verbindung löschen",
-    "plural": "Verbindungen"
+    "plural": "Verbindungen",
+    "kind_local": "lokal",
+    "kind_ssh": "ssh",
+    "tag_local": "lokal",
+    "tag_testing": "Test",
+    "tag_development": "Entwicklung",
+    "tag_staging": "Staging",
+    "tag_production": "Produktion"
   },
   "editor": {
     "ai": "KI",
@@ -177,8 +184,6 @@
   "statusbar": {
     "run_failed": "Ausführung fehlgeschlagen · {class}",
     "connected": "Verbunden · {name} ({kind})",
-    "local": "lokal",
-    "ssh": "ssh",
     "caret": "Z. {line}, Sp. {column}",
     "autocomplete": "Autovervollständigung {state}",
     "on": "an",

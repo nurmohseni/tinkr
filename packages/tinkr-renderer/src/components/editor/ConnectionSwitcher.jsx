@@ -75,7 +75,9 @@ const ConnectionSwitcher = () => {
           >
             <span className={isCurrent ? 'dot dot--live dot--ring' : 'dot'}/>
             <span className='truncate'>{item.name}</span>
-            <span className='sidebar__meta'>{item.is_over_ssh ? 'ssh' : 'local'}</span>
+            <span className='sidebar__meta'>
+            {intl.formatMessage({id: item.is_over_ssh ? 'connections.kind_ssh' : 'connections.kind_local'})}
+          </span>
           </button>
         )
       })}

@@ -22,7 +22,14 @@
     "delete_confirm_title": "确定删除？",
     "delete_confirm_content": "本操作<strong>不能撤销</strong>，将永久删除<strong>{name}</strong>的连接设置。",
     "delete_connection": "删除连接",
-    "plural": "连接"
+    "plural": "连接",
+    "kind_local": "本地",
+    "kind_ssh": "ssh",
+    "tag_local": "本地",
+    "tag_testing": "测试",
+    "tag_development": "开发",
+    "tag_staging": "预发布",
+    "tag_production": "生产"
   },
   "editor": {
     "ai": "AI",
@@ -177,8 +184,6 @@
   "statusbar": {
     "run_failed": "运行失败 · {class}",
     "connected": "已连接 · {name}（{kind}）",
-    "local": "本地",
-    "ssh": "ssh",
     "caret": "第 {line} 行，第 {column} 列",
     "autocomplete": "自动补全 {state}",
     "on": "开",

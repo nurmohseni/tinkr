@@ -22,7 +22,14 @@
     "delete_confirm_title": "Tem certeza absoluta?",
     "delete_confirm_content": "Esta ação <strong>não pode</strong> ser desfeita. A conexão <strong>{name}</strong> será excluída permanentemente.",
     "delete_connection": "Excluir conexão",
-    "plural": "Conexões"
+    "plural": "Conexões",
+    "kind_local": "local",
+    "kind_ssh": "ssh",
+    "tag_local": "local",
+    "tag_testing": "teste",
+    "tag_development": "desenvolvimento",
+    "tag_staging": "homologação",
+    "tag_production": "produção"
   },
   "editor": {
     "ai": "IA",
@@ -177,8 +184,6 @@
   "statusbar": {
     "run_failed": "A execução falhou · {class}",
     "connected": "Conectado · {name} ({kind})",
-    "local": "local",
-    "ssh": "ssh",
     "caret": "Lin. {line}, Col. {column}",
     "autocomplete": "autocompletar {state}",
     "on": "ativado",

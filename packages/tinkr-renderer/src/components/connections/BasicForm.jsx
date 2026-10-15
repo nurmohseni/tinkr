@@ -24,7 +24,7 @@ const BasicForm = () => {
           id='connection-name'
           name='name'
           type='text'
-          placeholder='Magic'
+          placeholder={intl.formatMessage({id: 'connections.name_default'})}
           spellCheck={false}
           autoComplete='off'
           {...register('name')}

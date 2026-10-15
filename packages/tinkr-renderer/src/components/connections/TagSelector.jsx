@@ -1,6 +1,8 @@
 import {Controller, useFormContext} from 'react-hook-form'
+import {useIntl} from 'react-intl'
 
 const TagSelector = () => {
+  const intl = useIntl()
   const {control} = useFormContext()
 
   return (
@@ -18,11 +20,11 @@ const TagSelector = () => {
           value={value}
           onChange={event => onChange(event.target.value)}
         >
-          <option value='local'>local</option>
-          <option value='testing'>testing</option>
-          <option value='development'>development</option>
-          <option value='staging'>staging</option>
-          <option value='production'>production</option>
+          <option value='local'>{intl.formatMessage({id: 'connections.tag_local'})}</option>
+          <option value='testing'>{intl.formatMessage({id: 'connections.tag_testing'})}</option>
+          <option value='development'>{intl.formatMessage({id: 'connections.tag_development'})}</option>
+          <option value='staging'>{intl.formatMessage({id: 'connections.tag_staging'})}</option>
+          <option value='production'>{intl.formatMessage({id: 'connections.tag_production'})}</option>
         </select>
       )}
     />
