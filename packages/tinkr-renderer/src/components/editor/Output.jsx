@@ -99,12 +99,17 @@ const Output = () => {
         style={{height: 'inherit', ...paneStyle(!result)}}
       />
       {result && (
-        <Result result={result} view={view} onView={setView}/>
+        <Result
+          result={result}
+          view={view}
+          onView={setView}
+          allStatements={config.result_blocks !== 'last'}
+        />
       )}
     </>
     // the reading is a prop of the result: a memo that ignored it would keep
     // drawing the one it was first given
-  ), [result, view])
+  ), [result, view, config.result_blocks])
 }
 
 export default Output

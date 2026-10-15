@@ -216,6 +216,77 @@ const NothingReturned = () => (
 )
 
 /**
+ * One statement of a run that has several: the line it is on, what it answered,
+ * and that value in the reading that is on.
+ *
+ * A statement that threw says so where it threw, which is the line the failure
+ * was on rather than the whole run.
+ */
+const Block = ({block, view}) => {
+  const failed = block.error !== null
+
+  return (
+    <>
+      <div className='result-summary'>
+        <span className='block__line'>Line {block.line}</span>
+        {failed
+          ? (
+            <span className='badge badge--error'>
+              <span className='dot dot--error'/>{block.error.class}
+            </span>
+          )
+          : (
+            <span className='badge badge--success'><span className='dot dot--live'/>ok</span>
+          )}
+        {!failed && (
+          <span className='muted'>
+            {block.value === null ? 'no value' : `${shape(block.value)} returned`}
+          </span>
+        )}
+        <span className='grow'/>
+        <button
+          className='btn btn--ghost btn--sm'
+          type='button'
+          title='Copy the value as JSON'
+          onClick={() => navigator.clipboard.writeText(JSON.stringify(block.value, null, 2))}
+        >
+          Copy
+        </button>
+      </div>
+
+      {failed && (
+        <div className='error-surface' role='alert'>
+          <div className='error-surface__class mono'>{block.error.class}</div>
+          <p className='error-surface__message mono'>{block.error.message}</p>
+        </div>
+      )}
+
+      {!failed && block.value !== null && (
+        view === 'raw'
+          ? <pre className='printed'>{JSON.stringify(block.value, null, 2)}</pre>
+          : (
+            <div className='tree'>
+              <ResultValue value={block.value} depth={0}/>
+            </div>
+          )
+      )}
+    </>
+  )
+}
+
+Block.propTypes = {
+  block: PropTypes.shape({
+    line: PropTypes.number,
+    value: PropTypes.any,
+    error: PropTypes.shape({
+      class: PropTypes.string,
+      message: PropTypes.string,
+    }),
+  }).isRequired,
+  view: PropTypes.oneOf(['organized', 'raw']).isRequired,
+}
+
+/**
  * What the run printed, as the session's console: the badge says it is the
  * session's own words, and the text is drawn under it.
  */
@@ -365,8 +436,38 @@ Imported.propTypes = {
   imported: PropTypes.object,
 }
 
-const Result = ({result, view, onView}) => {
-  const {value, error, output, imported} = result
+const Result = ({result, view, onView, allStatements}) => {
+  const {value, error, output, imported, blocks} = result
+
+  // a run of several statements, read statement by statement: the value of the
+  // run is the last one's, so this is what "every statement" means
+  if (allStatements && blocks && blocks.length > 1) {
+    return (
+      <>
+        <Imported imported={imported}/>
+
+        {output && <Printed output={output}/>}
+
+        <div className='result-summary'>
+          {error
+            ? (
+              <span className='badge badge--error'>
+                <span className='dot dot--error'/>{error.class}
+              </span>
+            )
+            : (
+              <span className='badge badge--success'><span className='dot dot--live'/>ok</span>
+            )}
+          <span>{blocks.length} statements</span>
+          <ViewSwitch view={view} onChange={onView}/>
+        </div>
+
+        {blocks.map(block => (
+          <Block key={block.line} block={block} view={view}/>
+        ))}
+      </>
+    )
+  }
 
   return (
     <>
@@ -396,6 +497,7 @@ const Result = ({result, view, onView}) => {
 Result.propTypes = {
   view: PropTypes.oneOf(['organized', 'raw']),
   onView: PropTypes.func,
+  allStatements: PropTypes.bool,
   result: PropTypes.shape({
     value: PropTypes.any,
     error: PropTypes.shape({
@@ -410,6 +512,7 @@ Result.propTypes = {
 Result.defaultProps = {
   view: 'organized',
   onView: () => {},
+  allStatements: false,
 }
 
 export default Result

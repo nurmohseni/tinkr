@@ -17,6 +17,7 @@ import ConnectionPage from './components/ConnectionPage'
 import DeleteConnectionConfirm from './components/connections/DeleteConnectionConfirm'
 import useSplit from './hooks/useSplit'
 import {sizesAtom, resultAtom, connectionAtom} from './stores/editor'
+import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
 import {onRunResult, onHistoryConnection} from './utils/api'
 
@@ -35,6 +36,9 @@ const EditorWindow = () => {
   const setResult = useSetAtom(resultAtom)
   const setHistory = useSetAtom(historyListAtom)
   const connection = useAtomValue(connectionAtom)
+  const config = useAtomValue(configAtom)
+  // anything but `stacked` is side by side, which is the default
+  const side = config.editor_layout !== 'stacked'
 
   useEffect(() => {
     const onResult = onRunResult(setResult)
@@ -64,14 +68,17 @@ const EditorWindow = () => {
         <div className='app__body'>
           <Sidebar/>
 
+          {/* keyed by the direction: the split reads its direction when it is
+              built, so turning it means building it again */}
           <Split
-            className='main'
+            key={side ? 'side' : 'stacked'}
+            className={side ? 'main main--side' : 'main'}
             ref={splitRef}
             sizes={[50, 50]}
             minSize={100}
             gutterSize={6}
             gutter={splitGutter}
-            direction='vertical'
+            direction={side ? 'horizontal' : 'vertical'}
             onDrag={handleDrag}
             style={{overflow: 'hidden'}}
           >

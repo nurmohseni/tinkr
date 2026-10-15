@@ -34,19 +34,6 @@ const createStartMarker = () => `STRT${randomBytes(6).toString('hex').toUpperCas
 const createMarker = () => `TINKR${randomBytes(6).toString('hex').toUpperCase()}`
 
 /**
- * Whether the snippet is one expression, which is what a scratchpad means by
- * `User::first()`.
- *
- * This matters because `eval('return X; more;')` parses: X runs, everything
- * after it is dead code. So the session only gets the returning form when there
- * is nothing after the expression to lose.
- *
- * @param {String} code
- * @return {Boolean}
- */
-const isSingleExpression = code => !code.trim().replace(/;+$/, '').includes(';')
-
-/**
  * A php single quoted string, which is only backslashes and quotes to escape.
  *
  * @param {String} value
@@ -90,18 +77,58 @@ const importBlock = entries => {
 }
 
 /**
- * Wrap a snippet so the session prints its value as json.
+ * php splits the snippet itself, and this is the loop that does it, kept in one
+ * string per line for reading.
+ */
+const PHP_BLOCKS = [
+  "$tinkr_tokens=token_get_all('<?php '.$tinkr_code);$tinkr_total=count($tinkr_tokens);",
+  "$tinkr_stmts=[];$tinkr_stmt='';$tinkr_line=0;$tinkr_depth=0;",
+  "$tinkr_next=function($tinkr_all,$tinkr_at,$tinkr_count){for($tinkr_i=$tinkr_at+1;$tinkr_i<$tinkr_count;$tinkr_i++){$tinkr_t=$tinkr_all[$tinkr_i];if(is_array($tinkr_t)&&($tinkr_t[0]===T_WHITESPACE||$tinkr_t[0]===T_COMMENT||$tinkr_t[0]===T_DOC_COMMENT)){continue;}$tinkr_v=is_array($tinkr_t)?$tinkr_t[0]:$tinkr_t;return in_array($tinkr_v,[';',')',T_ELSE,T_ELSEIF,T_CATCH,T_FINALLY,T_WHILE],true);}return false;};",
+  'for($tinkr_i=0;$tinkr_i<$tinkr_total;$tinkr_i++){',
+  '$tinkr_token=$tinkr_tokens[$tinkr_i];',
+  '$tinkr_text=is_array($tinkr_token)?$tinkr_token[1]:$tinkr_token;',
+  '$tinkr_id=is_array($tinkr_token)?$tinkr_token[0]:null;',
+  'if($tinkr_id===T_OPEN_TAG){continue;}',
+  'if($tinkr_depth===0&&$tinkr_line===0&&$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT){$tinkr_line=$tinkr_token[2];}',
+  '$tinkr_stmt.=$tinkr_text;',
+  '$tinkr_word=($tinkr_id===null)?trim($tinkr_text):null;',
+  "if($tinkr_word==='('||$tinkr_word==='['||$tinkr_word==='{'){$tinkr_depth++;}",
+  "elseif($tinkr_word===')'||$tinkr_word===']'||$tinkr_word==='}'){$tinkr_depth--;}",
+  "if($tinkr_depth===0&&($tinkr_word===';'||($tinkr_word==='}'&&!$tinkr_next($tinkr_tokens,$tinkr_i,$tinkr_total)))){",
+  "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];$tinkr_stmt='';$tinkr_line=0;}",
+  '}',
+  "if(trim($tinkr_stmt)!==''){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}",
+  '$tinkr_results=[];$tinkr_value=null;$tinkr_error=null;',
+  'foreach($tinkr_stmts as $tinkr_one){',
+  "$tinkr_source=rtrim($tinkr_one['code']);",
+  "if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}",
+  '$tinkr_block_error=null;',
+  'try{',
+  "try{$tinkr_value=eval('return '.$tinkr_source);}",
+  'catch(\\ParseError $tinkr_parse){$tinkr_value=eval($tinkr_source);}',
+  '}catch(\\Throwable $tinkr_failure){',
+  "$tinkr_block_error=['class'=>get_class($tinkr_failure),'message'=>$tinkr_failure->getMessage()];",
+  '}',
+  "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>$tinkr_block_error];",
+  'if($tinkr_block_error!==null){$tinkr_error=$tinkr_block_error;break;}',
+  '}',
+]
+
+/**
+ * Wrap a snippet so the session prints what every statement in it answered.
  *
- * The snippet is passed as base64 so nothing in it has to be escaped. An
- * expression is evaluated as the returned value, anything else as plain
- * statements (what `$user = User::first(); echo $user->name;` is), with the
- * returning form as a second try when the guess does not parse. eval keeps the
- * scope of the session, so the variables of earlier runs are visible.
+ * The snippet is passed as base64 so nothing in it has to be escaped, and php
+ * splits it with its own tokenizer: where a statement ends is a string, a heredoc
+ * or a `for (;;)` away from what counting semicolons would say. Every statement
+ * is evaluated in turn — an expression as its value, a `dump` call as what it
+ * returned, a loop as nothing — and the run stops at the first one that throws,
+ * which is what running the snippet would have done.
  *
- * php parses what eval is given as a script and wants its last statement
- * terminated, which is what the `;` appended to both forms is for: a scratchpad
- * writes `$user->name` and `$user->name; $user->email` without it, and both are
- * parse errors on their own.
+ * eval keeps the scope of the session, so what one statement assigns is what the
+ * next one reads, and the variables of earlier runs are visible too. php wants
+ * what it evaluates to end in a `;`, which is what the one appended to a
+ * statement that has none is for: a scratchpad writes `$user->name` for its last
+ * line and without it that is a parse error.
  *
  * The marker is built from two pieces so it never shows up in the echo of the
  * line itself: the filter would otherwise find the marker in that echo, which
@@ -126,7 +153,6 @@ const wrapRun = (source, imports = {}) => {
   const entries = Object.entries(imports)
   const imported = entries.length ? ",'imported'=>(object)$tinkr_imported" : ''
   const split = 4
-  const returns = "eval('return '.$tinkr_code.';')"
 
   return {
     marker,
@@ -141,14 +167,11 @@ const wrapRun = (source, imports = {}) => {
       // the pane reads the run from here: everything the session printed before
       // this line is the session booting
       'echo $tinkr_start;',
-      'try{',
-      isSingleExpression(code)
-        ? `try{$tinkr_value=${returns};}catch(\\ParseError $tinkr_parse){$tinkr_value=eval($tinkr_code.';');}`
-        : "$tinkr_value=eval($tinkr_code.';');",
-      '}catch(\\Throwable $tinkr_failure){',
-      "$tinkr_error=['class'=>get_class($tinkr_failure),'message'=>$tinkr_failure->getMessage()];",
-      '}',
-      `echo $tinkr,'@',base64_encode(json_encode(['value'=>$tinkr_value ?? null,'error'=>$tinkr_error${imported}],JSON_PARTIAL_OUTPUT_ON_ERROR)),'@';`,
+      ...PHP_BLOCKS,
+      // a run that ended in an error returned nothing, whatever the statement
+      // before the one that threw had left in the variable
+      'if($tinkr_error!==null){$tinkr_value=null;}',
+      `echo $tinkr,'@',base64_encode(json_encode(['blocks'=>$tinkr_results,'value'=>$tinkr_value ?? null,'error'=>$tinkr_error${imported}],JSON_PARTIAL_OUTPUT_ON_ERROR)),'@';`,
     ].join(''),
   }
 }

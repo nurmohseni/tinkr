@@ -177,13 +177,18 @@ describe('the run payload', () => {
     expect(run.code.indexOf('base64_decode(')).toBeLessThan(run.code.indexOf('$tinkr_imported=[];'))
   })
 
-  test('terminates the statements php is handed, which a scratchpad does not', () => {
-    // php parses what eval is given as a script, and `eval('$a = 1; $a')` is a
-    // parse error: the last statement has to be terminated
-    const run = wrapRun('$a = 1;\n$a')
+  test('asks php to split the snippet, and evaluates every statement of it', () => {
+    const run = wrapRun('$a = [1, 2];\n$b = count($a);')
 
-    expect(run.code).toContain("$tinkr_value=eval($tinkr_code.';');")
-    expect(run.code).toContain("$tinkr_value=eval($tinkr_code.';');}")
+    // the tokenizer is php's own: where a statement ends is a string, a heredoc
+    // or a `for (;;)` away from counting semicolons
+    expect(run.code).toContain("token_get_all('<?php '.$tinkr_code)")
+    // every statement is evaluated, and each one's value travels in the envelope
+    expect(run.code).toContain('foreach($tinkr_stmts as $tinkr_one)')
+    expect(run.code).toContain("eval('return '.$tinkr_source)")
+    expect(run.code).toContain("'blocks'=>$tinkr_results")
+    // and a statement with no `;` of its own is given one, which php wants
+    expect(run.code).toContain("if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}")
   })
 
   test('escapes a name for the php it is written into', () => {

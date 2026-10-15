@@ -16,6 +16,12 @@ const defaults = {
   form_prefix: 'field_',
   confirm_close_session: true,
   theme: 'classic',
+  // where the result panel sits: 'side' is the code on the left and the result
+  // on the right, anything else is one above the other
+  editor_layout: 'side',
+  // what the result pane shows of a run that has several statements in it: all
+  // of them, or only what the last one answered
+  result_blocks: 'all',
   shortcut_run: ['Control', 'r'],
   shortcut_new_connection: ['Meta', 'Shift', 'n'],
   ai_provider: 'openai',

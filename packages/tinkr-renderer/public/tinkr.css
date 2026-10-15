@@ -508,6 +508,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: var(--text-muted); font-size: var(--fs-xs); height: 16px; padding: 0 6px; cursor: pointer;
 }
 .tree__copy:hover { color: var(--text); border-color: var(--border-strong); }
+/* a statement's line, in the strip of the statement it belongs to */
+.block__line {
+  font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint);
+}
+
 /* the ai panel: what was asked, what came back, and the code it proposes */
 .ai { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .ai__thread { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--s2) var(--s3) 0; }
@@ -893,6 +898,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
    stacked the icon, the label and the detail into a row too short to show them */
 .app__body > .main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .editor-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+
+/* the same two panes, the other way round: the code on the left, the result on
+   the right, and the split between them turned with them. Same selector weight
+   as the column above, and after it, or the column wins. */
+.app__body > .main--side { flex-direction: row; }
+.main--side > .editor-pane { min-width: 0; }
+.main--side > .output { height: auto; min-width: 0; }
+.main--side > .split {
+  width: 6px; height: auto;
+  border-top: 0; border-bottom: 0;
+  border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+  cursor: col-resize;
+}
+.main--side > .split::after { width: 2px; height: 36px; }
 
 /* title bar side spacers: equal flex keeps the connection string optically centred */
 .titlebar__side { flex: 1 1 0; display: flex; align-items: center; gap: var(--s2); }
