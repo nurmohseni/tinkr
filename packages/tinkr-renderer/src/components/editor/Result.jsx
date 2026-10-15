@@ -1,4 +1,5 @@
 import {useState} from 'react'
+import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
 /**
@@ -46,29 +47,39 @@ const copy = value => navigator.clipboard.writeText(
 )
 
 /**
- * The value's shape in the design's words: `3 items`, `2 keys`, or the type of
- * a leaf.
+ * What the value is, in the language the app is in: `3 elementos devueltos`,
+ * `2 keys returned`, or the type of a leaf.
  *
+ * @param {IntlShape} intl
  * @param {any} value
- * @return {String}
+ * @return {String|null}
  */
-const shape = value => {
+const describe = (intl, value) => {
   if (Array.isArray(value)) {
-    return `${value.length} items`
+    return intl.formatMessage({id: 'result.returned_items'}, {count: value.length})
   }
 
   if (isComposite(value)) {
-    return `${Object.keys(value).length} keys`
+    return intl.formatMessage({id: 'result.returned_keys'}, {count: Object.keys(value).length})
   }
 
-  return typeof value
+  const id = {
+    number: 'result.returned_number',
+    string: 'result.returned_string',
+    boolean: 'result.returned_boolean',
+  }[typeof value]
+
+  return id ? intl.formatMessage({id}) : null
 }
 
-const CopyValueButton = ({value}) => (
+const CopyValueButton = ({value}) => {
+  const intl = useIntl()
+
+  return (
   <button
     className='tree__copy'
     type='button'
-    title='Copy value'
+    title={intl.formatMessage({id: 'result.copy_value'})}
     onClick={event => {
       // the row around it is a disclosure, and copying must not fold it
       event.preventDefault()
@@ -76,23 +87,31 @@ const CopyValueButton = ({value}) => (
       copy(value)
     }}
   >
-    copy
+    {intl.formatMessage({id: 'result.copy'})}
   </button>
-)
+  )
+}
 
 CopyValueButton.propTypes = {
   value: PropTypes.any,
 }
 
 /** A composite node, in the design's `array · 5 items` shape. */
-const TypeLabel = ({value}) => (
-  <>
-    <span className='t-class'>{Array.isArray(value) ? 'array' : 'object'}</span>
-    <span className='tree__sep'>·</span>
-    <span className='t-number'>{entriesOf(value).length}</span>
-    <span className='muted'>{Array.isArray(value) ? ' items' : ' keys'}</span>
-  </>
-)
+const TypeLabel = ({value}) => {
+  const intl = useIntl()
+  const isList = Array.isArray(value)
+
+  return (
+    <>
+      <span className='t-class'>{intl.formatMessage({id: isList ? 'result.array' : 'result.object'})}</span>
+      <span className='tree__sep'>·</span>
+      <span className='t-number'>{entriesOf(value).length}</span>
+      <span className='muted'>
+        {intl.formatMessage({id: isList ? 'result.items' : 'result.keys'}, {count: entriesOf(value).length})}
+      </span>
+    </>
+  )
+}
 
 TypeLabel.propTypes = {
   value: PropTypes.object.isRequired,
@@ -171,19 +190,24 @@ ResultValue.defaultProps = {
 }
 
 /** The run's exception: the class over its message, as the design's surface. */
-const Failure = ({error}) => (
+const Failure = ({error}) => {
+  const intl = useIntl()
+
+  return (
   <>
     <div className='result-summary'>
-      <span className='badge badge--error'><span className='dot dot--error'/>threw</span>
-      <span className='muted'>no value returned</span>
+      <span className='badge badge--error'>
+        <span className='dot dot--error'/>{intl.formatMessage({id: 'result.threw'})}
+      </span>
+      <span className='muted'>{intl.formatMessage({id: 'result.no_value'})}</span>
       <span className='grow'/>
       <button
         className='btn btn--ghost btn--sm'
         type='button'
-        title='Copy the exception class and message'
+        title={intl.formatMessage({id: 'result.copy_message'})}
         onClick={() => navigator.clipboard.writeText(`${error.class}: ${error.message}`)}
       >
-        Copy message
+        {intl.formatMessage({id: 'result.copy_message'})}
       </button>
     </div>
 
@@ -192,7 +216,8 @@ const Failure = ({error}) => (
       <p className='error-surface__message mono'>{error.message}</p>
     </div>
   </>
-)
+  )
+}
 
 Failure.propTypes = {
   error: PropTypes.shape({
@@ -210,8 +235,8 @@ const NothingReturned = () => (
         <path d='M8 4.8v4.4M8 11.4v.2' strokeLinecap='round'/>
       </svg>
     </span>
-    <p>This snippet did not return a value.</p>
-    <p className='muted'>It printed nothing either.</p>
+    <p><FormattedMessage id='result.nothing_returned'/></p>
+    <p className='muted'><FormattedMessage id='result.nothing_printed'/></p>
   </div>
 )
 
@@ -223,12 +248,15 @@ const NothingReturned = () => (
  * was on rather than the whole run.
  */
 const Block = ({block, view}) => {
+  const intl = useIntl()
   const failed = block.error !== null
 
   return (
     <>
       <div className='result-summary'>
-        <span className='block__line'>Line {block.line}</span>
+        <span className='block__line'>
+          {intl.formatMessage({id: 'result.line'}, {line: block.line})}
+        </span>
         {failed
           ? (
             <span className='badge badge--error'>
@@ -236,21 +264,25 @@ const Block = ({block, view}) => {
             </span>
           )
           : (
-            <span className='badge badge--success'><span className='dot dot--live'/>ok</span>
+            <span className='badge badge--success'>
+              <span className='dot dot--live'/>{intl.formatMessage({id: 'result.ok'})}
+            </span>
           )}
         {!failed && (
           <span className='muted'>
-            {block.value === null ? 'no value' : `${shape(block.value)} returned`}
+            {block.value === null
+              ? intl.formatMessage({id: 'result.value_none'})
+              : describe(intl, block.value)}
           </span>
         )}
         <span className='grow'/>
         <button
           className='btn btn--ghost btn--sm'
           type='button'
-          title='Copy the value as JSON'
+          title={intl.formatMessage({id: 'result.copy_json'})}
           onClick={() => navigator.clipboard.writeText(JSON.stringify(block.value, null, 2))}
         >
-          Copy
+          {intl.formatMessage({id: 'result.copy_short'})}
         </button>
       </div>
 
@@ -290,24 +322,30 @@ Block.propTypes = {
  * What the run printed, as the session's console: the badge says it is the
  * session's own words, and the text is drawn under it.
  */
-const Printed = ({output}) => (
+const Printed = ({output}) => {
+  const intl = useIntl()
+
+  return (
   <>
     <div className='result-summary'>
-      <span className='badge'><span className='dot dot--accent'/>printed</span>
+      <span className='badge'>
+        <span className='dot dot--accent'/><FormattedMessage id='result.printed'/>
+      </span>
       <span className='grow'/>
       <button
         className='btn btn--ghost btn--sm'
         type='button'
-        title='Copy what the run printed'
+        title={intl.formatMessage({id: 'result.copy_printed'})}
         onClick={() => navigator.clipboard.writeText(output)}
       >
-        Copy
+        {intl.formatMessage({id: 'result.copy_short'})}
       </button>
     </div>
 
     <pre className='printed'>{output}</pre>
   </>
-)
+  )
+}
 
 Printed.propTypes = {
   output: PropTypes.string.isRequired,
@@ -317,8 +355,15 @@ Printed.propTypes = {
  * The two readings of one value, in the panel's own tab idiom: a radio, and the
  * accent under the reading that is on.
  */
-const ViewSwitch = ({view, onChange}) => (
-  <span className='view-switch' role='radiogroup' aria-label='How to read the result'>
+const ViewSwitch = ({view, onChange}) => {
+  const intl = useIntl()
+
+  return (
+  <span
+    className='view-switch'
+    role='radiogroup'
+    aria-label={intl.formatMessage({id: 'result.how'})}
+  >
     {['organized', 'raw'].map(option => (
       <label key={option} className='view-switch__option'>
         <input
@@ -327,11 +372,12 @@ const ViewSwitch = ({view, onChange}) => (
           checked={view === option}
           onChange={() => onChange(option)}
         />
-        {option}
+        {intl.formatMessage({id: `result.${option}`})}
       </label>
     ))}
   </span>
-)
+  )
+}
 
 ViewSwitch.propTypes = {
   view: PropTypes.oneOf(['organized', 'raw']).isRequired,
@@ -348,6 +394,7 @@ ViewSwitch.propTypes = {
  * are alternatives: one replaces the other, and neither is said twice.
  */
 const Returned = ({value, view, onView, output}) => {
+  const intl = useIntl()
   const json = JSON.stringify(value, null, 2)
   const raw = output || json
   // the copy carries what the reading shows
@@ -357,7 +404,7 @@ const Returned = ({value, view, onView, output}) => {
     <>
       <div className='result-summary'>
         <span className='badge badge--success'><span className='dot dot--live'/>ok</span>
-        <span>{shape(value)} returned</span>
+        <span>{describe(intl, value)}</span>
         <ViewSwitch view={view} onChange={onView}/>
         <span className='grow'/>
         <button
@@ -398,6 +445,7 @@ Returned.defaultProps = {
  * resolved to the wrong class is visible here, next to what the run returned.
  */
 const Imported = ({imported}) => {
+  const intl = useIntl()
   const entries = Object.entries(imported || {})
 
   if (entries.length === 0) {
@@ -408,7 +456,9 @@ const Imported = ({imported}) => {
 
   return (
     <div className='result-summary'>
-      <span className='badge'><span className='dot dot--accent'/>imported</span>
+      <span className='badge'>
+        <span className='dot dot--accent'/><FormattedMessage id='result.imported'/>
+      </span>
       <span className='mono'>
         {entries.map(([name, qualified], index) => (
           <span key={name}>
@@ -423,10 +473,10 @@ const Imported = ({imported}) => {
       <button
         className='btn btn--ghost btn--sm'
         type='button'
-        title='Copy the imports'
+        title={intl.formatMessage({id: 'result.copy_imports'})}
         onClick={() => navigator.clipboard.writeText(text)}
       >
-        Copy
+        {intl.formatMessage({id: 'result.copy_short'})}
       </button>
     </div>
   )
@@ -437,6 +487,7 @@ Imported.propTypes = {
 }
 
 const Result = ({result, view, onView, allStatements}) => {
+  const intl = useIntl()
   const {value, error, output, imported, blocks} = result
 
   // a run of several statements, read statement by statement: the value of the
@@ -458,7 +509,7 @@ const Result = ({result, view, onView, allStatements}) => {
             : (
               <span className='badge badge--success'><span className='dot dot--live'/>ok</span>
             )}
-          <span>{blocks.length} statements</span>
+          <span>{intl.formatMessage({id: 'result.statements'}, {count: blocks.length})}</span>
           <ViewSwitch view={view} onChange={onView}/>
         </div>
 

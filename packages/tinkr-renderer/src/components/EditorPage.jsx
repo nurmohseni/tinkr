@@ -1,3 +1,4 @@
+import {useIntl} from 'react-intl'
 import {Route, Switch} from 'wouter'
 
 import Editor from './editor/Editor'
@@ -13,8 +14,11 @@ import Form from './editor/Form'
  * it, and the pane falls back to it when the snippet the window was on is closed
  * or deleted.
  */
-const EditorPage = () => (
-  <section className='editor-pane' aria-label='Editor'>
+const EditorPage = () => {
+  const intl = useIntl()
+
+  return (
+  <section className='editor-pane' aria-label={intl.formatMessage({id: 'editor.pane'})}>
     <Tabbar/>
 
     <div className='editor'>
@@ -25,6 +29,7 @@ const EditorPage = () => (
       </Switch>
     </div>
   </section>
-)
+  )
+}
 
 export default EditorPage

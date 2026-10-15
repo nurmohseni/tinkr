@@ -65,7 +65,11 @@ const Tabbar = () => {
 
   return (
     <div className='tabbar'>
-      <div className='tabbar__tabs' role='tablist' aria-label='Open documents'>
+      <div
+        className='tabbar__tabs'
+        role='tablist'
+        aria-label={intl.formatMessage({id: 'editor.documents'})}
+      >
         {open.map(tab => {
           const isOpen = tab.id === activeId
           const label = tab.isSession ? unsavedLabel : tab.snippet.name
@@ -105,7 +109,10 @@ const Tabbar = () => {
               )}
 
               {isEdited && (
-                <span className='tab__dot' title='Edited since the last run'/>
+                <span
+                  className='tab__dot'
+                  title={intl.formatMessage({id: 'editor.edited_since_run'})}
+                />
               )}
 
               <button

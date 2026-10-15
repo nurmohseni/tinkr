@@ -1,4 +1,5 @@
 import {atom, useAtomValue} from 'jotai'
+import {useIntl} from 'react-intl'
 import {useRoute} from 'wouter'
 
 import {connectionAtom, resultAtom} from '../stores/editor'
@@ -19,6 +20,7 @@ const noSnippetAtom = atom(null)
  * design but nothing in the app measures them, so they are left out.
  */
 const Statusbar = () => {
+  const intl = useIntl()
   const connection = useAtomValue(connectionAtom)
   const config = useAtomValue(configAtom)
   const result = useAtomValue(resultAtom)
@@ -31,24 +33,31 @@ const Statusbar = () => {
       {result && result.error && (
         <span className='statusbar__item error'>
           <span className='dot dot--error'/>
-          Run failed · {result.error.class}
+          {intl.formatMessage({id: 'statusbar.run_failed'}, {class: result.error.class})}
         </span>
       )}
       {connection.name && (
         <span className='statusbar__item'>
           <span className='dot dot--live'/>
-          Connected · {connection.name} ({connection.is_over_ssh ? 'ssh' : 'local'})
+          {intl.formatMessage({id: 'statusbar.connected'}, {
+            name: connection.name,
+            kind: intl.formatMessage({id: connection.is_over_ssh ? 'statusbar.ssh' : 'statusbar.local'}),
+          })}
         </span>
       )}
 
       {position && (
-        <span className='statusbar__item'>Ln {position.lineNumber}, Col {position.column}</span>
+        <span className='statusbar__item'>
+          {intl.formatMessage({id: 'statusbar.caret'}, {line: position.lineNumber, column: position.column})}
+        </span>
       )}
 
       <span className='grow'/>
 
       <span className='statusbar__item faint'>
-        autocomplete {config.ai_model && config.ai_autocomplete ? 'on' : 'off'}
+        {intl.formatMessage({id: 'statusbar.autocomplete'}, {
+          state: intl.formatMessage({id: config.ai_model && config.ai_autocomplete ? 'statusbar.on' : 'statusbar.off'}),
+        })}
       </span>
       <span className='statusbar__item faint'>Tinkr {appVersion}</span>
     </footer>

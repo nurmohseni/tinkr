@@ -21,7 +21,8 @@
     "import_ssh_key": "Importar uma chave privada...",
     "delete_confirm_title": "Tem certeza absoluta?",
     "delete_confirm_content": "Esta ação <strong>não pode</strong> ser desfeita. A conexão <strong>{name}</strong> será excluída permanentemente.",
-    "delete_connection": "Excluir conexão"
+    "delete_connection": "Excluir conexão",
+    "plural": "Conexões"
   },
   "editor": {
     "ai": "IA",
@@ -63,7 +64,15 @@
     "history_load": "Carregar o código desta execução em {name}, substituindo o que está no editor agora",
     "history_returned": "retornou",
     "history_printed": "imprimiu",
-    "history_threw": "lançou erro"
+    "history_threw": "lançou erro",
+    "search": "Buscar trechos",
+    "search_keys": "Buscar — {keys} K",
+    "documents": "Documentos abertos",
+    "edited_since_run": "Editado desde a última execução",
+    "output_views": "Visões da saída",
+    "pane": "Editor",
+    "ok": "ok",
+    "failed": "falhou"
   },
   "preference": {
     "preferences": "Preferências",
@@ -107,7 +116,9 @@
     "shortcut_run": "Executar o código do trecho",
     "shortcut_run_description": "executar o código que está no editor",
     "shortcut_new_connection": "Nova conexão",
-    "shortcut_new_connection_description": "criar uma conexão pela barra lateral do editor"
+    "shortcut_new_connection_description": "criar uma conexão pela barra lateral do editor",
+    "theme_default": "Padrão",
+    "theme_dark": "Escuro"
   },
   "ok": "OK",
   "cancel": "Cancelar",
@@ -130,5 +141,47 @@
   "en": "English",
   "es": "Español",
   "de": "Deutsch",
-  "pt": "Português"
+  "pt": "Português",
+  "result": {
+    "ok": "ok",
+    "failed": "falhou",
+    "printed": "imprimiu",
+    "imported": "importou",
+    "threw": "lançou erro",
+    "no_value": "sem valor de retorno",
+    "value_none": "sem valor",
+    "nothing_returned": "Este trecho não retornou nenhum valor.",
+    "nothing_printed": "Também não imprimiu nada.",
+    "line": "Linha {line}",
+    "returned_items": "{count} itens retornados",
+    "returned_keys": "{count} chaves retornadas",
+    "returned_number": "um número retornado",
+    "returned_string": "uma string retornada",
+    "returned_boolean": "um booleano retornado",
+    "items": "{count} itens",
+    "keys": "{count} chaves",
+    "array": "array",
+    "object": "objeto",
+    "copy": "copiar",
+    "copy_short": "Copiar",
+    "copy_value": "Copiar o valor",
+    "copy_json": "Copiar o valor como JSON",
+    "copy_printed": "Copiar o que a execução imprimiu",
+    "copy_imports": "Copiar os imports",
+    "copy_message": "Copiar a classe e a mensagem da exceção",
+    "how": "Como ler o resultado",
+    "organized": "organizado",
+    "raw": "bruto",
+    "statements": "{count} instruções"
+  },
+  "statusbar": {
+    "run_failed": "A execução falhou · {class}",
+    "connected": "Conectado · {name} ({kind})",
+    "local": "local",
+    "ssh": "ssh",
+    "caret": "Lin. {line}, Col. {column}",
+    "autocomplete": "autocompletar {state}",
+    "on": "ativado",
+    "off": "desativado"
+  }
 }

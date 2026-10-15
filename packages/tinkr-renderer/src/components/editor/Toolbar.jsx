@@ -1,5 +1,5 @@
 import {useAtom, useAtomValue} from 'jotai'
-import {FormattedMessage} from 'react-intl'
+import {FormattedMessage, useIntl} from 'react-intl'
 
 import ReconnectButton from './ReconnectButton'
 import {outputTabIndexAtom, resultAtom} from '../../stores/editor'
@@ -13,6 +13,7 @@ import {outputTabIndexAtom, resultAtom} from '../../stores/editor'
  * what they would print.
  */
 const Toolbar = () => {
+  const intl = useIntl()
   const [tabIndex, setTabIndex] = useAtom(outputTabIndexAtom)
   const result = useAtomValue(resultAtom)
 
@@ -22,8 +23,8 @@ const Toolbar = () => {
     }
 
     return result.error
-      ? <span className='badge badge--error'>failed</span>
-      : <span className='badge badge--success'>ok</span>
+      ? <span className='badge badge--error'>{intl.formatMessage({id: 'editor.failed'})}</span>
+      : <span className='badge badge--success'>{intl.formatMessage({id: 'editor.ok'})}</span>
   }
 
   const tabs = [
@@ -33,7 +34,11 @@ const Toolbar = () => {
   ]
 
   return (
-    <div className='tabset__list output__tabs' role='tablist' aria-label='Output views'>
+    <div
+      className='tabset__list output__tabs'
+      role='tablist'
+      aria-label={intl.formatMessage({id: 'editor.output_views'})}
+    >
       {tabs.map(tab => (
         <label key={tab.id} className='output__tab tabset__tab'>
           <input

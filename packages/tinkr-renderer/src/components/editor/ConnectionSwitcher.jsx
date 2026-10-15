@@ -1,4 +1,5 @@
 import {useEffect} from 'react'
+import {FormattedMessage, useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {nanoid} from 'nanoid'
 import {useLocation} from 'wouter'
@@ -21,6 +22,7 @@ import {connectionListAtom, createConnectionAtom} from '../../stores/connections
  * offer, and the clone it raises opens the copy's dialog here.
  */
 const ConnectionSwitcher = () => {
+  const intl = useIntl()
   const connection = useAtomValue(connectionAtom)
   const connections = useAtomValue(connectionListAtom)
   const createConnection = useSetAtom(createConnectionAtom)
@@ -41,9 +43,9 @@ const ConnectionSwitcher = () => {
   }, [])
 
   return (
-    <nav className='sidebar__section' aria-label='Connections'>
+    <nav className='sidebar__section' aria-label={intl.formatMessage({id: 'connections.plural'})}>
       <div className='sidebar__title'>
-        <span>Connections</span>
+        <span><FormattedMessage id='connections.plural'/></span>
         <span className='row' style={{gap: 'var(--s1)'}}>
           <span className='sidebar__meta'>{connections.length}</span>
           <QuickButton/>

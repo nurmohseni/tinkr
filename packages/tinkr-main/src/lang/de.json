@@ -21,7 +21,8 @@
     "import_ssh_key": "Privaten Schlüssel importieren...",
     "delete_confirm_title": "Bist du dir absolut sicher?",
     "delete_confirm_content": "Diese Aktion kann <strong>nicht</strong> rückgängig gemacht werden. Die Verbindung <strong>{name}</strong> wird endgültig gelöscht.",
-    "delete_connection": "Verbindung löschen"
+    "delete_connection": "Verbindung löschen",
+    "plural": "Verbindungen"
   },
   "editor": {
     "ai": "KI",
@@ -63,7 +64,15 @@
     "history_load": "Den Code dieses Laufs in {name} laden und den Code im Editor ersetzen",
     "history_returned": "gab zurück",
     "history_printed": "gab aus",
-    "history_threw": "warf"
+    "history_threw": "warf",
+    "search": "Snippets suchen",
+    "search_keys": "Suchen — {keys} K",
+    "documents": "Offene Dokumente",
+    "edited_since_run": "Seit dem letzten Lauf geändert",
+    "output_views": "Ausgabeansichten",
+    "pane": "Editor",
+    "ok": "ok",
+    "failed": "fehlgeschlagen"
   },
   "preference": {
     "preferences": "Einstellungen",
@@ -107,7 +116,9 @@
     "shortcut_run": "Snippet-Code ausführen",
     "shortcut_run_description": "den Code im Editor ausführen",
     "shortcut_new_connection": "Neue Verbindung",
-    "shortcut_new_connection_description": "eine neue Verbindung aus der Seitenleiste anlegen"
+    "shortcut_new_connection_description": "eine neue Verbindung aus der Seitenleiste anlegen",
+    "theme_default": "Standard",
+    "theme_dark": "Dunkel"
   },
   "ok": "OK",
   "cancel": "Abbrechen",
@@ -130,5 +141,47 @@
   "en": "English",
   "es": "Español",
   "de": "Deutsch",
-  "pt": "Português"
+  "pt": "Português",
+  "result": {
+    "ok": "ok",
+    "failed": "fehlgeschlagen",
+    "printed": "gab aus",
+    "imported": "importiert",
+    "threw": "warf",
+    "no_value": "kein Rückgabewert",
+    "value_none": "kein Wert",
+    "nothing_returned": "Dieses Snippet hat keinen Wert zurückgegeben.",
+    "nothing_printed": "Ausgegeben wurde auch nichts.",
+    "line": "Zeile {line}",
+    "returned_items": "{count} Elemente zurückgegeben",
+    "returned_keys": "{count} Schlüssel zurückgegeben",
+    "returned_number": "eine Zahl zurückgegeben",
+    "returned_string": "eine Zeichenkette zurückgegeben",
+    "returned_boolean": "ein Wahrheitswert zurückgegeben",
+    "items": "{count} Elemente",
+    "keys": "{count} Schlüssel",
+    "array": "Array",
+    "object": "Objekt",
+    "copy": "kopieren",
+    "copy_short": "Kopieren",
+    "copy_value": "Wert kopieren",
+    "copy_json": "Wert als JSON kopieren",
+    "copy_printed": "Kopieren, was die Ausführung ausgegeben hat",
+    "copy_imports": "Die Importe kopieren",
+    "copy_message": "Klasse und Meldung der Ausnahme kopieren",
+    "how": "Wie das Ergebnis gelesen wird",
+    "organized": "strukturiert",
+    "raw": "roh",
+    "statements": "{count} Anweisungen"
+  },
+  "statusbar": {
+    "run_failed": "Ausführung fehlgeschlagen · {class}",
+    "connected": "Verbunden · {name} ({kind})",
+    "local": "lokal",
+    "ssh": "ssh",
+    "caret": "Z. {line}, Sp. {column}",
+    "autocomplete": "Autovervollständigung {state}",
+    "on": "an",
+    "off": "aus"
+  }
 }

@@ -1,14 +1,21 @@
 import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
+import {IntlProvider} from 'react-intl'
+import flatten from 'flat'
 
 import Result from '../Result'
+import english from '../../../../../tinkr-main/src/lang/en.json'
 
 // the vite build uses the automatic jsx runtime, so the component has no React
 // in scope; the transform jest runs here is the classic one
 global.React = React
 
+// the pane's words are messages like the rest of the app's, so it is rendered
+// inside the same provider the app gives it, with the english the app ships
 const render = (result, view) => renderToStaticMarkup(
-  <Result result={result} view={view} onView={() => {}}/>,
+  <IntlProvider locale='en' messages={flatten(english)}>
+    <Result result={result} view={view} onView={() => {}}/>
+  </IntlProvider>,
 )
 
 describe('the result panel', () => {

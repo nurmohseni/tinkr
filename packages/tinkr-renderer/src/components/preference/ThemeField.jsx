@@ -35,7 +35,7 @@ const ThemeField = () => {
               checked={!isDark}
               onChange={() => setConfig({theme: 'default'})}
             />
-            Default
+            {intl.formatMessage({id: 'preference.theme_default'})}
           </label>
 
           <label className='segmented__item'>
@@ -45,7 +45,7 @@ const ThemeField = () => {
               checked={isDark}
               onChange={() => setConfig({theme: 'dark'})}
             />
-            Dark
+            {intl.formatMessage({id: 'preference.theme_dark'})}
           </label>
         </div>
       </div>

@@ -21,9 +21,9 @@
     "import_ssh_key": "Import a private key...",
     "delete_confirm_title": "Are you absolutely sure?",
     "delete_confirm_content": "This action <strong>cannot</strong> be undone. This will permanently delete the <strong>{name}</strong> connection.",
-    "delete_connection": "Delete Connection"
+    "delete_connection": "Delete Connection",
+    "plural": "Connections"
   },
-
   "editor": {
     "ai": "AI",
     "ai_empty": "Ask for a snippet, or ask what the code in the editor does.",
@@ -64,24 +64,31 @@
     "history_load": "Load this run's code into {name}, replacing the code in the editor now",
     "history_returned": "returned",
     "history_printed": "printed",
-    "history_threw": "threw"
+    "history_threw": "threw",
+    "search": "Search snippets",
+    "search_keys": "Search — {keys} K",
+    "documents": "Open documents",
+    "edited_since_run": "Edited since the last run",
+    "output_views": "Output views",
+    "pane": "Editor",
+    "ok": "ok",
+    "failed": "failed"
   },
-
   "preference": {
     "preferences": "Preferences",
     "general": "General",
     "shortcuts": "Shortcuts",
     "lab": "Lab",
     "locale": "Locale",
-            "result_blocks": "Statements",
+    "result_blocks": "Statements",
     "result_blocks_description": "show what every statement answered, or only the last one",
     "result_blocks_all": "Every statement",
     "result_blocks_last": "Only the last",
-"editor_layout": "Layout",
+    "editor_layout": "Layout",
     "editor_layout_description": "the result beside the code, or under it",
     "editor_layout_side": "Side by side",
     "editor_layout_stacked": "Stacked",
-"theme": "Theme",
+    "theme": "Theme",
     "confirm_close_session": "Ask before closing an unsaved session",
     "confirm_close_session_description": "ask when a session's tab is closed and the session has code in it",
     "command_default": "Default command",
@@ -109,9 +116,10 @@
     "shortcut_run": "Run Snippet Code",
     "shortcut_run_description": "run current snippet code in the editor",
     "shortcut_new_connection": "New Connection",
-    "shortcut_new_connection_description": "create a new connection from the editor sidebar"
+    "shortcut_new_connection_description": "create a new connection from the editor sidebar",
+    "theme_default": "Default",
+    "theme_dark": "Dark"
   },
-
   "ok": "OK",
   "cancel": "Cancel",
   "close": "Close",
@@ -119,13 +127,11 @@
   "rename": "Rename",
   "save": "Save",
   "discard": "Discard",
-
   "zh": "中文",
   "en": "English",
   "pt": "Português",
   "de": "Deutsch",
   "es": "Español",
-
   "menu": {
     "preferences": "Preferences…",
     "settings": "Settings",
@@ -135,5 +141,47 @@
     "delete_settings": "Delete Settings",
     "delete_app_data": "Delete App Data",
     "show_connections": "Show Connections"
+  },
+  "result": {
+    "ok": "ok",
+    "failed": "failed",
+    "printed": "printed",
+    "imported": "imported",
+    "threw": "threw",
+    "no_value": "no value returned",
+    "value_none": "no value",
+    "nothing_returned": "This snippet did not return a value.",
+    "nothing_printed": "It printed nothing either.",
+    "line": "Line {line}",
+    "returned_items": "{count} items returned",
+    "returned_keys": "{count} keys returned",
+    "returned_number": "a number returned",
+    "returned_string": "a string returned",
+    "returned_boolean": "a boolean returned",
+    "items": "{count} items",
+    "keys": "{count} keys",
+    "array": "array",
+    "object": "object",
+    "copy": "copy",
+    "copy_short": "Copy",
+    "copy_value": "Copy value",
+    "copy_json": "Copy the value as JSON",
+    "copy_printed": "Copy what the run printed",
+    "copy_imports": "Copy the imports",
+    "copy_message": "Copy the exception class and message",
+    "how": "How to read the result",
+    "organized": "organized",
+    "raw": "raw",
+    "statements": "{count} statements"
+  },
+  "statusbar": {
+    "run_failed": "Run failed · {class}",
+    "connected": "Connected · {name} ({kind})",
+    "local": "local",
+    "ssh": "ssh",
+    "caret": "Ln {line}, Col {column}",
+    "autocomplete": "autocomplete {state}",
+    "on": "on",
+    "off": "off"
   }
 }

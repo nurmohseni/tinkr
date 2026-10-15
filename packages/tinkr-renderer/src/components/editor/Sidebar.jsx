@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
+import {useIntl} from 'react-intl'
 
 import ConnectionSwitcher from './ConnectionSwitcher'
 import SnippetList from './SnippetList'
@@ -22,6 +23,7 @@ const isTyping = target => ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagNa
  * History section lists the runs themselves.
  */
 const Sidebar = () => {
+  const intl = useIntl()
   const [query, setQuery] = useState('')
   const searchRef = useRef()
 
@@ -62,9 +64,9 @@ const Sidebar = () => {
             type='search'
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder='Search snippets'
-            aria-label='Search snippets'
-            title={`Search — ${isMac() ? '⌘' : 'Ctrl'} K`}
+            placeholder={intl.formatMessage({id: 'editor.search'})}
+            aria-label={intl.formatMessage({id: 'editor.search'})}
+            title={intl.formatMessage({id: 'editor.search_keys'}, {keys: isMac() ? '⌘' : 'Ctrl'})}
             spellCheck={false}
           />
 

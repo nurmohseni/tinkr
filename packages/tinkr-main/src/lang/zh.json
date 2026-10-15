@@ -21,9 +21,9 @@
     "import_ssh_key": "导入秘钥...",
     "delete_confirm_title": "确定删除？",
     "delete_confirm_content": "本操作<strong>不能撤销</strong>，将永久删除<strong>{name}</strong>的连接设置。",
-    "delete_connection": "删除连接"
+    "delete_connection": "删除连接",
+    "plural": "连接"
   },
-
   "editor": {
     "ai": "AI",
     "ai_empty": "让 AI 写一段代码，也可以问编辑器里的代码在做什么。",
@@ -64,24 +64,31 @@
     "history_load": "把这次运行的代码放回 {name}，会替换掉编辑器里现在的代码",
     "history_returned": "有返回值",
     "history_printed": "只有输出",
-    "history_threw": "抛出了异常"
+    "history_threw": "抛出了异常",
+    "search": "搜索代码片段",
+    "search_keys": "搜索 — {keys} K",
+    "documents": "已打开的文档",
+    "edited_since_run": "自上次运行后已修改",
+    "output_views": "输出视图",
+    "pane": "编辑器",
+    "ok": "成功",
+    "failed": "失败"
   },
-
   "preference": {
     "preferences": "偏好设置",
     "general": "通用",
     "shortcuts": "快捷键",
     "lab": "实验",
     "locale": "语言",
-            "result_blocks": "语句结果",
+    "result_blocks": "语句结果",
     "result_blocks_description": "显示每条语句的返回值，或者只显示最后一条",
     "result_blocks_all": "每条语句",
     "result_blocks_last": "只显示最后一条",
-"editor_layout": "布局",
+    "editor_layout": "布局",
     "editor_layout_description": "结果显示在代码旁边，或者代码下方",
     "editor_layout_side": "左右",
     "editor_layout_stacked": "上下",
-"theme": "主题",
+    "theme": "主题",
     "confirm_close_session": "关闭未保存的会话前询问",
     "confirm_close_session_description": "会话里有代码时，关闭它的标签页之前先询问",
     "command_default": "默认命令",
@@ -109,9 +116,10 @@
     "shortcut_run": "运行代码",
     "shortcut_run_description": "在编辑器中运行当前代码的快捷键",
     "shortcut_new_connection": "新连接",
-    "shortcut_new_connection_description": "在编辑器侧栏中创建新的连接"
+    "shortcut_new_connection_description": "在编辑器侧栏中创建新的连接",
+    "theme_default": "默认",
+    "theme_dark": "深色"
   },
-
   "ok": "确定",
   "cancel": "取消",
   "close": "关闭",
@@ -119,13 +127,11 @@
   "rename": "重命名",
   "save": "保存",
   "discard": "丢弃",
-
   "zh": "中文",
   "en": "English",
   "pt": "Português",
   "de": "Deutsch",
   "es": "Español",
-
   "menu": {
     "preferences": "偏好设置...",
     "settings": "设置",
@@ -135,5 +141,47 @@
     "delete_settings": "删除配置文件",
     "delete_app_data": "删除应用数据",
     "show_connections": "打开连接列表"
+  },
+  "result": {
+    "ok": "成功",
+    "failed": "失败",
+    "printed": "输出了",
+    "imported": "已导入",
+    "threw": "抛出了异常",
+    "no_value": "没有返回值",
+    "value_none": "没有值",
+    "nothing_returned": "这段代码没有返回值。",
+    "nothing_printed": "也没有输出。",
+    "line": "第 {line} 行",
+    "returned_items": "返回了 {count} 项",
+    "returned_keys": "返回了 {count} 个键",
+    "returned_number": "返回了一个数字",
+    "returned_string": "返回了一个字符串",
+    "returned_boolean": "返回了一个布尔值",
+    "items": "{count} 项",
+    "keys": "{count} 个键",
+    "array": "数组",
+    "object": "对象",
+    "copy": "复制",
+    "copy_short": "复制",
+    "copy_value": "复制这个值",
+    "copy_json": "把值复制成 JSON",
+    "copy_printed": "复制这次运行输出的内容",
+    "copy_imports": "复制导入的类",
+    "copy_message": "复制异常的类型和消息",
+    "how": "结果的查看方式",
+    "organized": "结构化",
+    "raw": "原始",
+    "statements": "{count} 条语句"
+  },
+  "statusbar": {
+    "run_failed": "运行失败 · {class}",
+    "connected": "已连接 · {name}（{kind}）",
+    "local": "本地",
+    "ssh": "ssh",
+    "caret": "第 {line} 行，第 {column} 列",
+    "autocomplete": "自动补全 {state}",
+    "on": "开",
+    "off": "关"
   }
 }

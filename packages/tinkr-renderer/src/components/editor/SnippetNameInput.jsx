@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types'
 import {useEffect, useMemo, useRef, useState} from 'react'
+import {useIntl} from 'react-intl'
 import debounce from 'lodash/debounce'
 
 /**
@@ -9,6 +10,7 @@ import debounce from 'lodash/debounce'
  * the value is written back to the store, debounced the way it has always been.
  */
 const SnippetNameInput = ({value, onChange}) => {
+  const intl = useIntl()
   const [inputValue, setInputValue] = useState(value)
   const onChangeRef = useRef(onChange)
 
@@ -32,7 +34,7 @@ const SnippetNameInput = ({value, onChange}) => {
         setInputValue(event.target.value)
         commit(event.target.value)
       }}
-      aria-label='Snippet name'
+      aria-label={intl.formatMessage({id: 'editor.snippet_name'})}
       spellCheck={false}
     />
   )

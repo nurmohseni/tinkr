@@ -21,7 +21,8 @@
     "import_ssh_key": "Importar una clave privada...",
     "delete_confirm_title": "¿Estás completamente seguro?",
     "delete_confirm_content": "Esta acción <strong>no se puede</strong> deshacer. Se eliminará para siempre la conexión <strong>{name}</strong>.",
-    "delete_connection": "Eliminar conexión"
+    "delete_connection": "Eliminar conexión",
+    "plural": "Conexiones"
   },
   "editor": {
     "ai": "IA",
@@ -63,7 +64,15 @@
     "history_load": "Cargar el código de esta ejecución en {name}, sustituyendo el código que hay ahora en el editor",
     "history_returned": "devolvió",
     "history_printed": "imprimió",
-    "history_threw": "lanzó un error"
+    "history_threw": "lanzó un error",
+    "search": "Buscar fragmentos",
+    "search_keys": "Buscar — {keys} K",
+    "documents": "Documentos abiertos",
+    "edited_since_run": "Editado desde la última ejecución",
+    "output_views": "Vistas de la salida",
+    "pane": "Editor",
+    "ok": "ok",
+    "failed": "falló"
   },
   "preference": {
     "preferences": "Preferencias",
@@ -107,7 +116,9 @@
     "shortcut_run": "Ejecutar el código del fragmento",
     "shortcut_run_description": "ejecutar el código que hay en el editor",
     "shortcut_new_connection": "Nueva conexión",
-    "shortcut_new_connection_description": "crear una conexión desde la barra lateral del editor"
+    "shortcut_new_connection_description": "crear una conexión desde la barra lateral del editor",
+    "theme_default": "Predeterminado",
+    "theme_dark": "Oscuro"
   },
   "ok": "Aceptar",
   "cancel": "Cancelar",
@@ -130,5 +141,47 @@
   "en": "English",
   "es": "Español",
   "de": "Deutsch",
-  "pt": "Português"
+  "pt": "Português",
+  "result": {
+    "ok": "ok",
+    "failed": "falló",
+    "printed": "imprimió",
+    "imported": "importó",
+    "threw": "lanzó un error",
+    "no_value": "sin valor devuelto",
+    "value_none": "sin valor",
+    "nothing_returned": "Este fragmento no devolvió ningún valor.",
+    "nothing_printed": "Tampoco imprimió nada.",
+    "line": "Línea {line}",
+    "returned_items": "se devolvieron {count} elementos",
+    "returned_keys": "se devolvieron {count} claves",
+    "returned_number": "se devolvió un número",
+    "returned_string": "se devolvió una cadena",
+    "returned_boolean": "se devolvió un booleano",
+    "items": "{count} elementos",
+    "keys": "{count} claves",
+    "array": "array",
+    "object": "objeto",
+    "copy": "copiar",
+    "copy_short": "Copiar",
+    "copy_value": "Copiar el valor",
+    "copy_json": "Copiar el valor como JSON",
+    "copy_printed": "Copiar lo que imprimió la ejecución",
+    "copy_imports": "Copiar los imports",
+    "copy_message": "Copiar la clase y el mensaje de la excepción",
+    "how": "Cómo leer el resultado",
+    "organized": "organizado",
+    "raw": "sin formato",
+    "statements": "{count} sentencias"
+  },
+  "statusbar": {
+    "run_failed": "La ejecución falló · {class}",
+    "connected": "Conectado · {name} ({kind})",
+    "local": "local",
+    "ssh": "ssh",
+    "caret": "Lín. {line}, Col. {column}",
+    "autocomplete": "autocompletado {state}",
+    "on": "activado",
+    "off": "desactivado"
+  }
 }
