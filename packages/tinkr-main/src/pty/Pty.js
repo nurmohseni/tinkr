@@ -1,6 +1,7 @@
 const pty = require('node-pty')
 const defaultShell = require('default-shell')
 const osLocale = require('os-locale')
+const log = require('electron-log')
 const os = require('os')
 const fs = require('fs')
 
@@ -86,7 +87,17 @@ class Pty {
       }
     }
 
-    this.pty = pty.spawn(shell, args, options)
+    try {
+      this.pty = pty.spawn(shell, args, options)
+    } catch (e) {
+      // a session that will not start is a connection that cannot be used, and
+      // the shell and the directory it was started in say which one went wrong
+      log.error('[pty] could not start', shell, 'in', options.cwd, '-', e.message)
+
+      this.pty = null
+
+      return
+    }
 
     if (this.connection.is_over_ssh) {
       // TODO 如果是 ssh，需要去检查 ssh 的连接是否断开。

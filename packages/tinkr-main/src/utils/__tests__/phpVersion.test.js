@@ -1,7 +1,7 @@
 const {phpVersionOf} = require('../phpVersion')
 
 // every answer below is one the detection really met, escapes and all
-describe.each([
+const readVersion = describe.each([
   // what `php -v` writes, from the first line
   ['PHP 8.5.11 (cli) (built: Sep 24 2026 19:14:44) (NTS)\nCopyright (c) The PHP Group\n', '8.5.11'],
 
@@ -32,7 +32,7 @@ describe.each([
   ['PHP 8.5 (cli)\n', null],
 ])
 
-('phpVersionOf(%j)', (output, expected) => {
+readVersion('phpVersionOf(%j)', (output, expected) => {
   it(`reads ${expected}`, () => {
     expect(phpVersionOf(output)).toBe(expected)
   })

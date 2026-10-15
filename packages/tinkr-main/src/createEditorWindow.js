@@ -1,4 +1,5 @@
 const {BrowserWindow} = require('electron')
+const log = require('electron-log')
 
 const {createPty} = require('./createPty')
 const {detectPhpVersion} = require('./services/phpVersion')
@@ -15,6 +16,8 @@ const {appName} = require('./constants')
 const createEditorWindow = async connection => {
   const {id, name} = connection
 
+  log.info('[window] opening for', connection.name)
+
   const win = new BrowserWindow({
     width: 1000,
     height: 800,
@@ -29,7 +32,19 @@ const createEditorWindow = async connection => {
     },
   })
 
-  await win.loadURL(`${getEntryUrl('editor.html')}?id=${id}`)
+  const url = `${getEntryUrl('editor.html')}?id=${id}`
+
+  log.info('[window] loading', url)
+
+  try {
+    await win.loadURL(url)
+
+    log.info('[window] loaded')
+  } catch (e) {
+    // a window whose page did not load is a blank one, and the reason is here
+    // rather than anywhere a user can see it
+    log.error('[window] the page did not load:', e.message)
+  }
 
   win.on('ready-to-show', () => {
     win.show()
