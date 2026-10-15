@@ -68,7 +68,7 @@
     "history_today": "{count} heute",
     "history_empty": "Noch nichts ausgeführt",
     "history_empty_code": "leeres Snippet",
-    "history_load": "Den Code dieses Laufs in {name} laden und den Code im Editor ersetzen",
+    "history_load": "Den Code dieses Laufs in einem neuen Tab öffnen",
     "history_returned": "gab zurück",
     "history_printed": "gab aus",
     "history_threw": "warf",

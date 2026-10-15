@@ -13,7 +13,6 @@ import {registerPHPCompletionProvider} from '../../utils/phpCompletion'
 import {editorFont, watchEditorTheme} from '../../utils/monacoTheme'
 import {documentAtomWithId, isSessionId, writeCodeAtom} from '../../stores/sessions'
 import {applyCodeAtom, runAtom, sizesAtom} from '../../stores/editor'
-import {loadedHistoryAtom} from '../../stores/history'
 import {configAtom} from '../../stores/config'
 import {isMatchShortcut} from '../../utils/isMatchShortcut'
 import useDocumentId from '../../hooks/useDocumentId'
@@ -40,7 +39,6 @@ const Editor = () => {
   const isSession = isSessionId(documentId)
   const document = useAtomValue(documentAtomWithId(documentId))
   const writeCode = useSetAtom(writeCodeAtom)
-  const loadedHistory = useAtomValue(loadedHistoryAtom)
   const sizes = useAtomValue(sizesAtom)
   const run = useSetAtom(runAtom)
   const config = useAtomValue(configAtom)
@@ -291,22 +289,6 @@ const Editor = () => {
       clearTimeout(layoutTimer)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // a history row hands its code to the snippet the window is on, and the
-  // editor shows it: writing the model is the write the typing makes, so the
-  // store, the file, and the pane end up with the code that ran
-  useEffect(() => {
-    const editor = editorRef.current
-
-    if (!editor || !loadedHistory || loadedHistory.snippetId !== documentId) {
-      return
-    }
-
-    if (editor.getValue() !== loadedHistory.code) {
-      editor.setValue(loadedHistory.code)
-      editor.focus()
-    }
-  }, [loadedHistory, documentId])
 
   return useMemo(() => (
     // the well around it is the design's .editor, so monaco fills it

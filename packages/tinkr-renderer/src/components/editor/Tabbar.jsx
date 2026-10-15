@@ -72,7 +72,11 @@ const Tabbar = () => {
       >
         {open.map(tab => {
           const isOpen = tab.id === activeId
-          const label = tab.isSession ? unsavedLabel : tab.snippet.name
+          // a session has a name when a run was opened in it, and Unsaved is
+          // what a session the window started itself is called
+          const label = tab.isSession
+            ? (tab.document.name || unsavedLabel)
+            : tab.snippet.name
           const isEdited = runs[tab.id] !== undefined && runs[tab.id] !== tab.document.code
 
           return (

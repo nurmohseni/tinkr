@@ -1,10 +1,13 @@
 import PropTypes from 'prop-types'
 import {FormattedMessage, useIntl} from 'react-intl'
-import {useAtomValue, useSetAtom} from 'jotai'
-import {useRoute} from 'wouter'
+import {useAtomValue} from 'jotai'
 
-import {historyListAtom, loadHistoryAtom, loadedHistoryAtom} from '../../stores/history'
-import {activeSessionAtom, documentAtomWithId} from '../../stores/sessions'
+import {historyListAtom} from '../../stores/history'
+import useNewSession from '../../hooks/useNewSession'
+
+// how many runs the sidebar shows: a connection keeps more than this, and it is
+// the list that has to stay scannable
+const shownLimit = 20
 
 const ClockIcon = () => (
   <svg
@@ -24,6 +27,18 @@ const ClockIcon = () => (
 // the count in the header is today's runs, so a day is a calendar day here,
 // not the last twenty-four hours
 const isToday = at => new Date(at).toDateString() === new Date().toDateString()
+
+/**
+ * What a run is called where it opens: the time it ran, and the day too when
+ * that was not today.
+ *
+ * @param {IntlShape} intl
+ * @param {Number} at
+ * @return {String}
+ */
+const runTitle = (intl, at) => (isToday(at)
+  ? intl.formatTime(at)
+  : `${intl.formatDate(at, {day: 'numeric', month: 'short'})} ${intl.formatTime(at)}`)
 
 // the run result knows three outcomes, and the row says which one it was: the
 // value came back, only what the run printed came back, or it threw
@@ -51,9 +66,12 @@ const outcomeBadge = outcome => {
 
 /**
  * One run in the sidebar: the first line of the code that ran, when it ran, and
- * what came back. Clicking it puts that code back in the editor.
+ * what came back.
+ *
+ * Opening it is a new tab holding that code, named for the time it ran: it
+ * replaces nothing, so a snippet the window has open is still open afterwards.
  */
-const HistoryItem = ({entry, name, active, onLoad}) => {
+const HistoryItem = ({entry, onOpen}) => {
   const intl = useIntl()
   // a row is one line tall, so it carries the first line of the code that ran
   const line = entry.code.trim().split('\n')[0]
@@ -63,11 +81,10 @@ const HistoryItem = ({entry, name, active, onLoad}) => {
 
   return (
     <button
-      className={active ? 'tree-nav__row tree-nav__row--child tree-nav__row--active' : 'tree-nav__row tree-nav__row--child'}
+      className='tree-nav__row tree-nav__row--child'
       type='button'
-      title={`${intl.formatMessage({id: 'editor.history_load'}, {name})} · ${intl.formatDate(entry.at)} ${intl.formatTime(entry.at)}`}
-      aria-current={active ? 'true' : undefined}
-      onClick={onLoad}
+      title={`${intl.formatMessage({id: 'editor.history_load'})} · ${intl.formatDate(entry.at)} ${intl.formatTime(entry.at)}`}
+      onClick={() => onOpen(entry)}
     >
       <span className='truncate mono' style={{fontSize: 'var(--fs-sm)'}}>
         {line || <FormattedMessage id='editor.history_empty_code'/>}
@@ -89,9 +106,7 @@ HistoryItem.propTypes = {
     at: PropTypes.number.isRequired,
     outcome: PropTypes.string.isRequired,
   }).isRequired,
-  name: PropTypes.string.isRequired,
-  active: PropTypes.bool.isRequired,
-  onLoad: PropTypes.func.isRequired,
+  onOpen: PropTypes.func.isRequired,
 }
 
 /**
@@ -103,21 +118,9 @@ HistoryItem.propTypes = {
 const HistoryList = () => {
   const intl = useIntl()
   const entries = useAtomValue(historyListAtom)
-  const [, params] = useRoute('/snippets/:id/:mode')
-  const load = useSetAtom(loadHistoryAtom)
-  const loaded = useAtomValue(loadedHistoryAtom)
-
-  // the window routes one document at a time, and that is the document a row
-  // loads into — the session the window is on when no snippet is; the row stays
-  // marked while that document still holds its code
-  const session = useAtomValue(activeSessionAtom)
-  const snippetId = params?.id || session?.id
-  const document = useAtomValue(documentAtomWithId(snippetId))
-  const name = document?.name || intl.formatMessage({id: 'editor.unsaved'})
+  const startSession = useNewSession()
   const today = entries.filter(entry => isToday(entry.at)).length
-  const loadedId = loaded && loaded.snippetId === snippetId && document?.code === loaded.code
-    ? loaded.entryId
-    : null
+  const shown = entries.slice(0, shownLimit)
 
   return (
     <nav
@@ -145,13 +148,11 @@ const HistoryList = () => {
           </div>
         )}
 
-        {entries.map(entry => (
+        {shown.map(entry => (
           <HistoryItem
             key={entry.id}
             entry={entry}
-            name={name}
-            active={entry.id === loadedId}
-            onLoad={() => load({snippetId, entry})}
+            onOpen={() => startSession({name: runTitle(intl, entry.at), code: entry.code})}
           />
         ))}
       </details>

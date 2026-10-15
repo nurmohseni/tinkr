@@ -68,7 +68,7 @@
     "history_today": "{count} hoje",
     "history_empty": "Nada executado ainda",
     "history_empty_code": "trecho vazio",
-    "history_load": "Carregar o código desta execução em {name}, substituindo o que está no editor agora",
+    "history_load": "Abrir o código desta execução em uma nova aba",
     "history_returned": "retornou",
     "history_printed": "imprimiu",
     "history_threw": "lançou erro",

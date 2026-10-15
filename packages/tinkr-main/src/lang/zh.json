@@ -68,7 +68,7 @@
     "history_today": "今天 {count} 次",
     "history_empty": "还没有运行过",
     "history_empty_code": "空代码",
-    "history_load": "把这次运行的代码放回 {name}，会替换掉编辑器里现在的代码",
+    "history_load": "在新标签页中打开这次运行的代码",
     "history_returned": "有返回值",
     "history_printed": "只有输出",
     "history_threw": "抛出了异常",

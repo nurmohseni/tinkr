@@ -68,7 +68,7 @@
     "history_today": "{count} today",
     "history_empty": "No runs yet",
     "history_empty_code": "empty snippet",
-    "history_load": "Load this run's code into {name}, replacing the code in the editor now",
+    "history_load": "Open this run's code in a new tab",
     "history_returned": "returned",
     "history_printed": "printed",
     "history_threw": "threw",

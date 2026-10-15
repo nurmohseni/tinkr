@@ -23,10 +23,19 @@ const sessionPrefix = 'session:'
 
 let opened = 0
 
-const newSession = () => ({
+/**
+ * A session the window has open: empty, or holding the code of a run that was
+ * opened from the history, with the time it ran as its name — a session is not
+ * saved and has no snippet to be named by, so its name is what the tab can say
+ * about where it came from.
+ *
+ * @param {{name: String, code: String}} [from]
+ * @return {Record<string, any>}
+ */
+const newSession = ({name = '', code = ''} = {}) => ({
   id: `${sessionPrefix}${++opened}`,
-  name: '',
-  code: '',
+  name,
+  code,
   position: null,
 })
 
