@@ -77,6 +77,10 @@ class Pty {
       cwd: env.HOME || os.homedir(),
       env,
       encoding: 'utf-8',
+      // node-pty's conpty backend deadlocks inside spawn on windows: the call
+      // never returns, so the window that made it never gets another line of
+      // its boot done. winpty is the backend that answers.
+      useConpty: false,
     }
 
     if (!this.connection.is_over_ssh) {
@@ -87,8 +91,12 @@ class Pty {
       }
     }
 
+    log.info('[pty] starting', shell, JSON.stringify(args))
+
     try {
       this.pty = pty.spawn(shell, args, options)
+
+      log.info('[pty] started')
     } catch (e) {
       // a session that will not start is a connection that cannot be used, and
       // the shell and the directory it was started in say which one went wrong

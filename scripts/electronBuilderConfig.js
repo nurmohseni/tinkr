@@ -85,9 +85,17 @@ module.exports = {
       'snap'
     ],
   },
-  // a woff2 inside the asar cannot be read as a file url by the renderer,
-  // so the fonts are unpacked beside it
-  asarUnpack: ['**/*.woff2', '**/fonts/**'],
+  // Two things cannot be read from inside an asar and are unpacked beside it:
+  // a woff2, which the renderer reads as a file, and a native module, which is
+  // loaded as a library rather than read. The session's pty is the second, and
+  // winpty needs its own two files next to it.
+  asarUnpack: [
+    '**/*.woff2',
+    '**/fonts/**',
+    '**/*.node',
+    '**/*.exe',
+    '**/*.dll',
+  ],
   files: [
     '!**/*',
     {from: mainPkg, filter: ['package.json']},
