@@ -92,12 +92,8 @@ class Pty {
       }
     }
 
-    log.info('[pty] starting', shell, JSON.stringify(args))
-
     try {
       this.pty = pty.spawn(shell, args, options)
-
-      log.info('[pty] started')
     } catch (e) {
       // a session that will not start is a connection that cannot be used, and
       // the shell and the directory it was started in say which one went wrong

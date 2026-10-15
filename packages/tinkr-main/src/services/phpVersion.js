@@ -1,5 +1,3 @@
-const log = require('electron-log')
-
 const {Pty} = require('../pty/Pty')
 const {phpVersionOf} = require('../utils/phpVersion')
 
@@ -28,8 +26,6 @@ const detectPhpVersion = (connection, win) => {
     return
   }
 
-  log.info('[php] asking', connection.name)
-
   const pty = new Pty(connection)
   let output = ''
   let done = false
@@ -47,8 +43,6 @@ const detectPhpVersion = (connection, win) => {
     pty.kill()
 
     const version = phpVersionOf(output)
-
-    log.info('[php]', connection.name, 'answered', version || 'nothing')
 
     win.webContents.send('phpVersion', {version})
   }

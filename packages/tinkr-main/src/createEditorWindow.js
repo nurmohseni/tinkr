@@ -16,8 +16,6 @@ const {appName} = require('./constants')
 const createEditorWindow = async connection => {
   const {id, name} = connection
 
-  log.info('[window] opening for', connection.name)
-
   const win = new BrowserWindow({
     width: 1000,
     height: 800,
@@ -32,15 +30,12 @@ const createEditorWindow = async connection => {
     },
   })
 
-  const url = `${getEntryUrl('editor.html')}?id=${id}`
-
-  // what the page says goes into the same log. A window that hangs without a
-  // word is what this is for: a script that failed, a preload that never ran and
-  // a renderer that went away are each one line here.
+  // what the page says goes into the same log, so a script that threw is a line
+  // here rather than a window that does nothing
   win.webContents.on('console-message', e => {
-    const write = e.level === 'error' ? log.error : log.info
-
-    write('[renderer]', e.message, e.lineNumber ? `(${e.sourceId}:${e.lineNumber})` : '')
+    if (e.level === 'error') {
+      log.error('[renderer]', e.message, e.lineNumber ? `(${e.sourceId}:${e.lineNumber})` : '')
+    }
   })
 
   win.webContents.on('preload-error', (event, preloadPath, error) => {
@@ -51,12 +46,10 @@ const createEditorWindow = async connection => {
     log.error('[window] the renderer went away:', details.reason)
   })
 
-  log.info('[window] loading', url)
+  const url = `${getEntryUrl('editor.html')}?id=${id}`
 
   try {
     await win.loadURL(url)
-
-    log.info('[window] loaded')
   } catch (e) {
     // a window whose page did not load is a blank one, and the reason is here
     // rather than anywhere a user can see it
