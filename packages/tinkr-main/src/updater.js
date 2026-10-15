@@ -1,6 +1,8 @@
 const {autoUpdater} = require('electron-updater')
 const {BrowserWindow} = require('electron')
 const log = require('electron-log')
+const path = require('path')
+const fs = require('fs')
 
 autoUpdater.logger = log
 autoUpdater.logger.transports.file.level = 'info'
@@ -16,13 +18,26 @@ autoUpdater.autoInstallOnAppQuit = true
  * Tell the windows what the updater is doing, so the window can ask.
  *
  * @param {String} channel
- * @param {Record<string, any>} [payload]
+ * @param {Record<String, any>} [payload]
  */
 const tell = (channel, payload) => {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload)
   }
 }
+
+/**
+ * Whether this build can replace itself at all.
+ *
+ * The updater reads app-update.yml from beside the app, and electron-builder
+ * writes that only for the targets that can install over themselves. The
+ * portable build extracts into a temporary directory every launch and the
+ * squirrel setup installs into one of its own, so neither has one: checking
+ * from them is an error on every launch and nothing else.
+ *
+ * @return {Boolean}
+ */
+const canUpdate = () => fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'))
 
 /**
  * Ask the releases whether there is something newer than this build.
@@ -34,6 +49,12 @@ const tell = (channel, payload) => {
  * @return {Promise<void>}
  */
 const checkForUpdates = async () => {
+  if (!canUpdate()) {
+    log.info('[update] this build cannot install over itself, so nothing was asked')
+
+    return
+  }
+
   log.info('[update] checking for a newer version')
 
   try {
