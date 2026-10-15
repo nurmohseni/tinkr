@@ -41,6 +41,11 @@ export const allHistory = api.allHistory
 
 export const aiProviders = api.aiProviders
 export const aiComplete = api.aiComplete
+export const clearHistory = api.clearHistory
+export const checkForUpdates = api.checkForUpdates
+export const downloadUpdate = api.downloadUpdate
+export const installUpdate = api.installUpdate
+export const onUpdateState = api.onUpdateState
 export const aiAsk = api.aiAsk
 export const aiCheck = api.aiCheck
 

@@ -191,5 +191,17 @@
     "autocomplete": "自动补全 {state}",
     "on": "开",
     "off": "关"
+  },
+  "update": {
+    "available_title": "有新版本可用",
+    "available_content": "现在可以下载 Tinkr {version}。在你同意之前不会安装任何东西。",
+    "download": "下载",
+    "later": "稍后",
+    "downloading": "正在下载… {percent}%",
+    "ready_title": "更新已下载",
+    "ready_content": "Tinkr {version} 会在应用关闭时安装，也可以现在就重启安装。",
+    "restart": "重启并安装",
+    "failed_title": "下载没有完成",
+    "failed_content": "{message}"
   }
 }

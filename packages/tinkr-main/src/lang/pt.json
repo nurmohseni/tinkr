@@ -191,5 +191,17 @@
     "autocomplete": "autocompletar {state}",
     "on": "ativado",
     "off": "desativado"
+  },
+  "update": {
+    "available_title": "Há uma versão nova",
+    "available_content": "O Tinkr {version} já pode ser baixado. Nada é instalado antes de você dizer.",
+    "download": "Baixar",
+    "later": "Mais tarde",
+    "downloading": "Baixando… {percent}%",
+    "ready_title": "A atualização foi baixada",
+    "ready_content": "O Tinkr {version} instala quando o app fechar, ou agora se você preferir.",
+    "restart": "Reiniciar e instalar",
+    "failed_title": "O download não terminou",
+    "failed_content": "{message}"
   }
 }

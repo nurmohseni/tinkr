@@ -25,6 +25,7 @@ const {parsePhpForm, stringifyPhpForm} = require('./services/php')
 const {phpCompletions} = require('./completion')
 const {complete, ask, check} = require('./services/ai')
 const {providers} = require('./aiProviders')
+const {checkForUpdates, downloadUpdate, installUpdate} = require('./updater')
 
 ipcMain.on('selectDirectory', (event, defaultPath) => {
   event.returnValue = selectDirectory(defaultPath)
@@ -145,6 +146,18 @@ ipcMain.on('allHistory', (event, connectionId) => {
 
 ipcMain.on('clearHistory', (event, connectionId) => {
   event.returnValue = clearHistory(connectionId)
+})
+
+ipcMain.on('checkForUpdates', () => {
+  checkForUpdates()
+})
+
+ipcMain.on('downloadUpdate', () => {
+  downloadUpdate()
+})
+
+ipcMain.on('installUpdate', () => {
+  installUpdate()
 })
 
 ipcMain.handle('aiComplete', async (event, code) => {

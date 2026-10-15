@@ -142,13 +142,20 @@ const start = async () => {
       distGlob('.dmg'),
       path.posix.join('build/latest-mac.yml'),
     ],
-    win32: [path.posix.join('build', 'squirrel-windows', '*'), path.posix.join('build', '*.exe')],
+    // the squirrel build reads RELEASES, an nsis one reads latest.yml
+    win32: [
+      path.posix.join('build', 'squirrel-windows', '*'),
+      path.posix.join('build', '*.exe'),
+      path.posix.join('build', 'latest.yml'),
+    ],
     linux: [
       distGlob('.snap'),
       distGlob('.rpm'),
       distGlob('.deb'),
       distGlob('.AppImage'),
       distGlob('.tar.gz'),
+      // an appimage updates from this the way a mac does from latest-mac.yml
+      path.posix.join('build', 'latest-linux.yml'),
     ],
   }
 

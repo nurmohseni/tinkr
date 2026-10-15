@@ -13,6 +13,8 @@ import Sidebar from './components/editor/Sidebar'
 import Toolbar from './components/editor/Toolbar'
 import OutputTabView from './components/editor/OutputTabView'
 import SnippetActions from './components/editor/SnippetActions'
+import ClearHistoryConfirm from './components/editor/ClearHistoryConfirm'
+import UpdatePrompt from './components/editor/UpdatePrompt'
 import DeleteSnippetConfirm from './components/editor/DeleteSnippetConfirm'
 import ConnectionPage from './components/ConnectionPage'
 import DeleteConnectionConfirm from './components/connections/DeleteConnectionConfirm'
@@ -21,7 +23,14 @@ import {sizesAtom, resultAtom, connectionAtom} from './stores/editor'
 import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
 import {switchConnectionAtom} from './stores/connections'
-import {onRunResult, onHistoryConnection, onSetConnection} from './utils/api'
+import {
+  updateAvailableAtom,
+  updateDownloadedAtom,
+  updateFailedAtom,
+  updateNotAvailableAtom,
+  updateProgressAtom,
+} from './stores/update'
+import {onRunResult, onHistoryConnection, onSetConnection, onUpdateState} from './utils/api'
 
 // the split handle is the design's 6px divider, not react-split's 10px default
 const splitGutter = (index, direction) => {
@@ -41,6 +50,18 @@ const EditorWindow = () => {
   const config = useAtomValue(configAtom)
   const [, setLocation] = useHashLocation()
   const switchConnection = useSetAtom(switchConnectionAtom)
+  const setUpdateAvailable = useSetAtom(updateAvailableAtom)
+  const setUpdateNotAvailable = useSetAtom(updateNotAvailableAtom)
+  const setUpdateProgress = useSetAtom(updateProgressAtom)
+  const setUpdateDownloaded = useSetAtom(updateDownloadedAtom)
+  const setUpdateFailed = useSetAtom(updateFailedAtom)
+  const updates = {
+    updateAvailable: setUpdateAvailable,
+    updateNotAvailable: setUpdateNotAvailable,
+    updateProgress: setUpdateProgress,
+    updateDownloaded: setUpdateDownloaded,
+    updateFailed: setUpdateFailed,
+  }
   // anything but `stacked` is side by side, which is the default
   const side = config.editor_layout !== 'stacked'
 
@@ -54,10 +75,15 @@ const EditorWindow = () => {
       setLocation('/')
     })
 
+    // what the updater is doing, as it does it: it asks before it downloads and
+    // before it installs, and both questions are the panel below
+    const onUpdate = Object.entries(updates).map(([channel, set]) => onUpdateState(channel)(set))
+
     return () => {
       onResult.dispose()
       onHistory.dispose()
       onConnection.dispose()
+      onUpdate.forEach(dispose => dispose.dispose())
     }
   }, [])
 
@@ -107,6 +133,8 @@ const EditorWindow = () => {
         <Route path='/connections/:id' component={ConnectionPage}/>
         <SnippetActions/>
         <DeleteSnippetConfirm/>
+        <ClearHistoryConfirm/>
+        <UpdatePrompt/>
         <DeleteConnectionConfirm/>
       </div>
     </WindowContainer>

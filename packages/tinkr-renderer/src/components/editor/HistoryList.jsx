@@ -1,13 +1,32 @@
 import PropTypes from 'prop-types'
 import {FormattedMessage, useIntl} from 'react-intl'
-import {useAtomValue} from 'jotai'
+import {useAtomValue, useSetAtom} from 'jotai'
 
-import {historyListAtom} from '../../stores/history'
+import {clearHistoryPromptAtom, historyListAtom} from '../../stores/history'
 import useNewSession from '../../hooks/useNewSession'
 
 // how many runs the sidebar shows: a connection keeps more than this, and it is
 // the list that has to stay scannable
 const shownLimit = 20
+
+/** The design's bin, drawn inline at the size of the other section icons. */
+const BinIcon = () => (
+  <svg
+    width='13'
+    height='13'
+    viewBox='0 0 16 16'
+    aria-hidden='true'
+    fill='none'
+    stroke='currentColor'
+    strokeWidth='1.2'
+    strokeLinecap='round'
+  >
+    <path d='M2.8 4.4h10.4'/>
+    <path d='M6.4 4.4V3.2h3.2v1.2'/>
+    <path d='M4.5 4.4l.6 8.3h5.8l.6-8.3'/>
+    <path d='M6.8 6.9v3.6M9.2 6.9v3.6'/>
+  </svg>
+)
 
 const ClockIcon = () => (
   <svg
@@ -119,6 +138,7 @@ const HistoryList = () => {
   const intl = useIntl()
   const entries = useAtomValue(historyListAtom)
   const startSession = useNewSession()
+  const askToClear = useSetAtom(clearHistoryPromptAtom)
   const today = entries.filter(entry => isToday(entry.at)).length
   const shown = entries.slice(0, shownLimit)
 
@@ -137,6 +157,23 @@ const HistoryList = () => {
             <span className='sidebar__meta'>
               <FormattedMessage id='editor.history_today' values={{count: today}}/>
             </span>
+          )}
+
+          {entries.length > 0 && (
+            <button
+              className='btn btn--ghost btn--icon btn--sm'
+              type='button'
+              title={intl.formatMessage({id: 'editor.history_clear'})}
+              aria-label={intl.formatMessage({id: 'editor.history_clear'})}
+              onClick={event => {
+                // the row it sits on folds the list when it is clicked
+                event.preventDefault()
+                event.stopPropagation()
+                askToClear(true)
+              }}
+            >
+              <BinIcon/>
+            </button>
           )}
         </summary>
 

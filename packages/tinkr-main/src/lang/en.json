@@ -191,5 +191,17 @@
     "autocomplete": "autocomplete {state}",
     "on": "on",
     "off": "off"
+  },
+  "update": {
+    "available_title": "A new version is ready",
+    "available_content": "Tinkr {version} can be downloaded now. Nothing is installed until you say so.",
+    "download": "Download",
+    "later": "Later",
+    "downloading": "Downloading… {percent}%",
+    "ready_title": "The update is downloaded",
+    "ready_content": "Tinkr {version} installs when the app closes, or now if you would rather.",
+    "restart": "Restart and install",
+    "failed_title": "The download did not finish",
+    "failed_content": "{message}"
   }
 }

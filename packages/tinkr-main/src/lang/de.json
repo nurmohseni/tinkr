@@ -191,5 +191,17 @@
     "autocomplete": "Autovervollständigung {state}",
     "on": "an",
     "off": "aus"
+  },
+  "update": {
+    "available_title": "Eine neue Version ist da",
+    "available_content": "Tinkr {version} lässt sich jetzt herunterladen. Installiert wird nichts, bevor du es sagst.",
+    "download": "Herunterladen",
+    "later": "Später",
+    "downloading": "Wird heruntergeladen… {percent}%",
+    "ready_title": "Die Aktualisierung ist heruntergeladen",
+    "ready_content": "Tinkr {version} wird beim Beenden installiert — oder jetzt, wenn du möchtest.",
+    "restart": "Neu starten und installieren",
+    "failed_title": "Der Download ist nicht durchgelaufen",
+    "failed_content": "{message}"
   }
 }

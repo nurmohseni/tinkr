@@ -21,6 +21,16 @@ contextBridge.exposeInMainWorld('api', {
   setConfig: data => ipcRenderer.send('setConfig', data),
   allLocales: () => ipcRenderer.sendSync('allLocales'),
   getIntlConfig: () => ipcRenderer.send('getIntlConfig'),
+  checkForUpdates: () => ipcRenderer.send('checkForUpdates'),
+  downloadUpdate: () => ipcRenderer.send('downloadUpdate'),
+  installUpdate: () => ipcRenderer.send('installUpdate'),
+  onUpdateState: channel => cb => {
+    const listener = (event, payload) => cb(payload)
+    ipcRenderer.on(channel, listener)
+    return {
+      dispose: () => ipcRenderer.off(channel, listener),
+    }
+  },
   createConnection: connection => ipcRenderer.send('createConnection', connection),
   getConnection: () => ipcRenderer.sendSync('getConnection', connectionId()),
   deleteConnection: id => ipcRenderer.send('deleteConnection', id),
