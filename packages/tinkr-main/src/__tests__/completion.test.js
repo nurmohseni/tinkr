@@ -6,8 +6,9 @@ const path = require('path')
 // a test has no session to boot
 jest.mock('../createBackgroundPty', () => ({ensureBackgroundPty: () => {}}))
 
+const {classIndex, clearClassIndex} = require('tinkr-core')
+
 const {phpCompletions, reflectionCode} = require('../completion')
-const {classIndex, clearClassIndex} = require('../classIndex')
 const {getBackgroundPtyProcess, setBackgroundPtyProcess, setEditorConnection} = require('../processes')
 
 const write = (file, content) => {

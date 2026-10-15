@@ -32,7 +32,7 @@ const session = output => [
 
 const base64 = value => Buffer.from(value, 'utf8').toString('base64')
 
-const fakePty = () => {
+const fakeSession = () => {
   const listeners = []
 
   return {
@@ -49,13 +49,13 @@ const fakePty = () => {
 
 const backgroundPty = () => {
   const pty = new BackgroundPty({id: 'test', path: '/tmp'})
-  pty.pty = fakePty()
+  pty.session = fakeSession()
 
   return pty
 }
 
 const feed = (pty, data) => {
-  for (const listener of pty.pty.listeners) {
+  for (const listener of pty.session.listeners) {
     listener(data)
   }
 }

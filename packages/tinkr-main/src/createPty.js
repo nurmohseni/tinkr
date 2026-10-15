@@ -1,10 +1,9 @@
+const {wrapRun, RunResultFilter, importsFor, runOutput} = require('tinkr-core')
+
 const {Pty} = require('./pty/Pty')
 
 const {getEditorWindow, getPtyProcess, setPtyProcess} = require('./processes')
-const {wrapRun, RunResultFilter} = require('./runResult')
-const {stripSessionNotes} = require('./terminalOutput')
 const {appendHistory} = require('./services/history')
-const {importsFor} = require('./classIndex')
 
 /**
  * Boot a session for the connection, and optionally run `code` in it.
@@ -76,7 +75,7 @@ const createPty = (connection, code) => {
       // the output pane shows what the run printed as well as what it
       // returned, so the envelope carries both
       win.webContents.send('runResult', Object.assign({}, result, {
-        output: stripSessionNotes(filter.printed).replace(/\r\n/g, '\n').trim(),
+        output: runOutput(filter),
       }))
 
       // the run is over, and it is what the connection's history remembers:

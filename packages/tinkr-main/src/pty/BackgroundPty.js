@@ -1,7 +1,8 @@
 const {randomBytes} = require('crypto')
 
+const {stripRendering} = require('tinkr-core')
+
 const {Pty} = require('./Pty')
-const {stripRendering} = require('../terminalOutput')
 
 /**
  * The session prints the value it resolved between two markers: the one below,

@@ -3,11 +3,16 @@ const os = require('os')
 const path = require('path')
 const {randomBytes} = require('crypto')
 
+const {
+  classIndex,
+  matchingClasses,
+  stripNonCode,
+  importedClasses,
+  phpString,
+} = require('tinkr-core')
+
 const {getEditorConnection, getBackgroundPtyProcess} = require('./processes')
 const {ensureBackgroundPty} = require('./createBackgroundPty')
-const {classIndex, matchingClasses} = require('./classIndex')
-const {stripNonCode, importedClasses} = require('./phpScanner')
-const {phpString} = require('./runResult')
 
 /**
  * What the editor's suggestion popup shows: the project's class names while a
