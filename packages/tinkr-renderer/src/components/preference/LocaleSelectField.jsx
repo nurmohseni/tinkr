@@ -1,25 +1,25 @@
 import {useIntl} from 'react-intl'
-import {useAtomValue, useSetAtom} from 'jotai'
+import {useAtomValue} from 'jotai'
 
-import {allLocales} from '../../utils/api'
-import {configAtom, setConfigAtom} from '../../stores/config'
+import {allLocales, setLocale} from '../../utils/api'
+import {configAtom} from '../../stores/config'
 
 /**
- * The locale the app's own copy is shown in. Nothing mounts this row: the
- * locale is switched by the window's intl provider, and no section lists it, so
- * it is kept only as the setting's control for whoever surfaces it.
+ * The language the app's own copy is shown in.
+ *
+ * It is a row in the general settings. Switching it asks the main process for
+ * the locale rather than writing the config here, because a new locale is a new
+ * set of messages as well as a new value, and the main process is what holds
+ * them and hands them to every window.
  */
 const LocaleSelectField = () => {
   const intl = useIntl()
   const config = useAtomValue(configAtom)
-  const setConfig = useSetAtom(setConfigAtom)
 
   const label = intl.formatMessage({id: 'preference.locale'})
 
   const handleChange = e => {
-    setConfig({
-      locale: e.target.value,
-    })
+    setLocale(e.target.value)
   }
 
   return (

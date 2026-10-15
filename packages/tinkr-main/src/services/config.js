@@ -6,15 +6,22 @@ const {getIntlConfig, setIntl} = require('../locale')
 /**
  * @param {string} lang
  */
+/**
+ * Switch the language.
+ *
+ * The write is what tells the windows: each one reads the config the main
+ * process holds, and a window that asks for its messages gets the ones of the
+ * locale in it — which is how it gets them at startup too. Nothing is pushed at
+ * them, because a pushed message is a second way to say the same thing and this
+ * one arrives.
+ *
+ * What the main process speaks is switched here as well, since its own menus are
+ * built from those messages.
+ */
 const setLocale = lang => {
-  config.set('locale', lang)
-  const res = getIntlConfig()
-  setIntl(res)
+  setConfig({locale: lang})
 
-  // send the setIntlConfig event to all the windows opened
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send('setIntlConfig', res)
-  }
+  setIntl(getIntlConfig())
 }
 
 /**

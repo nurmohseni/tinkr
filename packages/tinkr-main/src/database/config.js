@@ -9,8 +9,28 @@ const {allLocales} = require('../utils/allLocales')
  * The file on disk holds only what was ever written to it, so this is also what
  * a preference nobody has touched reads as (see services/config.allConfig).
  */
+/**
+ * The app's own file for a system locale.
+ *
+ * A system locale carries its region — `pt-BR`, `de-AT` — and there is one file
+ * per language, so the language is what is looked for, and English is what is
+ * left when there is no file at all.
+ *
+ * @param {String} system
+ * @return {String}
+ */
+const closestLocale = system => {
+  const language = String(system).split('-')[0]
+
+  if (allLocales.indexOf(system) >= 0) {
+    return system
+  }
+
+  return allLocales.indexOf(language) >= 0 ? language : 'en'
+}
+
 const defaults = {
-  locale: allLocales.indexOf(app.getLocale()) >= 0 ? app.getLocale() : 'en',
+  locale: closestLocale(app.getLocale()),
   command_default: 'php artisan tinker',
   form_switch: true,
   form_prefix: 'field_',

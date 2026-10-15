@@ -1,7 +1,11 @@
 const {allLocales} = require('../allLocales')
 
-test('allLocales should return correct', () => {
+test('allLocales should be every language the app ships', () => {
   expect(allLocales).toEqual([
-    'en', 'zh',
+    'de', 'en', 'es', 'pt', 'zh',
   ])
+})
+
+test('allLocales should read the same way every launch', () => {
+  expect([...allLocales].sort()).toEqual(allLocales)
 })

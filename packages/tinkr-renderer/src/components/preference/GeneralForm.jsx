@@ -1,10 +1,13 @@
 import CommandDefaultField from './CommandDefaultField'
+import LocaleSelectField from './LocaleSelectField'
 import SegmentedField from './SegmentedField'
 import SwitchField from './SwitchField'
 import ThemeField from './ThemeField'
 
 const GeneralForm = () => (
   <>
+    <LocaleSelectField/>
+
     <ThemeField/>
 
     <SegmentedField
