@@ -7,6 +7,70 @@ const {history} = require('../database/history')
 const limit = 50
 
 /**
+ * How much of a run's own answer is kept with it.
+ *
+ * The file is read whole when a window switches to a connection, and a run can
+ * answer with a table of rows or with the megabytes a `dump` printed. What does
+ * not fit is left out and named in `cut`, so that an entry never reads as the
+ * whole answer once it is not.
+ */
+const kept = 8 * 1024
+
+/**
+ * @param {any} value
+ * @return {Number}
+ */
+const sizeOf = value => {
+  try {
+    return JSON.stringify(value).length
+  } catch (e) {
+    // a value json cannot carry is a value an entry cannot keep
+    return kept + 1
+  }
+}
+
+/**
+ * What the run answered with, as much of it as an entry keeps.
+ *
+ * @param {Object|null} result the run envelope
+ * @return {{value?: any, error?: Object, output?: String, cut?: Array<String>}}
+ */
+const answerOf = result => {
+  if (!result) {
+    return {}
+  }
+
+  const answer = {}
+  const cut = []
+
+  if (result.error) {
+    answer.error = result.error
+  }
+
+  if (result.value !== null && result.value !== undefined) {
+    if (sizeOf(result.value) <= kept) {
+      answer.value = result.value
+    } else {
+      cut.push('value')
+    }
+  }
+
+  if (result.output) {
+    if (result.output.length <= kept) {
+      answer.output = result.output
+    } else {
+      cut.push('output')
+    }
+  }
+
+  if (cut.length) {
+    answer.cut = cut
+  }
+
+  return answer
+}
+
+/**
  * What the run did, in the three things the run result can honestly say: it
  * returned a value, it only printed, or it threw.
  *
@@ -54,12 +118,12 @@ const clearHistory = connectionId => {
  * @return {Array<Object>} the list, newest first, as the sidebar draws it
  */
 const appendHistory = (connectionId, code, result) => {
-  const entry = {
+  const entry = Object.assign({
     id: randomBytes(8).toString('hex'),
     code,
     at: Date.now(),
     outcome: outcomeOf(result),
-  }
+  }, answerOf(result))
 
   const entries = [entry, ...allHistory(connectionId)].slice(0, limit)
 
@@ -70,6 +134,7 @@ const appendHistory = (connectionId, code, result) => {
 
 module.exports = {
   outcomeOf,
+  answerOf,
   allHistory,
   clearHistory,
   appendHistory,

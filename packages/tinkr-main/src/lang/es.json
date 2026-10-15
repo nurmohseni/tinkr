@@ -151,7 +151,9 @@
     "mcp_tool_run_php_over_ssh": "ejecuta PHP en un servidor, por ssh",
     "mcp_tool_list_connections": "lista las conexiones guardadas en la aplicación",
     "mcp_tool_list_snippets": "lista los snippets guardados de una conexión",
-    "mcp_tool_save_snippet": "guarda código como snippet de una conexión"
+    "mcp_tool_save_snippet": "guarda código como snippet de una conexión",
+    "mcp_tool_list_history": "lista las ejecuciones que ha guardado una conexión",
+    "mcp_tool_read_run": "lee una ejecución guardada y lo que devolvió"
   },
   "ok": "Aceptar",
   "cancel": "Cancelar",

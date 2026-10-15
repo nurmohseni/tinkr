@@ -151,7 +151,9 @@
     "mcp_tool_run_php_over_ssh": "runs PHP on a server, over ssh",
     "mcp_tool_list_connections": "lists the connections saved in the app",
     "mcp_tool_list_snippets": "lists the snippets saved for a connection",
-    "mcp_tool_save_snippet": "keeps code as a snippet of a connection"
+    "mcp_tool_save_snippet": "keeps code as a snippet of a connection",
+    "mcp_tool_list_history": "lists the runs a connection has kept",
+    "mcp_tool_read_run": "reads one kept run, and what it came back with"
   },
   "ok": "OK",
   "cancel": "Cancel",

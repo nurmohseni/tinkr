@@ -151,7 +151,9 @@
     "mcp_tool_run_php_over_ssh": "通过 ssh 在服务器上运行 PHP",
     "mcp_tool_list_connections": "列出应用里保存的连接",
     "mcp_tool_list_snippets": "列出某个连接保存的片段",
-    "mcp_tool_save_snippet": "把代码保存为某个连接的片段"
+    "mcp_tool_save_snippet": "把代码保存为某个连接的片段",
+    "mcp_tool_list_history": "列出某个连接保留的运行记录",
+    "mcp_tool_read_run": "读取一条运行记录及其返回的内容"
   },
   "ok": "确定",
   "cancel": "取消",

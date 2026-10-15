@@ -7,11 +7,12 @@ const path = require('path')
  * connections and the preferences the app writes, and the snippets a connection
  * has.
  *
- * @param {{connections?: Object, command?: String, snippets?: Object}} [data]
- *   `connections` and `snippets` are keyed by id, as the app keeps them
+ * @param {{connections?: Object, command?: String, snippets?: Object,
+ *   history?: Object}} [data] `connections`, `snippets` and `history` are keyed by
+ *   id, as the app keeps them
  * @return {String} the directory the app would keep its files in
  */
-const makeAppDir = ({connections = {}, command = null, snippets = {}} = {}) => {
+const makeAppDir = ({connections = {}, command = null, snippets = {}, history = {}} = {}) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-mcp-'))
   const app = path.join(dir, 'app')
 
@@ -27,6 +28,11 @@ const makeAppDir = ({connections = {}, command = null, snippets = {}} = {}) => {
 
   for (const [id, value] of Object.entries(snippets)) {
     fs.writeFileSync(path.join(app, 'snippets', `${id}.json`), JSON.stringify(value, null, '\t'))
+  }
+
+  for (const [id, value] of Object.entries(history)) {
+    fs.mkdirSync(path.join(app, 'history'), {recursive: true})
+    fs.writeFileSync(path.join(app, 'history', `${id}.json`), JSON.stringify(value, null, '\t'))
   }
 
   return dir

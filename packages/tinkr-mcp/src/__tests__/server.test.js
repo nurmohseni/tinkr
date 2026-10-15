@@ -237,6 +237,113 @@ describe('the tools', () => {
     expect(answer.content[0].text).toMatch(/no connection for/)
   })
 
+  test('lists the runs the app kept, newest first, as many as it is asked for', async () => {
+    dir = makeAppDir({
+      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      history: {
+        local: {
+          entries: [
+            {id: 'second', code: 'User::count();', at: 1760000100000, outcome: 'returned', value: 3},
+            {id: 'first', code: 'echo "hi";', at: 1760000000000, outcome: 'printed', output: 'hi'},
+          ],
+        },
+      },
+    })
+
+    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const listed = await server.call('tinkr_list_history', {})
+
+    expect(listed.structuredContent.runs).toEqual([
+      {
+        id: 'second',
+        at: new Date(1760000100000).toISOString(),
+        outcome: 'returned',
+        code: 'User::count();',
+      },
+      {
+        id: 'first',
+        at: new Date(1760000000000).toISOString(),
+        outcome: 'printed',
+        code: 'echo "hi";',
+      },
+    ])
+    expect(listed.content[0].text).toContain('returned')
+    expect(listed.content[0].text).toContain('User::count();')
+
+    const one = await server.call('tinkr_list_history', {limit: 1})
+
+    expect(one.structuredContent.runs.map(run => run.id)).toEqual(['second'])
+  })
+
+  test('a connection that has run nothing says so', async () => {
+    dir = makeAppDir({
+      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+    })
+
+    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const listed = await server.call('tinkr_list_history', {})
+
+    expect(listed.content[0].text).toBe('This connection has run nothing yet.')
+    expect(listed.structuredContent.runs).toEqual([])
+  })
+
+  test('reads one run, with what came back and what was too big to keep', async () => {
+    dir = makeAppDir({
+      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      history: {
+        local: {
+          entries: [{
+            id: 'a1',
+            code: 'throw new RuntimeException("boom");',
+            at: 1760000000000,
+            outcome: 'threw',
+            error: {class: 'RuntimeException', message: 'boom'},
+            output: 'before it threw',
+            cut: ['output'],
+          }],
+        },
+      },
+    })
+
+    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const run = await server.call('tinkr_read_run', {id: 'a1'})
+
+    expect(run.isError).toBe(false)
+    expect(run.content[0].text).toContain('threw RuntimeException: boom')
+    expect(run.content[0].text).toContain('printed:')
+    expect(run.content[0].text).toContain('before it threw')
+    expect(run.content[0].text).toContain('not kept whole: output')
+    expect(run.structuredContent).toMatchObject({
+      id: 'a1',
+      outcome: 'threw',
+      at: new Date(1760000000000).toISOString(),
+      cut: ['output'],
+    })
+  })
+
+  test('a run the app does not keep is not there to read', async () => {
+    dir = makeAppDir({
+      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      history: {local: {entries: [{id: 'a1', code: '1;', at: 1760000000000, outcome: 'returned', value: 1}]}},
+    })
+
+    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const missing = await server.call('tinkr_read_run', {id: 'nope'})
+
+    expect(missing.isError).toBe(true)
+    expect(missing.content[0].text).toMatch(/No run with the id nope/)
+  })
+
+  test('the history belongs to a connection the app knows, like the snippets do', async () => {
+    dir = makeAppDir()
+
+    const {server} = opened({at: '/tmp/elsewhere', dataDir: dir})
+    const listed = await server.call('tinkr_list_history', {})
+
+    expect(listed.isError).toBe(true)
+    expect(listed.content[0].text).toMatch(/no connection for/)
+  })
+
   test('asks for the code it is going to run', async () => {
     const {server} = opened({at: '/tmp/project', run: async () => envelope()})
 

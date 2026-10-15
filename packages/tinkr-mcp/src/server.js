@@ -25,10 +25,12 @@ const json = value => JSON.stringify(value, null, 2)
 
 /**
  * @param {String} text
+ * @param {Number} [length] how much of it to keep, when it is not the run
+ * output's own limit
  * @return {String}
  */
-const truncate = text => (text.length > maxText
-  ? `${text.slice(0, maxText)}\n… ${text.length - maxText} characters were cut`
+const truncate = (text, length = maxText) => (text.length > length
+  ? `${text.slice(0, length)}\n… ${text.length - length} characters were cut`
   : text)
 
 /**
@@ -65,6 +67,42 @@ const render = result => {
 
   if (result.output) {
     lines.push('', 'printed:', result.output.replace(/\s+$/, ''))
+  }
+
+  return truncate(lines.join('\n'))
+}
+
+/**
+ * A run from the app's history, as text: when it ran and how it ended, the code
+ * that ran, then what came back of what the entry kept.
+ *
+ * The words are the run result's own — `returned`, `printed`, `threw` — because
+ * they are what the app calls the same three things in its sidebar.
+ *
+ * @param {Object} entry
+ * @return {String}
+ */
+const renderRun = entry => {
+  const lines = [
+    `${new Date(entry.at).toISOString()} · ${entry.outcome} · ${entry.id}`,
+    '',
+    truncate(entry.code, 4000),
+  ]
+
+  if (entry.error) {
+    lines.push('', `threw ${entry.error.class}: ${entry.error.message}`)
+  }
+
+  if (entry.value !== undefined) {
+    lines.push('', 'returned:', json(entry.value))
+  }
+
+  if (entry.output) {
+    lines.push('', 'printed:', entry.output.replace(/\s+$/, ''))
+  }
+
+  if (entry.cut) {
+    lines.push('', `not kept whole: ${entry.cut.join(', ')}`)
   }
 
   return truncate(lines.join('\n'))
@@ -122,6 +160,22 @@ const timeoutOf = (args, fallback) => {
   // a session that is given a minute is a session that is still holding a pty
   // when the client that asked for it has gone
   return Math.min(Math.max(asked, 1000), 600000)
+}
+
+/**
+ * How many runs a list shows: enough to scan, few enough to read.
+ *
+ * @param {Object} args
+ * @return {Number}
+ */
+const limitOf = args => {
+  const asked = Number(args.limit)
+
+  if (!Number.isFinite(asked) || asked <= 0) {
+    return 10
+  }
+
+  return Math.min(Math.floor(asked), 50)
 }
 
 /**
@@ -245,6 +299,86 @@ const TOOLS = [
         blocks: {type: 'array', items: {type: 'object'}},
         error: {type: ['object', 'null']},
         output: {type: 'string'},
+      },
+    },
+  },
+  {
+    name: 'tinkr_list_history',
+    title: 'List the runs the app kept',
+    description: 'List the runs Tinkr has kept for a connection, newest first: the code that ran, ' +
+      'when, and how it ended. It is the app\'s own history, so it is the runs that were made ' +
+      'there — through this server, or by hand. Read one of them to see what came back.',
+    annotations: {readOnlyHint: true, destructiveHint: false, openWorldHint: false},
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection: {
+          type: 'string',
+          description: 'The id or name of a connection saved in Tinkr. The connection this ' +
+            'server was started on when it is not given.',
+        },
+        limit: {
+          type: 'number',
+          description: 'How many runs to list, newest first. Ten by default, fifty at most.',
+        },
+      },
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        connection: {type: 'string'},
+        runs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: {type: 'string'},
+              at: {type: 'string', description: 'when the run started, in ISO 8601'},
+              outcome: {type: 'string', description: 'returned, printed or threw'},
+              code: {type: 'string'},
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'tinkr_read_run',
+    title: 'Read one kept run',
+    description: 'Read one run from a connection\'s history in full: the code that ran, when, what ' +
+      'it returned, what it printed, and the exception it threw. A run answers with as much of ' +
+      'itself as the app keeps — where that is not the whole answer, the parts that were too big ' +
+      'are named, and the code can be run again for the whole thing.',
+    annotations: {readOnlyHint: true, destructiveHint: false, openWorldHint: false},
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {type: 'string', description: 'The id of the run, as the history lists it.'},
+        connection: {
+          type: 'string',
+          description: 'The id or name of a connection saved in Tinkr. The connection this ' +
+            'server was started on when it is not given.',
+        },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        id: {type: 'string'},
+        at: {type: 'string'},
+        outcome: {type: 'string'},
+        code: {type: 'string'},
+        value: {description: 'What the run returned, when the entry kept it.'},
+        error: {type: ['object', 'null'], properties: {class: {type: 'string'}, message: {type: 'string'}}},
+        output: {type: 'string', description: 'What the run printed, when the entry kept it.'},
+        cut: {
+          type: 'array',
+          description: 'The parts of the answer that were too big to keep.',
+          items: {type: 'string'},
+        },
       },
     },
   },
@@ -400,6 +534,62 @@ const createServer = ({target: resolved, version, timeout = 60000, run = runCode
       case 'tinkr_run_php_over_ssh':
         return runTool(args, true)
 
+      case 'tinkr_list_history': {
+        const found = knownConnectionOf(args)
+        // the app keeps its runs newest first, and a slice of a list that was
+        // written some other way would be the wrong runs
+        const runs = app.history(found.dataDir, found.connection.id)
+          .slice()
+          .sort((one, other) => other.at - one.at)
+          .slice(0, limitOf(args))
+
+        return {
+          content: [{
+            type: 'text',
+            text: runs.length
+              ? runs.map(entry => [
+                `${new Date(entry.at).toISOString()} · ${entry.outcome} · ${entry.id}`,
+                truncate(entry.code, 500),
+              ].join('\n')).join('\n\n')
+              : 'This connection has run nothing yet.',
+          }],
+          structuredContent: {
+            connection: found.connection.id,
+            runs: runs.map(entry => ({
+              id: entry.id,
+              at: new Date(entry.at).toISOString(),
+              outcome: entry.outcome,
+              code: entry.code,
+            })),
+          },
+          isError: false,
+        }
+      }
+
+      case 'tinkr_read_run': {
+        const found = knownConnectionOf(args)
+
+        if (typeof args.id !== 'string' || args.id.trim() === '') {
+          throw new Error('`id` is required: the id of the run, as the history lists it.')
+        }
+
+        const entry = app.history(found.dataDir, found.connection.id)
+          .find(one => one.id === args.id)
+
+        if (!entry) {
+          throw new Error(
+            `No run with the id ${args.id} is kept for ${found.connection.name}. ` +
+            'List the history for the ids of the runs that are.',
+          )
+        }
+
+        return {
+          content: [{type: 'text', text: renderRun(entry)}],
+          structuredContent: Object.assign({}, entry, {at: new Date(entry.at).toISOString()}),
+          isError: false,
+        }
+      }
+
       case 'tinkr_list_connections':
         return {
           content: [{
@@ -483,6 +673,7 @@ const createServer = ({target: resolved, version, timeout = 60000, run = runCode
 module.exports = {
   TOOLS,
   render,
+  renderRun,
   connectionInfo,
   createServer,
   maxText,

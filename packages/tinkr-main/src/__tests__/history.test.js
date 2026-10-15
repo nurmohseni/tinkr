@@ -1,4 +1,4 @@
-const {appendHistory, allHistory, outcomeOf} = require('../services/history')
+const {appendHistory, allHistory, outcomeOf, answerOf} = require('../services/history')
 
 describe('what a run is recorded as', () => {
   test('a value that came back is a run that returned', () => {
@@ -19,6 +19,46 @@ describe('what a run is recorded as', () => {
 
   test('a session that printed no envelope at all is a run that printed', () => {
     expect(outcomeOf(null)).toBe('printed')
+  })
+})
+
+describe('what a run is recorded with', () => {
+  test('keeps what the run returned, and what it printed', () => {
+    const [returned] = appendHistory('answered', '$n = 3;', {value: 3, error: null, output: ''})
+    const [printed] = appendHistory('answered', 'echo "hi";', {value: null, error: null, output: 'hi'})
+
+    expect(returned.value).toBe(3)
+    expect(printed.output).toBe('hi')
+    expect(printed.value).toBeUndefined()
+  })
+
+  test('keeps the exception a run threw with it', () => {
+    const [entry] = appendHistory('thrown', 'throw new RuntimeException("boom");', {
+      value: null,
+      error: {class: 'RuntimeException', message: 'boom'},
+      output: '',
+    })
+
+    expect(entry.outcome).toBe('threw')
+    expect(entry.error).toEqual({class: 'RuntimeException', message: 'boom'})
+  })
+
+  test('leaves out an answer too big to keep, and names what was left out', () => {
+    const [entry] = appendHistory('huge', 'User::all();', {
+      value: new Array(9000).fill(1),
+      error: null,
+      output: 'x'.repeat(9000),
+    })
+
+    // the file is read whole when a window switches connection
+    expect(entry.value).toBeUndefined()
+    expect(entry.output).toBeUndefined()
+    expect(entry.cut).toEqual(['value', 'output'])
+  })
+
+  test('a run the session never answered for is recorded as what it is', () => {
+    expect(answerOf(null)).toEqual({})
+    expect(answerOf(undefined)).toEqual({})
   })
 })
 

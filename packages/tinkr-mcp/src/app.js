@@ -35,6 +35,7 @@ const appDataDir = () => {
 const connectionsFile = dir => path.join(dir, 'app', 'connections.json')
 const configFile = dir => path.join(dir, 'app', 'config.json')
 const snippetsFile = (dir, connectionId) => path.join(dir, 'app', 'snippets', `${connectionId}.json`)
+const historyFile = (dir, connectionId) => path.join(dir, 'app', 'history', `${connectionId}.json`)
 
 /**
  * Read a json file, or nothing when it is not there or unreadable.
@@ -115,6 +116,20 @@ const command = dir => (read(configFile(dir)) || {}).command_default || 'php art
 const snippets = (dir, connectionId) => Object.values(read(snippetsFile(dir, connectionId)) || {})
 
 /**
+ * The runs a connection has kept, newest first, as the app's own sidebar lists
+ * them: the code that ran, when, how it ended, and as much of what came back as
+ * the entry holds (`cut` names the parts that were too big to keep).
+ *
+ * Written by the app rather than by this server: the app holds the list in memory
+ * while it runs, so a second writer would lose one of them.
+ *
+ * @param {String} dir
+ * @param {String} connectionId
+ * @return {Array<Object>}
+ */
+const history = (dir, connectionId) => (read(historyFile(dir, connectionId)) || {}).entries || []
+
+/**
  * Keep a snippet of a connection, the way the app's own Save does.
  *
  * A snippet is the code, the name it was given and where the caret was, which
@@ -145,6 +160,8 @@ module.exports = {
   connectionsFile,
   configFile,
   snippetsFile,
+  historyFile,
+  history,
   find,
   connections,
   command,

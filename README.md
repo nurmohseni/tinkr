@@ -107,9 +107,17 @@ the app's connections are still reachable by name.
 | --- | --- |
 | `tinkr_run_php` | Run PHP in a project on this machine: what every statement returned, and what the code printed |
 | `tinkr_run_php_over_ssh` | The same, on a server, through one of Tinkr's ssh connections |
+| `tinkr_list_history` | The runs the app kept for a connection: the code, when it ran, and how it ended |
+| `tinkr_read_run` | One kept run in full: what it returned, what it printed, what it threw |
 | `tinkr_list_connections` | The connections saved in the app, with the command each session is started with |
 | `tinkr_list_snippets` | The snippets saved for a connection |
 | `tinkr_save_snippet` | Keep code as a snippet of a connection |
+
+The history a client reads is the app's own: the last fifty runs of a connection,
+each with the code that ran and as much of the answer as the entry keeps — a run
+whose value or printed output was too big to hold says which part it is missing.
+A client's own runs are not written to it, because the app holds that list while
+it runs and two writers of one file lose each other's work.
 
 ### Options
 
