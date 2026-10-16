@@ -1,6 +1,6 @@
 {
   "name": "tinkr-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The Tinkr MCP server: run PHP in a project, for an MCP client",
   "license": "MIT",
   "private": true,
