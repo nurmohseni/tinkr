@@ -21,6 +21,8 @@ const types = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.woff2': 'font/woff2',
+  // Commit Mono's italic comments are the one face that is not a woff2
+  '.otf': 'font/otf',
   '.ttf': 'font/ttf',
 }
 
