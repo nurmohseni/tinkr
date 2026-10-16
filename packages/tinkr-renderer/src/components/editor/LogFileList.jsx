@@ -2,6 +2,7 @@ import {useEffect} from 'react'
 import {useAtom, useAtomValue, useSetAtom} from 'jotai'
 import {FormattedMessage, useIntl} from 'react-intl'
 
+import {LinesIcon} from './icons'
 import {editorViewAtom} from '../../stores/editor'
 import {loadLogsAtom, logsAtom, selectLogAtom} from '../../stores/logs'
 
@@ -13,14 +14,6 @@ import {loadLogsAtom, logsAtom, selectLogAtom} from '../../stores/logs'
  * pane rather than filling a panel somewhere else. The list is read from the
  * connection's own machine, wherever it runs.
  */
-const FilesIcon = () => (
-  <svg width='14' height='14' viewBox='0 0 16 16' aria-hidden='true' fill='currentColor'>
-    <path d='M3 3H13L12 5H2Z'/>
-    <path d='M3 6.5H12L11 8.5H2Z'/>
-    <path d='M3 10H10L9 12H2Z'/>
-  </svg>
-)
-
 const LogFileList = () => {
   const intl = useIntl()
   const logs = useAtomValue(logsAtom)
@@ -50,7 +43,7 @@ const LogFileList = () => {
       <details open>
         <summary className='tree-nav__row'>
           <span className='tree-nav__caret'/>
-          <FilesIcon/>
+          <LinesIcon/>
           <span><FormattedMessage id='editor.logs_files'/></span>
 
           <span className='sidebar__meta'>{logs.files.length || ''}</span>

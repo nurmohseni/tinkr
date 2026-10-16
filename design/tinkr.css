@@ -879,6 +879,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .tree-nav { padding-left: 0; }
+/* .view-switch: the one way between the pane's two readings, at the foot of the
+   sidebar. It says what it will do rather than showing two states at once, so its
+   label and its mark change with the pane. */
+.view-switch { color: var(--text-muted); }
+.view-switch svg { flex: none; color: var(--text-faint); }
+.view-switch:hover { color: var(--text); }
+.view-switch:hover svg { color: var(--text-muted); }
+
 /* .sidebar__note: a couple of lines inside a sidebar list, where a row cannot
    hold them — where a directory was looked in, and that it held nothing */
 .sidebar__note {

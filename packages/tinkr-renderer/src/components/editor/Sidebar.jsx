@@ -5,6 +5,7 @@ import ConnectionSwitcher from './ConnectionSwitcher'
 import SnippetList from './SnippetList'
 import HistoryList from './HistoryList'
 import LogFileList from './LogFileList'
+import ViewSwitch from './ViewSwitch'
 import appVersion from '../../utils/appVersion'
 
 const isMac = () => /Mac/i.test(navigator.platform || navigator.userAgent)
@@ -88,6 +89,8 @@ const Sidebar = () => {
       </div>
 
       <div className='sidebar__section' style={{paddingBottom: 'var(--s2)'}}>
+        <ViewSwitch/>
+
         <div className='tree-nav__row' title={`Tinkr ${appVersion}`}>
           <span className='faint' style={{fontSize: 'var(--fs-xs)'}}>Tinkr {appVersion}</span>
         </div>
