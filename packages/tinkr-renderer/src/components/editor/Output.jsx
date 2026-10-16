@@ -1,11 +1,11 @@
 import {useMemo, useEffect, useRef, useCallback} from 'react'
-import {useAtom, useAtomValue} from 'jotai'
+import {useAtom, useAtomValue, useSetAtom} from 'jotai'
 import * as xterm from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import debounce from 'lodash/debounce'
 
 import {termOptions, watchTermTheme} from '../../utils/getTermOptions'
-import {outputAtom, outputViewAtom, resultAtom} from '../../stores/editor'
+import {outputAtom, outputViewAtom, resultAtom, runAtom, runCodeAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
 import Result from './Result'
 import useFitAddon from '../../hooks/useFitAddon'
@@ -44,6 +44,12 @@ const Output = () => {
   const output = useAtomValue(outputAtom)
   const result = useAtomValue(resultAtom)
   const [view, setView] = useAtom(outputViewAtom)
+  const run = useSetAtom(runAtom)
+  const code = useAtomValue(runCodeAtom)
+
+  // keeping a dry run means running it again, and what it runs is the code the
+  // run it is offered under was sent with, not whatever the editor holds now
+  const keepRun = useCallback(() => run(code, {guard: 'commit'}), [run, code])
 
   // 清空 output，写入内容
   // https://github.com/xtermjs/xterm.js/issues/943
@@ -105,13 +111,14 @@ const Output = () => {
           result={result}
           view={view}
           onView={setView}
+          onKeep={keepRun}
           allStatements={config.result_blocks !== 'last'}
         />
       )}
     </>
     // the reading is a prop of the result: a memo that ignored it would keep
     // drawing the one it was first given
-  ), [result, view, config.result_blocks])
+  ), [result, view, config.result_blocks, keepRun])
 }
 
 export default Output

@@ -1,11 +1,12 @@
 import PropTypes from 'prop-types'
-import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react'
-import {createPortal} from 'react-dom'
+import {useCallback} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 import {useAtom, useAtomValue, useSetAtom} from 'jotai'
 
+import PointerMenu from '../PointerMenu'
 import SnippetNameDialog from './SnippetNameDialog'
 import CloseSessionConfirm from './CloseSessionConfirm'
+import MutationConfirm from './MutationConfirm'
 import useCreateSnippet from '../../hooks/useCreateSnippet'
 import {updateSnippetAtom} from '../../stores/snippets'
 import {removeSessionAtom, sessionsAtom} from '../../stores/sessions'
@@ -17,9 +18,6 @@ import {
   snippetMenuAtom,
 } from '../../stores/snippetMenu'
 
-// the gap a menu keeps from the window's edge when it is pulled back inside it
-const menuMargin = 4
-
 /**
  * The snippet menu, at the pointer: the two things the app does to a snippet
  * besides opening it.
@@ -29,81 +27,31 @@ const menuMargin = 4
  * window, and it could only ever offer Delete. Both entries go through the rest
  * of the window: Rename asks for a name, Delete asks whether to go ahead.
  */
-const SnippetMenu = ({menu, onRename, onDelete, onClose}) => {
-  const ref = useRef()
-  const [at, setAt] = useState({left: menu.x, top: menu.y})
-
-  // a menu opened at the window's edge is pulled back inside it, so the whole
-  // of it is on screen whichever way the pointer sits
-  useLayoutEffect(() => {
-    const {width, height} = ref.current.getBoundingClientRect()
-
-    setAt({
-      left: Math.max(menuMargin, Math.min(menu.x, window.innerWidth - width - menuMargin)),
-      top: Math.max(menuMargin, Math.min(menu.y, window.innerHeight - height - menuMargin)),
-    })
-  }, [menu.x, menu.y])
-
-  useEffect(() => {
-    const onPointerDown = event => {
-      // pressing an entry is not leaving the menu: the entry itself answers
-      if (!ref.current.contains(event.target)) {
-        onClose()
-      }
-    }
-
-    const onKeyDown = event => {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    // the menu is anchored to the pointer, so everything that moves what is
-    // under it takes it away: a press elsewhere, Escape, a scroll anywhere in
-    // the window — the sidebar, the editor, the output all scroll — and the
-    // window losing focus
-    window.addEventListener('mousedown', onPointerDown)
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('scroll', onClose, true)
-    window.addEventListener('blur', onClose)
-
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown)
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('scroll', onClose, true)
-      window.removeEventListener('blur', onClose)
-    }
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className='autocomplete snippet-menu'
-      ref={ref}
-      role='menu'
-      aria-label={menu.snippet.name}
-      style={{left: at.left, top: at.top}}
+const SnippetMenu = ({menu, onRename, onDelete, onClose}) => (
+  <PointerMenu
+    at={{left: menu.x, top: menu.y}}
+    label={menu.snippet.name}
+    onClose={onClose}
+  >
+    <button
+      className='autocomplete__item'
+      type='button'
+      role='menuitem'
+      onClick={onRename}
     >
-      <button
-        className='autocomplete__item'
-        type='button'
-        role='menuitem'
-        onClick={onRename}
-      >
-        <FormattedMessage id='editor.rename_snippet'/>
-      </button>
+      <FormattedMessage id='editor.rename_snippet'/>
+    </button>
 
-      <button
-        className='autocomplete__item'
-        type='button'
-        role='menuitem'
-        onClick={onDelete}
-      >
-        <FormattedMessage id='delete'/>
-      </button>
-    </div>,
-    document.body,
-  )
-}
+    <button
+      className='autocomplete__item'
+      type='button'
+      role='menuitem'
+      onClick={onDelete}
+    >
+      <FormattedMessage id='delete'/>
+    </button>
+  </PointerMenu>
+)
 
 SnippetMenu.propTypes = {
   menu: PropTypes.shape({
@@ -195,6 +143,8 @@ const SnippetActions = () => {
       />
 
       <CloseSessionConfirm/>
+
+      <MutationConfirm/>
     </>
   )
 }

@@ -4,6 +4,7 @@ import {useIntl} from 'react-intl'
 
 import SnippetNameInput from './SnippetNameInput'
 import RunButton from './RunButton'
+import DryRunButton from './DryRunButton'
 import FormButton from './FormButton'
 import SaveSnippetButton from './SaveSnippetButton'
 import useNewSession from '../../hooks/useNewSession'
@@ -167,7 +168,12 @@ const Tabbar = () => {
       <div className='row'>
         {active?.snippet && config.form_switch && <FormButton/>}
         {active?.isSession && <SaveSnippetButton/>}
-        {!active?.isLog && <RunButton/>}
+        {!active?.isLog && (
+          <>
+            <DryRunButton/>
+            <RunButton/>
+          </>
+        )}
       </div>
     </div>
   )
