@@ -35,6 +35,24 @@ yarn start:main
 yarn start:renderer
 ```
 
+### Fonts
+
+`yarn start` and `yarn build` fetch the interface's two ITF faces first —
+**Switzer** for the UI and **Sentient** for the display roles, both from
+Fontshare — into `packages/tinkr-renderer/public/fonts/itf`. They are not in
+this repository: the ITF Free Font License lets an app embed them but not
+redistribute the files, so `scripts/fetch-fonts.js` downloads them unaltered at
+build time and git ignores the folder. Run it on its own with
+
+```bash
+yarn fonts
+```
+
+With no network it warns and exits successfully, and the interface falls back to
+the system sans and serif. The code's face, **Commit Mono**, is OFL 1.1 and lives
+in the repository beside its license. `design.md` at the root is the design
+system all of it belongs to.
+
 ### Other command
 
 #### yarn rebuild

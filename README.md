@@ -16,6 +16,10 @@
 </p>
 
 <p align="center">
+<img width="100%" alt="the same window in the light palette" src="./assets/light.png">
+</p>
+
+<p align="center">
 <img width="100%" alt="the ai panel proposing a snippet" src="./assets/ai.png">
 </p>
 
@@ -35,7 +39,7 @@ Installers are published to the Releases page of the repository that builds the 
 - [x] **Structured results**: the value a run answers with arrives as data, so objects and arrays come as expandable structure instead of text;
 - [x] **Fresh session**: every run boots a new Tinker session, so the code you just changed on disk is the code that runs;
 - [x] **Snippet Form**: Switch the editor to the form, so that you can modify your variable value via form, like an admin panel;
-- [x] **Dark mode**: a warm dark palette for the whole app, the terminals and the editor;
+- [x] **Dark and light**: one palette in two readings — a celadon floor, the desk the panes sit on, and the wells the code and the values live in — for the whole app, both terminals, the editor and the settings window;
 - [x] **MCP server**: your AI tools run code in the same connections the app runs it in, over the [Model Context Protocol](https://modelcontextprotocol.io);
 
 ## Tech Stack
@@ -51,11 +55,17 @@ Installers are published to the Releases page of the repository that builds the 
 * [Monaco Editor](https://microsoft.github.io/monaco-editor/)
 * [Xterm.js](https://xtermjs.org/)
 * [wouter](https://github.com/molefrog/wouter)
-* [Evergreen](https://evergreen.segment.com/) (UI)
+* [Evergreen](https://evergreen.segment.com/) (the spinner before the locale lands, and the theme bridge)
 * [React Hook Form](https://react-hook-form.com/)
 * [nanoid](https://zelark.github.io/nano-id-cc/)
 * [React Intl](https://formatjs.io/docs/react-intl/)
 * [Vite](https://vitejs.dev/) (build the renderer process code)
+
+The interface is drawn from one system: [`design.md`](./design.md) holds the type, the palette,
+the spacing, the motion and the component voice, and `packages/tinkr-renderer/public/tinkr.css`
+carries the tokens every screen reads — the editor, both terminals and the settings window
+included. The three faces are Switzer and Sentient (Fontshare, fetched at build time) and
+Commit Mono (OFL).
 
 ### Main
 
