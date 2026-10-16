@@ -15,6 +15,7 @@ const connectionId = () => currentConnectionId
 contextBridge.exposeInMainWorld('api', {
   selectDirectory: defaultPath => ipcRenderer.sendSync('selectDirectory', defaultPath),
   selectFile: defaultPath => ipcRenderer.sendSync('selectFile', defaultPath),
+  saveFile: (defaultPath, contents) => ipcRenderer.sendSync('saveFile', defaultPath, contents),
   setLocale: locale => ipcRenderer.send('setLocale', locale),
   getLocale: () => ipcRenderer.sendSync('getLocale'),
   allConfig: () => ipcRenderer.sendSync('allConfig'),
@@ -54,7 +55,7 @@ contextBridge.exposeInMainWorld('api', {
   configureMcp: id => ipcRenderer.invoke('configureMcp', id),
   popupConnectionContextMenu: id => ipcRenderer.send('popupConnectionContextMenu', id),
   inputConnection: code => ipcRenderer.send('inputConnection', connectionId(), code),
-  runConnection: code => ipcRenderer.send('runConnection', connectionId(), code),
+  runConnection: (code, guard) => ipcRenderer.send('runConnection', connectionId(), code, guard),
   closeConnection: () => ipcRenderer.send('closeConnection', connectionId()),
 
   aiProviders: () => ipcRenderer.sendSync('aiProviders'),
