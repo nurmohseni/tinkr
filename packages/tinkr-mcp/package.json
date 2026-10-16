@@ -13,7 +13,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "tinkr-core": "0.2.1"
+    "tinkr-core": "0.2.2"
   },
   "devDependencies": {
     "eslint": "^8.0.1",
