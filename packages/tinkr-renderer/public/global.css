@@ -253,6 +253,152 @@ button.tree-nav__row {
     color: var(--text);
 }
 
+/* ---- the log viewer -------------------------------------------------------
+   The application's logs, as the design draws an entry: when it was written, what
+   it was written as, and what it said, one row each. What the entry carries under
+   its message — the json context, the stack trace — is opened rather than
+   summarised, so a row is a <details> and its summary is the row. */
+
+.logs {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.logs__bar {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    padding: var(--s2) var(--s3);
+    border-bottom: 1px solid var(--border);
+}
+
+/* two rows: the file and reading it again, then the filters. The pane is a third
+   of the window, and five controls are not one line of it */
+.logs__row {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    min-width: 0;
+}
+
+.logs__file {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.logs__row .input {
+    flex: 1 1 90px;
+    min-width: 0;
+}
+
+/* the follow switch is a label and a switch, as the settings rows have them */
+.logs__follow {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    flex: none;
+    cursor: pointer;
+}
+
+.logs__follow input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.logs__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--s1) 0;
+}
+
+.logs__note {
+    padding: var(--s3);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.logs__note.error {
+    color: var(--error);
+}
+
+.log__row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s2);
+    height: var(--row-h);
+    padding: 0 var(--s3);
+    cursor: pointer;
+    font-size: var(--fs-sm);
+}
+
+/* the summary's own marker is the design's caret, drawn by the app's sheets */
+.log__row::marker,
+.log__row::-webkit-details-marker {
+    display: none;
+    content: "";
+}
+
+.log:hover > .log__row {
+    background: var(--panel-raised);
+}
+
+.log__at {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    width: 130px;
+}
+
+.log__row .badge {
+    flex: none;
+    min-width: 62px;
+    text-align: center;
+}
+
+.log__message {
+    min-width: 0;
+    color: var(--text);
+}
+
+.log__details {
+    margin: 0;
+    padding: var(--s2) var(--s3) var(--s3) calc(var(--s3) + 130px + var(--s2));
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    line-height: var(--lh-code);
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.logs__foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    padding: 0 var(--s3) var(--s2);
+    font-size: var(--fs-xs);
+    font-family: var(--font-mono);
+    min-width: 0;
+}
+
+/* what was read of the file stays whole; the directory gives way, which is what
+   it is for */
+.logs__read {
+    flex: none;
+}
+
+.logs__dir {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+}
+
 /* ---- the ai panel's prompt -----------------------------------------------
    The prompt is where the shortcut puts the cursor, the `@` beside it names a
    file of the project, and under it sit the two switches that say what an ask

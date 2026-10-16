@@ -34,7 +34,7 @@
   "editor": {
     "ai": "IA",
     "ai_empty": "Pide un fragmento de código o pregunta qué hace el código del editor.",
-    "ai_placeholder": "Pide código o pregunta por el código…",
+    "ai_placeholder": "Pregunta por el código, o nombra un archivo con @",
     "ai_ask": "Preguntar",
     "ai_you": "tú",
     "ai_asking": "preguntando…",
@@ -91,7 +91,19 @@
     "ai_send_output": "la respuesta de la última ejecución",
     "ai_mention": "Referenciar un archivo del proyecto",
     "ai_mention_empty": "Ningún archivo de este proyecto coincide",
-    "ai_placeholder": "Pregunta por el código, o nombra un archivo con @"
+    "logs": "Registros",
+    "logs_file": "el archivo de registro",
+    "logs_none": "no hay archivos de registro",
+    "logs_level": "nivel",
+    "logs_level_all": "todos",
+    "logs_search": "Buscar en las entradas",
+    "logs_follow": "Seguir",
+    "logs_follow_description": "volver a leerlo cada {seconds} segundos",
+    "logs_interval": "cada cuánto se lee",
+    "logs_read": "Volver a leerlo",
+    "logs_empty": "No hay archivos de registro en {dir}.",
+    "logs_no_entries": "No coincide nada.",
+    "logs_read_of": "se han leído los últimos {read} KB de {size} KB"
   },
   "preference": {
     "preferences": "Preferencias",
@@ -161,7 +173,9 @@
     "mcp_tool_list_history": "lista las ejecuciones que ha guardado una conexión",
     "mcp_tool_read_run": "lee una ejecución guardada y lo que devolvió",
     "shortcut_ai": "Panel de IA",
-    "shortcut_ai_description": "abrir el panel de IA y poner el cursor en su campo"
+    "shortcut_ai_description": "abrir el panel de IA y poner el cursor en su campo",
+    "log_dir": "Archivos de registro",
+    "log_dir_description": "dónde los guarda un proyecto, relativo a su directorio — Laravel escribe en storage/logs"
   },
   "ok": "Aceptar",
   "cancel": "Cancelar",

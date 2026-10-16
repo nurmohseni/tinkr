@@ -34,7 +34,7 @@
   "editor": {
     "ai": "KI",
     "ai_empty": "Frag nach einem Snippet oder frag, was der Code im Editor tut.",
-    "ai_placeholder": "Frag nach Code oder frag zum Code…",
+    "ai_placeholder": "Frag zum Code, oder nenne mit @ eine Datei",
     "ai_ask": "Fragen",
     "ai_you": "du",
     "ai_asking": "fragt…",
@@ -91,7 +91,19 @@
     "ai_send_output": "die Antwort des letzten Laufs",
     "ai_mention": "Eine Projektdatei referenzieren",
     "ai_mention_empty": "Keine Datei dieses Projekts passt dazu",
-    "ai_placeholder": "Frag zum Code, oder nenne mit @ eine Datei"
+    "logs": "Logs",
+    "logs_file": "die Logdatei",
+    "logs_none": "keine Logdateien",
+    "logs_level": "Stufe",
+    "logs_level_all": "alle",
+    "logs_search": "Die Einträge durchsuchen",
+    "logs_follow": "Mitlesen",
+    "logs_follow_description": "alle {seconds} Sekunden neu lesen",
+    "logs_interval": "wie oft gelesen wird",
+    "logs_read": "Neu lesen",
+    "logs_empty": "In {dir} liegen keine Logdateien.",
+    "logs_no_entries": "Nichts passt dazu.",
+    "logs_read_of": "die letzten {read} KB von {size} KB gelesen"
   },
   "preference": {
     "preferences": "Einstellungen",
@@ -161,7 +173,9 @@
     "mcp_tool_list_history": "listet die Läufe, die eine Verbindung behalten hat",
     "mcp_tool_read_run": "liest einen behaltenen Lauf und was dabei herauskam",
     "shortcut_ai": "KI-Panel",
-    "shortcut_ai_description": "das KI-Panel öffnen und den Cursor in seine Eingabe setzen"
+    "shortcut_ai_description": "das KI-Panel öffnen und den Cursor in seine Eingabe setzen",
+    "log_dir": "Logdateien",
+    "log_dir_description": "wo ein Projekt sie ablegt, relativ zu seinem Verzeichnis — Laravel schreibt storage/logs"
   },
   "ok": "OK",
   "cancel": "Abbrechen",

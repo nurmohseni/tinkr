@@ -1,10 +1,15 @@
 import CommandDefaultField from './CommandDefaultField'
+import GeneralField from './GeneralField'
 import LocaleSelectField from './LocaleSelectField'
 import SegmentedField from './SegmentedField'
 import SwitchField from './SwitchField'
 import ThemeField from './ThemeField'
+import {useIntl} from 'react-intl'
 
-const GeneralForm = () => (
+const GeneralForm = () => {
+  const intl = useIntl()
+
+  return (
   <>
     <LocaleSelectField/>
 
@@ -35,7 +40,15 @@ const GeneralForm = () => (
       configKey='confirm_close_session'
     />
     <CommandDefaultField/>
+
+    <GeneralField
+      label={intl.formatMessage({id: 'preference.log_dir'})}
+      description={intl.formatMessage({id: 'preference.log_dir_description'})}
+      configKey='log_dir'
+      placeholder='storage/logs'
+    />
   </>
-)
+  )
+}
 
 export default GeneralForm
