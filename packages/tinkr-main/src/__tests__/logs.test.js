@@ -1,10 +1,39 @@
+jest.mock('child_process', () => ({spawn: jest.fn()}))
+
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const {EventEmitter} = require('events')
+const {spawn} = require('child_process')
 
 const {files, parse, read, dirOf} = require('../services/logs')
 
 const line = (at, environment, level, rest) => `[${at}] ${environment}.${level}: ${rest}`
+
+// what a command run on a connection's machine answers with: a child says what
+// it was going to say once the listeners are on it, which is when a real one says
+// it too
+const answering = (out, code = 0, err = '') => {
+  const child = new EventEmitter()
+
+  child.stdout = new EventEmitter()
+  child.stderr = new EventEmitter()
+  child.kill = jest.fn()
+
+  process.nextTick(() => {
+    if (out) {
+      child.stdout.emit('data', out)
+    }
+
+    if (err) {
+      child.stderr.emit('data', err)
+    }
+
+    child.emit('close', code)
+  })
+
+  return child
+}
 
 describe('what the lines of a log are', () => {
   test('is one entry per header, with the environment and the level of it', () => {
@@ -161,5 +190,98 @@ describe('the log files of a connection', () => {
 
     // the name may be a connection's own file, and not a path to another one
     expect(read({path: root, is_over_ssh: false}, 'evo-2026-10-07.log').size).toBeGreaterThan(0)
+  })
+})
+
+describe('the log files of a connection that keeps them on another machine', () => {
+  const connection = {
+    path: '/var/www/app',
+    is_over_ssh: true,
+    ssh_server: '192.168.1.1',
+    ssh_user: 'root',
+  }
+
+  beforeEach(() => spawn.mockReset())
+
+  test('are listed by that machine, in the shape the picker reads', async () => {
+    spawn.mockImplementation(() => answering('laravel.log\t1024\t1000\nevo-2026-10-07.log\t2048\t3000\n'))
+
+    const {dir, files: found} = await files(connection)
+
+    expect(dir).toBe('/var/www/app/storage/logs')
+    expect(found).toEqual([
+      {name: 'evo-2026-10-07.log', size: 2048, at: 3000},
+      {name: 'laravel.log', size: 1024, at: 1000},
+    ])
+
+    const [command, args] = spawn.mock.calls[0]
+
+    expect(command).toBe('ssh')
+    expect(args).toContain('root@192.168.1.1')
+    expect(args[args.length - 1]).toContain("cd '/var/www/app' && php -r")
+  })
+
+  test('are none when the machine has none there', async () => {
+    spawn.mockImplementation(() => answering(''))
+
+    expect(await files(connection)).toEqual({dir: '/var/www/app/storage/logs', files: []})
+  })
+
+  test('are none when the machine does not answer', async () => {
+    spawn.mockImplementation(() => answering('', 255, 'Permission denied (publickey).'))
+
+    expect(await files(connection)).toEqual({dir: '/var/www/app/storage/logs', files: []})
+  })
+
+  test('are read from the end, as the local ones are', async () => {
+    const text = `${line('2026-08-27 11:10:52', 'local', 'INFO', 'laravel.log')}\n`
+
+    spawn.mockImplementation(() => answering(JSON.stringify({size: Buffer.byteLength(text), text})))
+
+    expect(await read(connection, 'laravel.log')).toEqual({
+      file: 'laravel.log',
+      size: Buffer.byteLength(text),
+      read: Buffer.byteLength(text),
+      entries: [
+        {
+          at: '2026-08-27 11:10:52',
+          environment: 'local',
+          level: 'info',
+          message: 'laravel.log',
+          details: '',
+        },
+      ],
+    })
+  })
+
+  test('are read as a tail, with the half-read line at the front dropped', async () => {
+    const many = Array.from({length: 400}, (unused, at) => line('2026-08-27 11:10:52', 'local', 'INFO', `entry ${at} `.padEnd(60, '.')))
+    const whole = many.join('\n')
+
+    spawn.mockImplementation(() => answering(JSON.stringify({size: Buffer.byteLength(whole), text: whole.slice(-2048)})))
+
+    const answer = await read(connection, 'big.log', 2048)
+
+    expect(answer.size).toBe(Buffer.byteLength(whole))
+    expect(answer.read).toBe(2048)
+    expect(answer.entries.every(entry => entry.message.startsWith('entry '))).toBe(true)
+    expect(answer.entries.length).toBeLessThan(400)
+    expect(answer.entries[answer.entries.length - 1].message.startsWith('entry 399')).toBe(true)
+  })
+
+  test('cannot be read by a name that is a path, over ssh either', () => {
+    expect(() => read(connection, '../storage/logs/laravel.log')).toThrow(/is not a log file/)
+  })
+
+  test('are gone when the machine says the file is not there', async () => {
+    spawn.mockImplementation(() => answering('', 1))
+
+    await expect(read(connection, 'gone.log')).rejects.toThrow(/is not there any more/)
+  })
+
+  test('are gone when the machine answers with something that is not a log', async () => {
+    spawn.mockImplementation(() => answering('php: command not found'))
+
+    await expect(read(connection, 'gone.log')).rejects.toThrow(/is not there any more/)
   })
 })

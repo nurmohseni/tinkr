@@ -27,7 +27,7 @@ const {complete, ask, check} = require('./services/ai')
 const {providers} = require('./aiProviders')
 const {checkForUpdates, downloadUpdate, installUpdate} = require('./updater')
 const {info: mcpInfo, configureClient} = require('./services/mcp')
-const {filesFor, attachmentsFor} = require('./services/files')
+const {filesFor, attachmentsFor} = require('./services/project')
 const {files: logFiles, read: readLog} = require('./services/logs')
 const {getEditorConnection} = require('./processes')
 
@@ -124,15 +124,6 @@ ipcMain.on('openPreference', () => {
   createPreferenceWindow()
 })
 
-/**
- * The directory a session of this connection runs in, when it runs on this
- * machine: a project over ssh is not one whose files are here to read.
- *
- * @param {Record<String, any>} connection
- * @return {String|null}
- */
-const projectOf = connection => (connection && !connection.is_over_ssh ? connection.path : null)
-
 ipcMain.on('mcpInfo', event => {
   event.returnValue = mcpInfo()
 })
@@ -187,17 +178,17 @@ ipcMain.handle('aiAsk', async (event, connectionId, request) => {
   // an `@` in the prompt names a file of the project the connection runs in, and
   // the content goes into the request here rather than through the window
   return await ask(Object.assign({}, request, {
-    files: attachmentsFor(projectOf(connection), request.prompt),
+    files: await attachmentsFor(connection, request.prompt),
   }))
 })
 
 ipcMain.handle('logFiles', async (event, connectionId) => {
   const connection = getEditorConnection(connectionId)
 
-  // the viewer reads a file on this machine, and a project over ssh keeps its
-  // logs on the other one
-  if (!connection || connection.is_over_ssh) {
-    return {dir: '', files: [], ssh: true}
+  // the viewer reads a file on the machine the project runs on: the service asks
+  // this one for a local project and the other one for a project over ssh
+  if (!connection) {
+    return {dir: '', files: []}
   }
 
   return logFiles(connection)
@@ -210,7 +201,7 @@ ipcMain.handle('logRead', async (event, connectionId, name, bytes) => {
 ipcMain.handle('aiFiles', async (event, connectionId, typed) => {
   const connection = getEditorConnection(connectionId)
 
-  return filesFor(projectOf(connection), typed)
+  return await filesFor(connection, typed)
 })
 
 ipcMain.handle('aiCheck', async event => {
