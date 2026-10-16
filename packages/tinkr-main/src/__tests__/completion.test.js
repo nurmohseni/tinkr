@@ -6,9 +6,19 @@ const path = require('path')
 // a test has no session to boot
 jest.mock('../createBackgroundPty', () => ({ensureBackgroundPty: () => {}}))
 
+// the project of a connection over ssh is read by a command of its own, and a
+// test has no machine to reach: what another machine would answer is what this
+// answers with
+jest.mock('../remote', () => ({
+  exec: jest.fn(),
+  quoted: jest.requireActual('../remote').quoted,
+}))
+
 const {classIndex, clearClassIndex} = require('tinkr-core')
 
 const {phpCompletions, reflectionCode} = require('../completion')
+const {prefetchIndex, refreshIndex, clearRemoteIndexes} = require('../services/project')
+const {exec} = require('../remote')
 const {getBackgroundPtyProcess, setBackgroundPtyProcess, setEditorConnection} = require('../processes')
 
 const write = (file, content) => {
@@ -57,22 +67,24 @@ const teatro = () => project([
 ])
 
 /**
- * A session that answers the two questions a completion puts to it, the way the
- * form reads them: a class is reflected for its methods, and the project the
- * session runs in is described as the composer files it holds.
+ * A session that answers what only a session can: the reflection of a class it
+ * has loaded. The project of a connection is put to the machine it reaches with
+ * a command of its own (see services/project), so a session is asked nothing
+ * about it.
  *
  * @param {String} answer what a reflection of a class comes back as
- * @param {String} [project] what the project of the session is, for a connection
- * over ssh; a local connection is read from this machine and never asks
  */
-const session = (answer, project = 'null') => ({
+const session = answer => ({
   asked: [],
   jsonResult(code) {
     this.asked.push(code)
 
-    return Promise.resolve(code.includes('ReflectionClass') ? answer : project)
+    return Promise.resolve(answer)
   },
 })
+
+// what the machine of a connection over ssh prints for its project
+const described = declared => JSON.stringify({classmap: [], psr4: {}, files: [], ...declared})
 
 const methods = list => JSON.stringify({class: 'App\\Models\\Teatro', methods: list})
 
@@ -103,7 +115,11 @@ describe('the completion of a php snippet', () => {
 
   afterEach(() => {
     clearClassIndex()
+    clearRemoteIndexes()
+    exec.mockReset()
     setBackgroundPtyProcess(connection.id, null)
+    setBackgroundPtyProcess('remote', null)
+    setEditorConnection('remote', null)
   })
 
   test('names the classes a typed prefix is the beginning of', async () => {
@@ -121,6 +137,8 @@ describe('the completion of a php snippet', () => {
       },
       {type: 'class', label: 'Teatro', detail: 'App\\Models\\Teatro', filter: 'Teatro', insert: 'Teatro'},
     ])
+    // a local project is read here, in the moment it is asked about
+    expect(exec).not.toHaveBeenCalled()
   })
 
   test('names a class the snippet is spelling its namespace out for', async () => {
@@ -340,110 +358,140 @@ describe('the completion of a php snippet', () => {
     expect(await phpCompletions(undefined, {})).toEqual({items: []})
   })
 
-  test('asks the session for the project it runs in, and not this machine\'s copy of one', async () => {
-    // this machine has a project under the path the connection was saved with,
-    // which is another checkout: the session runs in the project on the machine
-    // the connection reaches
-    setEditorConnection('remote', {id: 'remote', path: teatro(), is_over_ssh: true})
+  test('reads nothing for a keystroke, and answers out of what a session read', async () => {
+    const remote = {id: 'remote', path: '/var/www/app', is_over_ssh: true}
 
-    const pty = session(methods([]), JSON.stringify({
-      classmap: ['App\\Models\\Actor'],
-      psr4: {'App\\': ['app']},
-      files: ['app/Models/Actor.php'],
-    }))
+    setEditorConnection('remote', remote)
+    exec.mockResolvedValue({stdout: described({classmap: ['App\\Models\\Actor']}), stderr: '', code: 0})
 
-    setBackgroundPtyProcess('remote', pty)
+    // nothing has been read yet: a keystroke suggests nothing and sets nothing
+    // going, because a keystroke is not what walks another machine
+    expect((await phpCompletions('remote', at('Act'))).items).toEqual([])
+    expect(exec).not.toHaveBeenCalled()
 
-    const {items} = await phpCompletions('remote', at('Act'))
+    // a session comes up, and reads the project before anything is typed
+    await prefetchIndex(remote)
 
-    expect(items.map(item => item.detail)).toEqual(['App\\Models\\Actor'])
-    expect(pty.asked).toHaveLength(1)
-    expect(pty.asked[0]).toContain('autoload_classmap')
-    expect(pty.asked[0]).not.toContain('ReflectionClass')
-
-    // a name of this machine's copy is not one the session's project declares
-    expect((await phpCompletions('remote', at('Tea'))).items).toEqual([])
-    expect(pty.asked).toHaveLength(1)
-
-    setBackgroundPtyProcess('remote', null)
+    expect((await phpCompletions('remote', at('Act'))).items.map(item => item.detail))
+      .toEqual(['App\\Models\\Actor'])
+    expect(exec).toHaveBeenCalledTimes(1)
+    expect(exec.mock.calls[0][1]).toContain("php -r '")
   })
 
-  test('resolves the class of a `::` over ssh through the project the session answered', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+  test('answers a keystroke while the project is being read, and reads it once', async () => {
+    const remote = {id: 'remote', path: '/var/www/app', is_over_ssh: true}
 
-    const pty = session(methods([where]), JSON.stringify({
-      classmap: ['App\\Models\\Teatro'],
-      psr4: {},
-      files: [],
+    setEditorConnection('remote', remote)
+
+    // the read of the project is one command that has not answered yet
+    let answered = null
+
+    exec.mockImplementation(() => new Promise(resolve => {
+      answered = () => resolve({stdout: described({classmap: ['App\\Models\\Actor']}), stderr: '', code: 0})
     }))
 
+    const reading = prefetchIndex(remote)
+
+    // what is typed while the project is being read: nothing to suggest yet, and
+    // nothing set going for it — ten keystrokes are ten of these and still one
+    // command
+    for (const typed of ['A', 'Ac', 'Act']) {
+      expect((await phpCompletions('remote', at(typed))).items).toEqual([])
+    }
+    expect(exec).toHaveBeenCalledTimes(1)
+
+    answered()
+    await reading
+
+    // the keystroke after the answer: what has been read, and still one command
+    expect((await phpCompletions('remote', at('Act'))).items.map(item => item.detail))
+      .toEqual(['App\\Models\\Actor'])
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  test('shows the classes the machine of the connection answered, and none of this machine\'s copy', async () => {
+    // this machine has a project under the path the connection was saved with,
+    // which is another checkout: the project the connection is about is the one
+    // the machine it reaches holds
+    const remote = {id: 'remote', path: teatro(), is_over_ssh: true}
+
+    setEditorConnection('remote', remote)
+    exec.mockResolvedValue({
+      stdout: described({classmap: ['App\\Models\\Actor'], files: ['app/Models/Actor.php']}),
+      stderr: '',
+      code: 0,
+    })
+
+    await prefetchIndex(remote)
+
+    expect((await phpCompletions('remote', at('Act'))).items.map(item => item.detail))
+      .toEqual(['App\\Models\\Actor'])
+
+    // a name of this machine's copy is not one the connection's project declares
+    expect((await phpCompletions('remote', at('Tea'))).items).toEqual([])
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  test('resolves the class of a `::` over ssh through the project the machine answered', async () => {
+    const remote = {id: 'remote', path: '/var/www/app', is_over_ssh: true}
+
+    setEditorConnection('remote', remote)
+    exec.mockResolvedValue({
+      stdout: described({classmap: ['App\\Models\\Teatro']}),
+      stderr: '',
+      code: 0,
+    })
+
+    const pty = session(methods([where]))
+
     setBackgroundPtyProcess('remote', pty)
+
+    await prefetchIndex(remote)
 
     const {items} = await phpCompletions('remote', at('Teatro::'))
 
     expect(items.map(item => item.label)).toEqual(['where(mixed $column, [mixed $operator])'])
-    // the project first, which is what says what the name stands for, and then
-    // the reflection of the class it stood for
-    expect(pty.asked).toHaveLength(2)
-    expect(pty.asked[0]).toContain('autoload_classmap')
-    expect(pty.asked[1]).toContain(`new \\ReflectionClass('${reflected}')`)
-
-    setBackgroundPtyProcess('remote', null)
-  })
-
-  test('asks the project of a connection over ssh once, however many keystrokes follow', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
-
-    const pty = session(methods([]), JSON.stringify({classmap: ['App\\Models\\Actor'], psr4: {}, files: []}))
-
-    setBackgroundPtyProcess('remote', pty)
-
-    await phpCompletions('remote', at('A'))
-    await phpCompletions('remote', at('Ac'))
-    await phpCompletions('remote', at('Act'))
-
+    // the machine is asked what the project declares, and the session is asked
+    // only what only the session has: the class it has loaded
+    expect(exec).toHaveBeenCalledTimes(1)
     expect(pty.asked).toHaveLength(1)
-
-    setBackgroundPtyProcess('remote', null)
+    expect(pty.asked[0]).toContain(`new \\ReflectionClass('${reflected}')`)
   })
 
-  test('asks the project again of a session a run replaced', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+  test('reads the project again where a run has finished, which is what notices a class added since', async () => {
+    const remote = {id: 'remote', path: '/var/www/app', is_over_ssh: true}
 
-    const first = session(methods([]), JSON.stringify({classmap: ['App\\Models\\Actor'], psr4: {}, files: []}))
+    setEditorConnection('remote', remote)
+    exec.mockResolvedValue({stdout: described({classmap: ['App\\Models\\Actor']}), stderr: '', code: 0})
 
-    setBackgroundPtyProcess('remote', first)
+    await prefetchIndex(remote)
     expect((await phpCompletions('remote', at('Act'))).items).toHaveLength(1)
 
-    // a run replaces the session, and a class can have been added to the project
-    // since, so the new session is asked rather than answered from what the old
-    // one said
-    const second = session(methods([]), JSON.stringify({classmap: ['App\\Models\\Stage'], psr4: {}, files: []}))
+    // a run is what the project on disk is changed by, and the read of it is set
+    // going when the run's value comes back: a class can have been added since
+    exec.mockResolvedValue({stdout: described({classmap: ['App\\Models\\Stage']}), stderr: '', code: 0})
+    await refreshIndex(remote)
 
-    setBackgroundPtyProcess('remote', second)
     expect((await phpCompletions('remote', at('Sta'))).items.map(item => item.detail))
       .toEqual(['App\\Models\\Stage'])
-
-    expect(first.asked).toHaveLength(1)
-    expect(second.asked).toHaveLength(1)
-
-    setBackgroundPtyProcess('remote', null)
+    expect(exec).toHaveBeenCalledTimes(2)
   })
 
-  test('offers nothing, rather than an error, when the session cannot describe its project', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+  test('offers nothing, rather than an error, when the machine cannot describe its project', async () => {
+    const remote = {id: 'remote', path: '/var/www/app', is_over_ssh: true}
 
-    setBackgroundPtyProcess('remote', {
-      jsonResult: () => Promise.reject(new Error('Timeout, try to reconnect!')),
-    })
+    setEditorConnection('remote', remote)
+    exec.mockResolvedValue({stdout: '', stderr: 'Connection to app closed.', code: 255})
+
+    await prefetchIndex(remote)
 
     expect((await phpCompletions('remote', at('Tea'))).items).toEqual([])
-
-    setBackgroundPtyProcess('remote', null)
   })
 
   test('asks for a class over ssh by the name the snippet wrote, which needs no index', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+    const remote = {id: 'remote', path: '/var/www/app', is_over_ssh: true}
+
+    setEditorConnection('remote', remote)
 
     const pty = session(methods([]))
 
@@ -453,8 +501,8 @@ describe('the completion of a php snippet', () => {
 
     expect(pty.asked[0]).toContain(`new \\ReflectionClass('${reflected}')`)
     expect(getBackgroundPtyProcess('remote')).toBe(pty)
-
-    setBackgroundPtyProcess('remote', null)
+    // a name that says where the class is needs no project to be read for it
+    expect(exec).not.toHaveBeenCalled()
   })
 
   test('reads the project once, for the suggestions as well as for a run', async () => {

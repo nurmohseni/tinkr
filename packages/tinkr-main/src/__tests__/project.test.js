@@ -2,19 +2,27 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-// a project is read from the connection's own machine, and a test has no session
-// to boot for the one over ssh
-jest.mock('../createBackgroundPty', () => ({ensureBackgroundPty: () => {}}))
+// a project over ssh is read by a command of its own, and a test has no machine
+// to reach: what another machine would answer is what this answers with
+jest.mock('../remote', () => ({
+  exec: jest.fn(),
+  quoted: jest.requireActual('../remote').quoted,
+}))
 
 const {clearClassIndex} = require('tinkr-core')
 
-const {indexFor, filesFor, attachmentsFor, clearRemoteIndexes} = require('../services/project')
-const {maxFile} = require('../services/files')
+const {exec} = require('../remote')
 const {
-  getBackgroundPtyProcess,
-  setBackgroundPtyProcess,
-  setEditorConnection,
-} = require('../processes')
+  indexFor,
+  readyIndex,
+  prefetchIndex,
+  refreshIndex,
+  filesFor,
+  attachmentsFor,
+  clearRemoteIndexes,
+} = require('../services/project')
+const {maxFile} = require('../services/files')
+const {setBackgroundPtyProcess} = require('../processes')
 
 const write = (file, content) => {
   fs.mkdirSync(path.dirname(file), {recursive: true})
@@ -60,8 +68,9 @@ const orders = () => project([
   ['App\\Models\\OrderLine', 'app/Models/OrderLine.php'],
 ])
 
-// what the php of the index answers with, as the json of the form's value: the
-// paths are the project's own, which is the spelling both machines share
+// what the php of the index prints: the composer files of the project, the paths
+// of its own directories, and the paths as the project spells them, which is the
+// one spelling both machines share
 const described = (declared = {}) => JSON.stringify({
   classmap: [],
   psr4: {'App\\': ['app']},
@@ -69,28 +78,62 @@ const described = (declared = {}) => JSON.stringify({
   ...declared,
 })
 
-// what php answers for a file: its content, base64 encoded
-const encoded = content => JSON.stringify(Buffer.from(content, 'utf8').toString('base64'))
+// what php prints for a file: its content, base64 encoded, which is what keeps
+// one answer to one line of a shell's
+const encoded = content => Buffer.from(content, 'utf8').toString('base64')
 
 /**
- * A session that answers the two questions the project service puts to it: what
- * the composer files of its machine declare, and what a file holds.
+ * The php a command carries, as it was written: `exec` runs it as one word of
+ * the shell's, so the quotes of the php itself come back escaped.
+ *
+ * @param {String} command
+ * @return {String}
+ */
+const phpOf = command => {
+  const [, php = ''] = /^php -r '(.*)'$/s.exec(command) || []
+
+  return php.replace(/'\\''/g, "'")
+}
+
+/**
+ * A machine that answers the questions the project service asks it: what the
+ * composer files of its project declare, and what a file of it holds.
  *
  * @param {Object} [answers]
- * @param {String} [answers.project] the json of the index question
- * @param {Function} [answers.read] what a read of a file answers, given the form
- * value that asks for it
+ * @param {String|null} [answers.project] what the php of the index prints, or
+ * null for a machine that does not answer at all
+ * @param {Function} [answers.read] what a read of a file answers with, given the
+ * php that asks for it, or null for a file it cannot read
  */
-const session = ({reported = 'null', read = () => 'null'} = {}) => ({
+const machine = ({project = 'null', read = () => null} = {}) =>
+  exec.mockImplementation(async (connection, command) => {
+    const php = phpOf(command)
+
+    if (!php.includes('file_get_contents')) {
+      // a machine that is not there, or one without php, says nothing at all,
+      // which is not the same as a project with nothing in it
+      return project === null
+        ? {stdout: '', stderr: 'Connection to app closed.', code: 255}
+        : {stdout: project, stderr: '', code: 0}
+    }
+
+    const content = read(php)
+
+    return content === null
+      ? {stdout: '', stderr: 'No such file', code: 1}
+      : {stdout: content, stderr: '', code: 0}
+  })
+
+/**
+ * A session that records what it is asked: a project is asked of the machine
+ * with a command of its own, so this is what says the session is asked nothing.
+ */
+const session = () => ({
   asked: [],
   jsonResult(code) {
     this.asked.push(code)
 
-    if (code.includes('autoload_classmap')) {
-      return Promise.resolve(reported)
-    }
-
-    return Promise.resolve(code.includes('file_get_contents') ? read(code) : 'null')
+    return Promise.resolve('null')
   },
 })
 
@@ -101,9 +144,8 @@ describe('the project of a connection', () => {
   afterEach(() => {
     clearClassIndex()
     clearRemoteIndexes()
-    setBackgroundPtyProcess('local', null)
+    exec.mockReset()
     setBackgroundPtyProcess('remote', null)
-    setEditorConnection('remote', null)
   })
 
   test('reads the project of a connection on this machine from this machine', async () => {
@@ -115,9 +157,16 @@ describe('the project of a connection', () => {
       path.join(connection.path, 'app/Models/Order.php'),
       path.join(connection.path, 'app/Models/OrderLine.php'),
     ])
-    // there is no session in this test at all, which is the point: a local
-    // project is read here
-    expect(getBackgroundPtyProcess('local')).toBe(undefined)
+    // a local project is a directory of this machine, read here: no machine is
+    // asked anything for it
+    expect(exec).not.toHaveBeenCalled()
+  })
+
+  test('answers the popup of a local project out of the read of it', async () => {
+    const connection = {id: 'local', path: orders(), is_over_ssh: false}
+
+    expect(Array.from(readyIndex(connection).index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(exec).not.toHaveBeenCalled()
   })
 
   test('offers the files of a local project as the project spells them', async () => {
@@ -142,74 +191,164 @@ describe('the project of a connection', () => {
     ])
   })
 
-  test('reads the project of a connection over ssh from its own session', async () => {
+  test('reads the project of a connection over ssh with a command of its own', async () => {
     const connection = {id: 'remote', path: '/var/www/app', is_over_ssh: true}
-
-    setEditorConnection('remote', connection)
-
-    const pty = session({reported: described()})
+    const pty = session()
 
     setBackgroundPtyProcess('remote', pty)
+    machine({project: described()})
 
     const found = await indexFor(connection)
 
     expect(Array.from(found.index.get('order'))).toEqual(['App\\Models\\Order'])
-    expect(pty.asked).toHaveLength(1)
+
+    // one command, run on the machine the connection reaches, and none in the
+    // session the person works in: the walk never occupies their prompt
+    expect(exec).toHaveBeenCalledTimes(1)
+    expect(pty.asked).toEqual([])
+
+    const [asked, command] = exec.mock.calls[0]
+
+    expect(asked).toBe(connection)
+    expect(command).toContain("php -r '")
+    expect(command).toContain('autoload_classmap')
+    expect(command).toContain('autoload_psr4')
+    expect(command).toContain('RecursiveDirectoryIterator')
+    // one line of php, which is one line of the command: what a machine is asked
+    // is one question in a process list, in a log and in a terminal's history
+    expect(command).not.toContain('\n')
+    // the project is the directory the command runs in, which is what exec
+    // gives it, and the one thing both machines mean the same by
+    expect(phpOf(command)).toContain('getcwd()')
   })
 
-  test('asks the session for the composer files of the project it runs in', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+  test('asks the machine once, whatever asks for the project', async () => {
+    const connection = {id: 'remote', is_over_ssh: true}
 
-    const pty = session({reported: described()})
+    machine({project: described()})
 
-    setBackgroundPtyProcess('remote', pty)
-    await indexFor({id: 'remote', is_over_ssh: true})
+    // the read a session starts, before anything is typed
+    const prefetched = prefetchIndex(connection)
 
-    const question = pty.asked[0]
+    // nothing has answered yet, and both of these are handed the read that is
+    // already happening instead of starting one of their own
+    const [forAPrompt, again] = await Promise.all([indexFor(connection), indexFor(connection)])
 
-    expect(question).toContain('autoload_classmap')
-    expect(question).toContain('autoload_psr4')
-    expect(question).toContain('RecursiveDirectoryIterator')
-    // one line, because it is written into the session the way any input is
-    expect(question).not.toContain('\n')
-    // the project of the session, which is where the connection put it
-    expect(question).toContain('getcwd()')
+    expect(exec).toHaveBeenCalledTimes(1)
+    expect(Array.from(forAPrompt.index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(Array.from(again.index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(Array.from((await prefetched).index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(exec).toHaveBeenCalledTimes(1)
   })
 
-  test('asks the project once, and again when a run replaced the session', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+  test('answers the popup out of what has been read, and reads nothing for it', async () => {
+    const connection = {id: 'remote', is_over_ssh: true}
 
-    const first = session({reported: described()})
+    // the popup's question arrives with a keystroke, and a keystroke neither
+    // waits for another machine nor sets it going
+    expect(readyIndex(connection)).toBe(null)
+    expect(exec).not.toHaveBeenCalled()
 
-    setBackgroundPtyProcess('remote', first)
-    await indexFor({id: 'remote', is_over_ssh: true})
-    await indexFor({id: 'remote', is_over_ssh: true})
+    machine({project: described()})
+    await prefetchIndex(connection)
 
-    expect(first.asked).toHaveLength(1)
+    expect(Array.from(readyIndex(connection).index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
 
-    const second = session({reported: described({classmap: ['App\\Models\\Stage']})})
+  test('prefetches a project that has not been read, and reads it no more than once', async () => {
+    const connection = {id: 'remote', is_over_ssh: true}
 
-    setBackgroundPtyProcess('remote', second)
+    machine({project: described()})
+    await prefetchIndex(connection)
 
-    expect(Array.from((await indexFor({id: 'remote', is_over_ssh: true})).index.get('stage')))
-      .toEqual(['App\\Models\\Stage'])
-    expect(second.asked).toHaveLength(1)
+    expect(Array.from(readyIndex(connection).index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(exec).toHaveBeenCalledTimes(1)
+
+    // a session comes up again — a connection opened, or the session a run left
+    // behind — and what has been read is what it is answered with: no second
+    // walk of another machine's filesystem
+    expect(prefetchIndex(connection)).toBe(undefined)
+    expect(prefetchIndex(connection)).toBe(undefined)
+    expect(exec).toHaveBeenCalledTimes(1)
+
+    // and the popup that keystrokes bring is answered out of the same read
+    expect(Array.from(readyIndex(connection).index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  test('reads the project again where a run has finished', async () => {
+    const connection = {id: 'remote', is_over_ssh: true}
+
+    machine({project: described()})
+    await prefetchIndex(connection)
+
+    // the run wrote a class, and what came back is what the project declares now
+    machine({project: described({classmap: ['App\\Models\\Stage']})})
+    const refreshing = refreshIndex(connection)
+
+    // a read is a read: what the project answered before answers until it
+    // answers again, so nothing waiting on it is made to wait for a refresh
+    expect(Array.from(readyIndex(connection).index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(exec).toHaveBeenCalledTimes(2)
+
+    await refreshing
+
+    expect(Array.from(readyIndex(connection).index.get('stage'))).toEqual(['App\\Models\\Stage'])
+    expect(exec).toHaveBeenCalledTimes(2)
+  })
+
+  test('prefetches nothing for a project of this machine', async () => {
+    const connection = {id: 'local', path: orders(), is_over_ssh: false}
+
+    expect(prefetchIndex(connection)).toBe(undefined)
+    expect(refreshIndex(connection)).toBe(undefined)
+    expect(exec).not.toHaveBeenCalled()
+  })
+
+  test('offers nothing at all when the machine cannot describe the project', async () => {
+    const connection = {id: 'remote', is_over_ssh: true}
+
+    // the machine did not answer: no link, no php, or an answer too large to keep
+    machine({project: null})
+    expect(await indexFor(connection)).toBe(null)
+    expect(await filesFor(connection, 'Ord')).toEqual([])
+    expect(await attachmentsFor(connection, '@Order')).toEqual([])
+
+    // it answered with something that is not its answer
+    machine({project: 'not json'})
+    expect(await indexFor(connection)).toBe(null)
+
+    // it answered that the project declares nothing, which is an answer: an empty
+    // index, and not one worth reading again
+    machine({project: 'null'})
+    expect((await indexFor(connection)).index.size).toBe(0)
+    expect(await filesFor(connection, 'Ord')).toEqual([])
+
+    // a silence is asked again, and an answer is kept
+    expect(exec).toHaveBeenCalledTimes(5)
+  })
+
+  test('asks nothing for a connection the app is not showing', async () => {
+    expect(await indexFor(null)).toBe(null)
+    expect(await indexFor(undefined)).toBe(null)
+    expect(readyIndex(null)).toBe(null)
+    expect(prefetchIndex(null)).toBe(undefined)
+    expect(await filesFor(null, 'Order')).toEqual([])
+    expect(await attachmentsFor(null, '@Order')).toEqual([])
+    expect(exec).not.toHaveBeenCalled()
   })
 
   test('reads an answer from another machine with the naming rule, paths and all', async () => {
-    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
-
-    const pty = session({
-      reported: described({
+    machine({
+      project: described({
         classmap: ['App\\Models\\Order', 'Acme\\Gadget'],
         psr4: {'App\\': ['app'], 'Acme\\': ['vendor/acme/src']},
         files: ['app/Models/Order.php', 'app/Models/JustCreated.php', 'vendor/acme/src/Gadget.php'],
       }),
     })
 
-    setBackgroundPtyProcess('remote', pty)
-
-    const found = await indexFor({id: 'remote', is_over_ssh: true})
+    const found = await indexFor({id: 'remote', path: '/var/www/app', is_over_ssh: true})
 
     // a class that came after the classmap, named by the file the walk listed
     expect(Array.from(found.index.get('justcreated'))).toEqual(['App\\Models\\JustCreated'])
@@ -223,57 +362,23 @@ describe('the project of a connection', () => {
     ])
   })
 
-  test('asks nothing for a connection the app is not showing', async () => {
-    expect(await indexFor(null)).toBe(null)
-    expect(await indexFor(undefined)).toBe(null)
-    expect(await filesFor(null, 'Order')).toEqual([])
-    expect(await attachmentsFor(null, '@Order')).toEqual([])
-  })
-
-  test('offers nothing at all when a session cannot describe its project', async () => {
-    const connection = {id: 'remote', is_over_ssh: true}
-
-    setEditorConnection('remote', connection)
-
-    // the session went away mid-question
-    setBackgroundPtyProcess('remote', {jsonResult: () => Promise.reject(new Error('Timeout, try to reconnect!'))})
-    expect(await filesFor(connection, 'Ord')).toEqual([])
-    expect(await attachmentsFor(connection, '@Order')).toEqual([])
-
-    // it answered with something that is not its answer
-    setBackgroundPtyProcess('remote', {jsonResult: () => Promise.resolve('not json')})
-    expect(await indexFor(connection)).toBe(null)
-
-    // it answered with nothing, which is a project with no composer directory
-    setBackgroundPtyProcess('remote', {jsonResult: () => Promise.resolve('null')})
-    expect(await indexFor(connection)).toBe(null)
-  })
-
   test('offers the files of a project over ssh as that project spells them', async () => {
     const connection = {id: 'remote', is_over_ssh: true}
 
-    setEditorConnection('remote', connection)
-
-    setBackgroundPtyProcess('remote', session({
-      reported: described({files: ['app/Models/Order.php', 'app/Support/Helper.php']}),
-    }))
+    machine({project: described({files: ['app/Models/Order.php', 'app/Support/Helper.php']})})
 
     expect(await filesFor(connection, 'Order')).toEqual([
       {name: 'Order', qualified: 'App\\Models\\Order', path: 'app/Models/Order.php'},
     ])
   })
 
-  test('carries the content of a file read through the session', async () => {
+  test('carries the content of a file read through a command of its own', async () => {
     const connection = {id: 'remote', is_over_ssh: true}
 
-    setEditorConnection('remote', connection)
-
-    const pty = session({
-      reported: described({files: ['app/Models/Order.php', 'app/Models/OrderLine.php']}),
-      read: code => encoded(`<?php // the ${readPath(code)}\n`),
+    machine({
+      project: described({files: ['app/Models/Order.php', 'app/Models/OrderLine.php']}),
+      read: php => encoded(`<?php // the ${readPath(php)}\n`),
     })
-
-    setBackgroundPtyProcess('remote', pty)
 
     const attachments = await attachmentsFor(connection, '@Order and @App\\Models\\OrderLine')
 
@@ -292,55 +397,52 @@ describe('the project of a connection', () => {
       },
     ])
 
-    // the project once, then one read per file, and a read knows the path it is
-    // for: nothing is read that the prompt did not name
-    expect(pty.asked).toHaveLength(3)
-    expect(pty.asked[1]).toContain(`file_get_contents('app/Models/Order.php',false,null,0,${maxFile + 1})`)
+    // the project once, then one command per file, and a read knows the path it
+    // is for: nothing is read that the prompt did not name
+    expect(exec).toHaveBeenCalledTimes(3)
+
+    const read = exec.mock.calls[1][1]
+
+    expect(read).toContain(
+      `file_get_contents('\\''app/Models/Order.php'\\'',false,null,0,${maxFile + 1})`,
+    )
+    expect(read).toContain('base64_encode')
   })
 
-  test('leaves out a file the session cannot read', async () => {
+  test('leaves out a file the machine cannot read', async () => {
     const connection = {id: 'remote', is_over_ssh: true}
 
-    setEditorConnection('remote', connection)
-
-    setBackgroundPtyProcess('remote', session({
-      reported: described({files: ['app/Models/Order.php']}),
-      // the file went away between the index and the read
-      read: () => 'null',
-    }))
+    // the file went away between the index and the read, and a read of it exits
+    // with something other than zero
+    machine({project: described({files: ['app/Models/Order.php']})})
 
     expect(await attachmentsFor(connection, '@Order')).toEqual([])
   })
 
   test('reads no more of a file than a prompt carries', async () => {
     const connection = {id: 'remote', is_over_ssh: true}
-
-    setEditorConnection('remote', connection)
-
     const whole = 'x'.repeat(maxFile * 2)
 
-    setBackgroundPtyProcess('remote', session({
-      reported: described({files: ['app/Models/Order.php']}),
+    machine({
+      project: described({files: ['app/Models/Order.php']}),
       // php answers with one byte more than a prompt would carry, which is what
       // says the file was longer
       read: () => encoded(whole.slice(0, maxFile + 1)),
-    }))
+    })
 
     const [attachment] = await attachmentsFor(connection, '@Order')
 
     expect(attachment.code).toBe(`${whole.slice(0, maxFile)}\n// … the rest of this file was not sent`)
   })
 
-  test('offers a name the session names two classes for to nobody', async () => {
+  test('offers a name the machine names two classes for to nobody', async () => {
     const connection = {id: 'remote', is_over_ssh: true}
 
-    setEditorConnection('remote', connection)
-
-    setBackgroundPtyProcess('remote', session({
-      reported: described({
+    machine({
+      project: described({
         classmap: ['App\\Models\\Order', 'Other\\Order'],
       }),
-    }))
+    })
 
     const found = await indexFor(connection)
 

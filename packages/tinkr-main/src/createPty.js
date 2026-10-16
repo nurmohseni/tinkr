@@ -4,6 +4,7 @@ const {Pty} = require('./pty/Pty')
 
 const {getEditorWindow, getPtyProcess, setPtyProcess} = require('./processes')
 const {appendHistory} = require('./services/history')
+const {refreshIndex} = require('./services/project')
 
 /**
  * Boot a session for the connection, and optionally run `code` in it.
@@ -81,6 +82,12 @@ const createPty = (connection, code) => {
       // the run is over, and it is what the connection's history remembers:
       // the list comes back pruned, and it is what the sidebar draws
       win.webContents.send('historyConnection', appendHistory(id, code, result))
+
+      // the project on disk may be what the run changed — a file it wrote, an
+      // autoloader it dumped — and the popup is answered out of what has been
+      // read of it, so the read is set going now, after the run and while nobody
+      // is waiting on it (see services/project)
+      refreshIndex(connection)
     }
   })
 

@@ -1,5 +1,7 @@
 const {BackgroundPty} = require('./pty/BackgroundPty')
 
+const {prefetchIndex} = require('./services/project')
+
 const {
   setBackgroundPtyProcess,
   getBackgroundPtyProcess,
@@ -13,6 +15,14 @@ const createBackgroundPty = connection => {
   pty.connect()
 
   setBackgroundPtyProcess(id, pty)
+
+  // the project of the connection is read here, where a session comes up, and
+  // read with a command of its own rather than through the session (see
+  // services/project): the suggestion popup asks on every keystroke, and a
+  // keystroke is no moment to walk another machine. A project that has been read
+  // is not read again here — the run that changed it refreshes it (see createPty)
+  // — so a session booted beside a read answer costs nobody a walk.
+  prefetchIndex(connection)
 }
 
 /**
