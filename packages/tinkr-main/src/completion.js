@@ -7,7 +7,7 @@ const {
 
 const {getEditorConnection, getBackgroundPtyProcess} = require('./processes')
 const {ensureBackgroundPty} = require('./createBackgroundPty')
-const {indexFor} = require('./services/project')
+const {readyIndex} = require('./services/project')
 
 /**
  * What the editor's suggestion popup shows: the project's class names while a
@@ -15,13 +15,16 @@ const {indexFor} = require('./services/project')
  *
  * Class names come from the connection's project index (see services/project),
  * which is composer's own answer to "what does this project declare", read from
- * this machine for a local project and put to the session for one over ssh.
- * Methods come from the session's reflection instead, because only the session
- * has the class loaded: a `Teatro` that a package or a macro adds to is not in
- * any file the project has, and reflection is exact where reading the source is
- * a guess. Both questions are answered on the machine the connection runs on, so
- * a project over ssh suggests what that machine holds — its own copy, which is
- * the one a run there would load.
+ * this machine for a local project and from the machine that holds a project
+ * over ssh. The popup asks on every keystroke, so it reads an index that has
+ * been read already and never one being read: what is asked of another machine
+ * is a walk of its filesystem, and it is set going where a session comes up, not
+ * where someone types. Methods come from the session's reflection instead,
+ * because only the session has the class loaded: a `Teatro` that a package or a
+ * macro adds to is not in any file the project has, and reflection is exact
+ * where reading the source is a guess. Both questions are answered on the
+ * machine the connection runs on, so a project over ssh suggests what that
+ * machine holds — its own copy, which is the one a run there would load.
  *
  * Two questions the popup never answers: a name that stands for two classes, and
  * the member of a `->`. Nothing knows which of the two classes a snippet means,
@@ -78,7 +81,7 @@ const phpCompletions = async (connectionId, request = {}) => {
       return {items: []}
     }
 
-    return {items: await classNameItems(connection, typedName(before), triggerCharacter)}
+    return {items: classNameItems(connection, typedName(before), triggerCharacter)}
   } catch (e) {
     return {items: []}
   }
@@ -99,16 +102,17 @@ const typedName = before => {
  * @param {Object} connection
  * @param {String} typed
  * @param {String} [triggerCharacter] what monaco was typed to open the popup
- * @return {Promise<Array<Object>>}
+ * @return {Array<Object>} nothing at all for a project that has not been read
+ * yet: a keystroke is not what reads another machine
  */
-const classNameItems = async (connection, typed, triggerCharacter) => {
+const classNameItems = (connection, typed, triggerCharacter) => {
   // `App\Models\` asks for the project's names, but a `:` or a `->` with nothing
   // typed after it does not: an empty popup is better than the alphabet
   if (typed === null || typed === '') {
     return []
   }
 
-  return matchingIn(await indexFor(connection), typed, nameLimit).map(({name, qualified: full}) => ({
+  return matchingIn(readyIndex(connection), typed, nameLimit).map(({name, qualified: full}) => ({
     type: 'class',
     label: name,
     detail: full,
@@ -125,7 +129,7 @@ const classNameItems = async (connection, typed, triggerCharacter) => {
  * @return {Promise<Array<Object>>}
  */
 const methodItems = async (connection, before, written, typed) => {
-  const qualifiedName = await resolveClass(connection, before, written)
+  const qualifiedName = resolveClass(connection, before, written)
 
   if (qualifiedName === null) {
     return []
@@ -146,13 +150,16 @@ const methodItems = async (connection, before, written, typed) => {
 /**
  * The class a written name stands for.
  *
+ * The name is looked up in what has been read of the project, for the same
+ * reason the popup's own names are: a `::` is typed as well.
+ *
  * @param {Object} connection
  * @param {String} before the code before the cursor, stripped
  * @param {String} written
- * @return {Promise<String|null>} the fully qualified name, or null when the name
- * does not say which class it is
+ * @return {String|null} the fully qualified name, or null when the name does not
+ * say which class it is
  */
-const resolveClass = async (connection, before, written) => {
+const resolveClass = (connection, before, written) => {
   const name = written.replace(/^\\+/, '')
 
   // `App\Models\Teatro` already says where the class is
@@ -168,7 +175,7 @@ const resolveClass = async (connection, before, written) => {
     return imported
   }
 
-  const found = await indexFor(connection)
+  const found = readyIndex(connection)
   const candidates = found ? found.index.get(name.toLowerCase()) : null
 
   // one class carries the name, or none does: two are not a guess to make
