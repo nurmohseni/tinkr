@@ -50,6 +50,7 @@ export const installUpdate = api.installUpdate
 export const onUpdateState = api.onUpdateState
 export const onPhpVersion = api.onPhpVersion
 export const aiAsk = api.aiAsk
+export const aiFiles = api.aiFiles
 export const aiCheck = api.aiCheck
 
 export const parsePhpForm = api.parsePhpForm

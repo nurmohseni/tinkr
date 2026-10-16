@@ -17,6 +17,22 @@ const askMaxTokens = 2048
 const maxAnswer = 12000
 const timeout = 30000
 
+// what one part of a request may be worth: an editor holding a whole file, a run
+// that printed a table, a class of four hundred lines. A request is not a codebase
+const maxRequestCode = 12000
+const maxRequestFile = 12000
+const maxRequestOutput = 6000
+
+/**
+ * @param {String} value
+ * @param {Number} length
+ * @param {String} [comment] what to cut with, when what is cut is code
+ * @return {String}
+ */
+const cutTo = (value, length, comment = '') => (value.length > length
+  ? `${value.slice(0, length)}\n${comment}… the rest was not sent`
+  : value)
+
 const system = [
   'You complete PHP code that runs inside a Laravel tinker scratchpad.',
   'Answer with the raw code to insert at the cursor and nothing else:',
@@ -35,7 +51,8 @@ const system = [
  */
 const askSystem = [
   'You help with PHP that runs inside a Laravel tinker scratchpad.',
-  'The code the editor holds is written out for you with every request.',
+  'What the editor holds, what a run last answered, and the project files the',
+  'prompt names are written out with the request when they are sent.',
   'When the user asks for code — to write it, to change it, or to fix it — answer',
   'with the whole snippet in one fenced php block, and say what you have to say',
   'about it outside the block and briefly. That block replaces the editor, so it',
@@ -94,13 +111,73 @@ const buildMessages = ({prefix, suffix}) => [
  * @param {Array<Record<string, string>>} messages
  * @return {{url: String, headers: Record<string, string>, body: Record<string, any>}}
  */
-const askMessages = ({prompt, code, history = []}) => [
-  {role: 'system', content: askSystem},
-  // the last turns, so `now make it a select` is read against what came before
-  // it, and the user's turn carries the code this ask is about
-  ...history.slice(-6),
-  {role: 'user', content: `The editor holds:\n\n\`\`\`php\n${code}\n\`\`\`\n\n${prompt}`},
-]
+/**
+ * What the last run answered, as a request carries it: the value it returned,
+ * what it printed, and the exception that stopped it. This is what a question
+ * like "help me debug this" is about.
+ *
+ * @param {Object} result the run result the window holds
+ * @return {String}
+ */
+const outputBlock = result => {
+  const lines = ['The last run answered:']
+
+  if (result.error) {
+    lines.push(`\nthrew ${result.error.class}: ${result.error.message}`)
+  }
+
+  if (result.value !== null && result.value !== undefined) {
+    const value = JSON.stringify(result.value, null, 2) || ''
+
+    lines.push(`\nvalue:\n\`\`\`json\n${cutTo(value, maxRequestOutput)}\n\`\`\``)
+  }
+
+  if (result.output) {
+    lines.push(`\nprinted:\n\`\`\`\n${cutTo(result.output, maxRequestOutput)}\n\`\`\``)
+  }
+
+  if (lines.length === 1) {
+    lines.push('\nnothing: it returned nothing and printed nothing.')
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * What a request carries besides the prompt: the code the editor holds, the
+ * project files the prompt names, and the last run's answer — each of them only
+ * when the panel was asked to send it.
+ *
+ * @param {{prompt: String, code?: String, history?: Array, output?: Object,
+ *   files?: Array}} ask
+ * @return {Array<Record<String, String>>}
+ */
+const askMessages = ({prompt, code = '', history = [], output = null, files = []}) => {
+  const blocks = [
+    `The editor holds:\n\n\`\`\`php\n${code.trim() === ''
+      ? '// nothing: the editor is empty'
+      : cutTo(code, maxRequestCode, '// ')}\n\`\`\``,
+  ]
+
+  if (files.length) {
+    blocks.push([
+      'The project files the prompt names:',
+      ...files.map(file => `\`\`\`php\n// ${file.path}\n${cutTo(file.code, maxRequestFile, '// ')}\n\`\`\``),
+    ].join('\n\n'))
+  }
+
+  if (output) {
+    blocks.push(outputBlock(output))
+  }
+
+  return [
+    {role: 'system', content: askSystem},
+    // the last turns, so `now make it a select` is read against what came before
+    // it; a failed one is left out by the panel
+    ...history.slice(-6),
+    {role: 'user', content: `${blocks.join('\n\n')}\n\n${prompt}`},
+  ]
+}
 
 /**
  * @param {Record<string, any>} settings
@@ -263,15 +340,16 @@ const complete = async code => {
 /**
  * Ask the configured provider for a snippet, or for what the snippet does.
  *
- * @param {{prompt: String, code: String, history: Array}} ask
+ * @param {{prompt: String, code?: String, history?: Array, output?: Object,
+ *   files?: Array}} ask
  * @return {Promise<{answer: String}>}
  */
-const ask = async ({prompt, code, history}) => {
+const ask = async ({prompt, code, history, output, files}) => {
   const settings = getSettings()
 
   assertConfigured(settings)
 
-  const request = buildRequest(settings, askMessages({prompt, code, history}))
+  const request = buildRequest(settings, askMessages({prompt, code, history, output, files}))
 
   const answer = await send(Object.assign({}, request, {
     body: Object.assign({}, request.body, {max_tokens: askMaxTokens, temperature: 0.2}),
@@ -308,6 +386,7 @@ const check = async () => {
 module.exports = {
   getSettings,
   askMessages,
+  outputBlock,
   ask,
   buildMessages,
   buildRequest,

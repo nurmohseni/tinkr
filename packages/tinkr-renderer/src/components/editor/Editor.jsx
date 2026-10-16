@@ -12,7 +12,8 @@ import {registerPHPSnippetLanguage} from '../../utils/registerPHPSnippetLanguage
 import {registerPHPCompletionProvider} from '../../utils/phpCompletion'
 import {editorFont, watchEditorTheme} from '../../utils/monacoTheme'
 import {documentAtomWithId, isSessionId, writeCodeAtom} from '../../stores/sessions'
-import {applyCodeAtom, runAtom, sizesAtom} from '../../stores/editor'
+import {applyCodeAtom, outputTabIndexAtom, runAtom, sizesAtom} from '../../stores/editor'
+import {aiFocusAtom} from '../../stores/ai'
 import {configAtom} from '../../stores/config'
 import {isMatchShortcut} from '../../utils/isMatchShortcut'
 import useDocumentId from '../../hooks/useDocumentId'
@@ -41,6 +42,8 @@ const Editor = () => {
   const writeCode = useSetAtom(writeCodeAtom)
   const sizes = useAtomValue(sizesAtom)
   const run = useSetAtom(runAtom)
+  const setOutputTab = useSetAtom(outputTabIndexAtom)
+  const setAiFocus = useSetAtom(aiFocusAtom)
   const config = useAtomValue(configAtom)
   const applied = useAtomValue(applyCodeAtom)
   const aiRef = useRef(config)
@@ -108,6 +111,16 @@ const Editor = () => {
         e.preventDefault()
         e.stopPropagation()
         await editor.getAction('run-php-snippet').run()
+        return false
+      }
+
+      if (isMatchShortcut(e.browserEvent, config.shortcut_ai)) {
+        e.preventDefault()
+        e.stopPropagation()
+        // the ai panel is the third view of the output pane, and the shortcut is
+        // for writing in its prompt rather than for looking at it
+        setOutputTab(2)
+        setAiFocus(focus => focus + 1)
         return false
       }
 
@@ -183,7 +196,7 @@ const Editor = () => {
         event.dispose()
       }
     }
-  }, [config.shortcut_run])
+  }, [config.shortcut_run, config.shortcut_ai])
 
   useEffect(() => {
     // 注册 php-snippet

@@ -57,7 +57,8 @@ contextBridge.exposeInMainWorld('api', {
 
   aiProviders: () => ipcRenderer.sendSync('aiProviders'),
   aiComplete: code => ipcRenderer.invoke('aiComplete', code),
-  aiAsk: request => ipcRenderer.invoke('aiAsk', request),
+  aiAsk: request => ipcRenderer.invoke('aiAsk', connectionId(), request),
+  aiFiles: typed => ipcRenderer.invoke('aiFiles', connectionId(), typed),
   aiCheck: () => ipcRenderer.invoke('aiCheck'),
 
   parsePhpForm: code => ipcRenderer.invoke('parsePhpForm', connectionId(), code),

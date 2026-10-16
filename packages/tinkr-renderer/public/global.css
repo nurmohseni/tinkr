@@ -253,6 +253,71 @@ button.tree-nav__row {
     color: var(--text);
 }
 
+/* ---- the ai panel's prompt -----------------------------------------------
+   The prompt is where the shortcut puts the cursor, the `@` beside it names a
+   file of the project, and under it sit the two switches that say what an ask
+   carries. The list the `@` opens is the design's .autocomplete once more, and it
+   opens above the prompt rather than under it because the prompt is at the foot
+   of the window; the panel is named twice over for the same reason the snippet
+   menu is. */
+
+.ai__field {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ai__field .textarea {
+    width: 100%;
+}
+
+.ai__send {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    gap: var(--s2);
+}
+
+.autocomplete.ai__mention {
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: var(--s2);
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.ai__mention .autocomplete__item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s2);
+    width: 100%;
+    border: 0;
+    background: transparent;
+    text-align: left;
+}
+
+.ai__mention .autocomplete__item:hover,
+.ai__mention .autocomplete__item--active {
+    background: var(--primary-soft);
+    color: var(--text);
+}
+
+.ai__context {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--s3);
+    padding: 0 var(--s3) var(--s2);
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+}
+
+.ai__context-label {
+    color: var(--text-faint);
+}
+
 /* ---- the close-session prompt ---------------------------------------------
    The prompt's body says one more thing than the app's other confirmations do:
    under its text sits a "do not show this warning again" checkbox. The design's

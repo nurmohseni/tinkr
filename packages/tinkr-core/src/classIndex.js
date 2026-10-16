@@ -143,7 +143,7 @@ const isDirectory = (child, full) => {
  *
  * @param {String} dir
  * @param {String} namespace the prefix plus the directories walked into
- * @param {Function} add what to call with each name found
+ * @param {Function} add what to call with each name found, and the file it is in
  * @param {Set<String>} seen the directories already walked, by real path
  */
 const walk = (dir, namespace, add, seen = new Set()) => {
@@ -184,7 +184,7 @@ const walk = (dir, namespace, add, seen = new Set()) => {
     const name = child.name.slice(0, -4)
 
     if (/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/.test(name)) {
-      add(namespace + name)
+      add(namespace + name, full)
     }
   }
 }
@@ -210,16 +210,28 @@ const build = projectPath => {
   const classmap = classmapNames(path.join(composer, 'autoload_classmap.php'))
   const vendor = path.join(projectPath, 'vendor')
   const classes = new Map()
+  // the project's own classes with the file each one is in, which is what an
+  // `@` in a prompt is resolved against: a name the vendor directory declared is
+  // nothing anyone is working on
+  const files = []
+  const seenFiles = new Set()
 
-  const add = name => {
+  const add = (name, file) => {
     const key = name.toLowerCase()
 
     if (!classes.has(key)) {
       classes.set(key, name)
     }
+
+    if (!file || seenFiles.has(file) || file.startsWith(vendor + path.sep)) {
+      return
+    }
+
+    seenFiles.add(file)
+    files.push({name: name.split('\\').pop(), qualified: name, file})
   }
 
-  classmap.forEach(add)
+  classmap.forEach(name => add(name, null))
 
   for (const {prefix, dir} of psr4) {
     // the map covers the whole vendor directory, and its names are already in
@@ -230,6 +242,10 @@ const build = projectPath => {
 
     walk(dir, prefix, add)
   }
+
+  // the walk is in the order the file system answered in: a picker for the same
+  // name has to offer the same rows every time
+  files.sort((one, other) => one.name.localeCompare(other.name) || one.qualified.localeCompare(other.qualified))
 
   const index = new Map()
 
@@ -255,7 +271,7 @@ const build = projectPath => {
     .filter(({dir}) => !dir.startsWith(vendor + path.sep))
     .map(({prefix}) => prefix.toLowerCase())
 
-  return {index, own}
+  return {index, own, files}
 }
 
 /**
@@ -380,6 +396,39 @@ const matchingClasses = (projectPath, prefix = '', limit = 40) => {
 }
 
 /**
+ * The project's own php classes with the file each one is in, which is what an
+ * `@` in an AI prompt names.
+ *
+ * @param {String} projectPath
+ * @return {Array<{name: String, qualified: String, file: String}>}
+ */
+const projectFiles = projectPath => {
+  const found = classIndex(projectPath)
+
+  return found ? found.files : []
+}
+
+/**
+ * The project's files whose name is the beginning of what is typed after an `@`,
+ * and the qualified name for the ones written out in full.
+ *
+ * @param {String} projectPath
+ * @param {String} [prefix] what has been typed, without the `@`
+ * @param {Number} [limit]
+ * @return {Array<{name: String, qualified: String, file: String}>}
+ */
+const matchingFiles = (projectPath, prefix = '', limit = 10) => {
+  // `\App\Models\User`, the way php writes a name in full
+  const typed = String(prefix || '').replace(/^\\+/, '').toLowerCase()
+  const matches = projectFiles(projectPath).filter(({name, qualified}) =>
+    name.toLowerCase().startsWith(typed) || qualified.toLowerCase().startsWith(typed))
+
+  return matches.sort((one, other) =>
+    one.name.toLowerCase().localeCompare(other.name.toLowerCase()) ||
+    one.qualified.localeCompare(other.qualified)).slice(0, limit)
+}
+
+/**
  * Forget what has been indexed; the tests build a project per case.
  */
 const clearClassIndex = () => {
@@ -389,6 +438,8 @@ const clearClassIndex = () => {
 module.exports = {
   classIndex,
   matchingClasses,
+  projectFiles,
+  matchingFiles,
   importsFor,
   clearClassIndex,
 }

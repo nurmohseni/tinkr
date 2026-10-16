@@ -16,6 +16,33 @@ const aiThreadAtom = atom([])
 /** Whether an ask is in flight, which is what holds the prompt still. */
 const aiAskingAtom = atom(false)
 
+/**
+ * What an ask carries besides the prompt.
+ *
+ * The code in front of you is what the panel is for, and the answer the last run
+ * gave is what a question like "help me debug this" is about, so both go with
+ * every ask until the panel is told otherwise. The switches that say so sit under
+ * the prompt, and they are about this window's conversation rather than about the
+ * app: neither is a preference.
+ *
+ * What the run answered is handed in by the panel rather than read here: the panel
+ * is the one that has it in front of it, and a thread does not otherwise know what
+ * the editor last ran.
+ */
+const aiContextAtom = atom({code: true, output: true})
+
+const toggleAiContextAtom = atom(null, (get, set, what) => {
+  set(aiContextAtom, context => Object.assign({}, context, {[what]: !context[what]}))
+})
+
+/**
+ * How many times the panel has been asked for its prompt.
+ *
+ * It is a count rather than a flag, so that the shortcut opens the prompt every
+ * time it is pressed and not only the first.
+ */
+const aiFocusAtom = atom(0)
+
 /** What makes one turn the turn a late answer belongs to. */
 let asked = 0
 
@@ -27,9 +54,12 @@ let asked = 0
  * is read against what was answered before it. A turn that failed is left out of
  * that history: an error message is nothing to answer a question against.
  */
-const askAiAtom = atom(null, async (get, set, {documentId, prompt}) => {
+const askAiAtom = atom(null, async (get, set, {documentId, prompt, output}) => {
   const id = ++asked
-  const code = get(documentAtomWithId(documentId))?.code || ''
+  const context = get(aiContextAtom)
+  const code = context.code ? get(documentAtomWithId(documentId))?.code || '' : ''
+  // both are read at the moment of asking: the run in front of you when the
+  // question was written is the run the question is about
   const history = get(aiThreadAtom)
     .filter(turn => !turn.failed)
     .flatMap(({prompt: question, answer}) => [
@@ -57,7 +87,7 @@ const askAiAtom = atom(null, async (get, set, {documentId, prompt}) => {
   set(aiAskingAtom, true)
 
   try {
-    const {answer} = await aiAsk({prompt, code, history})
+    const {answer} = await aiAsk({prompt, code, history, output: context.output ? output : null})
 
     set(aiThreadAtom, replace(Object.assign({answer, asking: false}, parseAnswer(answer))))
   } catch (e) {
@@ -79,6 +109,9 @@ const resolveTurnAtom = atom(null, (get, set, {id, resolution}) => {
 export {
   aiThreadAtom,
   aiAskingAtom,
+  aiContextAtom,
+  toggleAiContextAtom,
+  aiFocusAtom,
   askAiAtom,
   resolveTurnAtom,
 }

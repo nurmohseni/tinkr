@@ -4,7 +4,7 @@ jest.mock('electron-store', () => class Store {
 })
 
 const {providers} = require('../aiProviders')
-const {buildMessages, askMessages, buildRequest, readCompletion, clean} = require('../services/ai')
+const {buildMessages, askMessages, outputBlock, buildRequest, readCompletion, clean} = require('../services/ai')
 
 const settings = extra => Object.assign({
   provider: 'openai',
@@ -50,6 +50,62 @@ describe('test askMessages', () => {
     expect(messages[1].role).toBe('user')
     expect(messages[1].content).toContain('$x = 1;')
     expect(messages[1].content).toContain('make it a select')
+  })
+
+  test('should carry what the last run answered, when the panel was asked to', () => {
+    const messages = askMessages({
+      prompt: 'why did it fail?',
+      code: '$x = 1;',
+      output: {
+        value: null,
+        error: {class: 'RuntimeException', message: 'boom'},
+        output: 'before it threw',
+      },
+    })
+
+    expect(messages[1].content).toContain('The last run answered:')
+    expect(messages[1].content).toContain('threw RuntimeException: boom')
+    expect(messages[1].content).toContain('printed:')
+    expect(messages[1].content).toContain('before it threw')
+    expect(messages[1].content).toContain('why did it fail?')
+  })
+
+  test('should carry the value a run returned as json', () => {
+    expect(outputBlock({value: {id: 1, name: 'ada'}, error: null, output: ''}))
+      .toContain('"name": "ada"')
+
+    expect(outputBlock({value: 3, error: null, output: ''})).toContain('3')
+    expect(outputBlock({value: null, error: null, output: ''})).toContain('returned nothing')
+  })
+
+  test('should carry the project files the prompt names', () => {
+    const messages = askMessages({
+      prompt: 'explain @App\\Providers\\AppServiceProvider',
+      code: '',
+      files: [{
+        name: 'AppServiceProvider',
+        qualified: 'App\\Providers\\AppServiceProvider',
+        path: 'app/Providers/AppServiceProvider.php',
+        code: '<?php\nclass AppServiceProvider {}',
+      }],
+    })
+
+    expect(messages[1].content).toContain('The project files the prompt names:')
+    expect(messages[1].content).toContain('// app/Providers/AppServiceProvider.php')
+    expect(messages[1].content).toContain('class AppServiceProvider {}')
+  })
+
+  test('should say that the editor is empty when it is not sent', () => {
+    const messages = askMessages({prompt: 'what is a macro?', code: ''})
+
+    expect(messages[1].content).toContain('// nothing: the editor is empty')
+  })
+
+  test('should cut what is too big to send rather than posting a codebase', () => {
+    const messages = askMessages({prompt: 'look', code: '<?php\n' + '// a line of it\n'.repeat(4000)})
+
+    expect(messages[1].content).toContain('// … the rest was not sent')
+    expect(messages[1].content.length).toBeLessThan(14000)
   })
 
   test('should read an ask against the turns before it', () => {

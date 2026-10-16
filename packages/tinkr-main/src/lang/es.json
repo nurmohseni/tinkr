@@ -85,7 +85,13 @@
     "history_clear_content": "Se olvidará el código que se ejecutó, cuándo y qué devolvió. Nada más cambia, y no se puede recuperar.",
     "php_missing_title": "Aquí no respondió ningún php",
     "php_missing_content": "Esta conexión no respondió a `php -v`, así que puede que tinker no funcione en ella. En el terminal puedes ver qué dijo.",
-    "php_run_anyway": "Ejecutar tinker igualmente"
+    "php_run_anyway": "Ejecutar tinker igualmente",
+    "ai_send_with": "Enviar con",
+    "ai_send_code": "el código del editor",
+    "ai_send_output": "la respuesta de la última ejecución",
+    "ai_mention": "Referenciar un archivo del proyecto",
+    "ai_mention_empty": "Ningún archivo de este proyecto coincide",
+    "ai_placeholder": "Pregunta por el código, o nombra un archivo con @"
   },
   "preference": {
     "preferences": "Preferencias",
@@ -153,7 +159,9 @@
     "mcp_tool_list_snippets": "lista los snippets guardados de una conexión",
     "mcp_tool_save_snippet": "guarda código como snippet de una conexión",
     "mcp_tool_list_history": "lista las ejecuciones que ha guardado una conexión",
-    "mcp_tool_read_run": "lee una ejecución guardada y lo que devolvió"
+    "mcp_tool_read_run": "lee una ejecución guardada y lo que devolvió",
+    "shortcut_ai": "Panel de IA",
+    "shortcut_ai_description": "abrir el panel de IA y poner el cursor en su campo"
   },
   "ok": "Aceptar",
   "cancel": "Cancelar",

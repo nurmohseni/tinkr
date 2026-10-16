@@ -2,7 +2,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const {classIndex, matchingClasses, importsFor, clearClassIndex} = require('../classIndex')
+const {classIndex, matchingClasses, importsFor, projectFiles, matchingFiles, clearClassIndex} = require('../classIndex')
 
 const write = (file, content) => {
   fs.mkdirSync(path.dirname(file), {recursive: true})
@@ -256,6 +256,43 @@ describe('the project class index', () => {
     // a prefix of nothing is the whole project, and the popup holds what it was
     // asked to hold
     expect(matchingClasses(root, '')).toHaveLength(40)
+  })
+
+  test('names the project\'s own files for an `@`, and none of the vendor directory', () => {
+    const root = project({
+      classes: [['App\\Models\\Order', 'app/Models/Order.php']],
+      prefixes: [['App\\\\', "$baseDir . '/app'"], ['Vendor\\\\Package\\\\', "$vendorDir . '/package/src'"]],
+      vendor: ['vendor/package/src/Thing.php'],
+    })
+
+    const files = projectFiles(root)
+
+    expect(files.map(one => one.qualified)).toEqual(['App\\Models\\Order'])
+    expect(files[0].file).toBe(path.join(root, 'app', 'Models', 'Order.php'))
+    expect(files[0].name).toBe('Order')
+
+    // a short name, and a namespace that names the one meant when two share it
+    expect(matchingFiles(root, 'Ord').map(one => one.qualified)).toEqual(['App\\Models\\Order'])
+    expect(matchingFiles(root, 'App\\Models').map(one => one.qualified)).toEqual(['App\\Models\\Order'])
+    expect(matchingFiles(root, 'Nothing')).toEqual([])
+  })
+
+  test('offers the files a name is the beginning of in the same order every time', () => {
+    const classes = Array.from({length: 12}, (unused, at) => [`App\\Models\\Order${at}`, `app/Models/Order${at}.php`])
+    const root = project({classes, prefixes: [['App\\\\', "$baseDir . '/app'"]]})
+
+    const files = matchingFiles(root, 'Order', 5)
+
+    expect(files).toHaveLength(5)
+    expect(files.map(one => one.name))
+      .toEqual(['Order0', 'Order1', 'Order10', 'Order11', 'Order2'])
+  })
+
+  test('has no files to offer when the project has no composer directory', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-nocomposer-files-'))
+
+    expect(projectFiles(root)).toEqual([])
+    expect(matchingFiles(root, 'Order')).toEqual([])
   })
 
   test('has no names to suggest when the project has no composer directory', () => {
