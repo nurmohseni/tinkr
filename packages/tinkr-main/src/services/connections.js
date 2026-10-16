@@ -179,8 +179,10 @@ const inputConnection = (id, code) => {
  *
  * @param {String} id
  * @param {String} code
+ * @param {String} [guard] `rollback` or `commit`, for a run guarded by a
+ *   transaction (see runResult.guardArm)
  */
-const runConnection = (id, code) => {
+const runConnection = (id, code, guard = null) => {
   const connection = getEditorConnection(id)
 
   if (!connection) {
@@ -205,7 +207,7 @@ const runConnection = (id, code) => {
     win.webContents.send('reconnectConnection')
   }
 
-  createPty(connection, code)
+  createPty(connection, code, guard)
 }
 
 /**

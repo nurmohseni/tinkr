@@ -1,6 +1,7 @@
 const {ipcMain} = require('electron')
 
 const {selectDirectory, selectFile} = require('./utils/selectFileOrDirectory')
+const {saveFile} = require('./utils/saveFile')
 const {allLocales} = require('./utils/allLocales')
 const {quickConnection} = require('./constants')
 const {getIntlConfig} = require('./locale')
@@ -37,6 +38,10 @@ ipcMain.on('selectDirectory', (event, defaultPath) => {
 
 ipcMain.on('selectFile', (event, defaultPath) => {
   event.returnValue = selectFile(defaultPath)
+})
+
+ipcMain.on('saveFile', (event, defaultPath, contents) => {
+  event.returnValue = saveFile(defaultPath, contents)
 })
 
 ipcMain.on('setLocale', (event, lang) => {
@@ -100,8 +105,8 @@ ipcMain.on('inputConnection', (event, id, code) => {
   inputConnection(id, code)
 })
 
-ipcMain.on('runConnection', (event, id, code) => {
-  runConnection(id, code)
+ipcMain.on('runConnection', (event, id, code, guard) => {
+  runConnection(id, code, guard)
 })
 
 ipcMain.on('closeConnection', async (event, id) => {
