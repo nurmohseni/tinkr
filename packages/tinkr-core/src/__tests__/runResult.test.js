@@ -171,8 +171,10 @@ describe('the run payload', () => {
     expect(run.code).toContain('if(@class_alias($tinkr_class,$tinkr_name)){$tinkr_imported[$tinkr_name]=$tinkr_class;}')
     // an import that cannot be made is dropped, and the run goes on
     expect(run.code).toContain('catch(\\Throwable $tinkr_import_failure){}')
-    // the envelope says what was imported, next to the value and the error
-    expect(run.code).toContain("'error'=>$tinkr_error,'imported'=>(object)$tinkr_imported")
+    // the envelope says what was imported, in the same payload as the value and
+    // the error: the keys are added to, so this reads from the encode instead of
+    // pinning what sits next to what
+    expect(run.code.slice(run.code.indexOf('json_encode(['))).toContain("'imported'=>(object)$tinkr_imported")
     expect(run.code.indexOf('$tinkr_imported=[];')).toBeLessThan(run.code.indexOf('eval('))
     expect(run.code.indexOf('base64_decode(')).toBeLessThan(run.code.indexOf('$tinkr_imported=[];'))
   })
@@ -202,5 +204,112 @@ describe('the run payload', () => {
     const {result} = filter.push(envelope({value: 1, error: null, imported: {Order: 'App\\Models\\Order'}}))
 
     expect(result).toEqual({value: 1, error: null, imported: {Order: 'App\\Models\\Order'}})
+  })
+})
+
+describe('the transaction guard', () => {
+  // the markers are a fresh one per run, and each is printed in two pieces so
+  // the shell echoing the command back cannot show it whole: two wrappers are
+  // compared with both pieces of both markers taken out of the way
+  const unwrap = run => run.code
+    .split(run.marker.slice(4)).join('MARKER_TAIL')
+    .split(run.marker.slice(0, 4)).join('MARKER_HEAD')
+    .split(run.start.slice(4)).join('START_TAIL')
+    .split(run.start.slice(0, 4)).join('START_HEAD')
+
+  test('is not sent when no guard is asked for', () => {
+    const run = wrapRun('$order = Order::first();')
+
+    expect(run.code).not.toContain('$tinkr_tx_')
+    expect(run.code.slice(run.code.indexOf('json_encode(['))).not.toContain("'transaction'=>")
+  })
+
+  test('a mode it does not know is no guard at all', () => {
+    const source = '$order = Order::first();'
+
+    expect(unwrap(wrapRun(source, {}, 'nonsense'))).toBe(unwrap(wrapRun(source)))
+    expect(unwrap(wrapRun(source, {}, true))).toBe(unwrap(wrapRun(source)))
+    expect(unwrap(wrapRun(source, {}, ''))).toBe(unwrap(wrapRun(source)))
+  })
+
+  test('opens the transaction after the snippet is split and before it is evaluated', () => {
+    const run = wrapRun('$a = 1;\n$b = 2;', {}, 'rollback')
+
+    expect(run.code).toContain("$tinkr_tx_mode='rollback';")
+    expect(run.code).toContain('$tinkr_db->beginTransaction();$tinkr_tx_armed=true;')
+    // everything the run sends is inside it: the transaction is open before the
+    // first statement is evaluated and closed after the last one
+    expect(run.code.indexOf('beginTransaction()'))
+      .toBeLessThan(run.code.indexOf('foreach($tinkr_stmts as $tinkr_one)'))
+    expect(run.code.indexOf('foreach($tinkr_stmts as $tinkr_one)'))
+      .toBeLessThan(run.code.indexOf('$tinkr_db->rollBack()'))
+    // the report counts the statements the guard held out of the listener that
+    // sees them, so the tally is there before the transaction is opened
+    expect(run.code.indexOf('$tinkr_query_connections=[];'))
+      .toBeLessThan(run.code.indexOf('beginTransaction()'))
+  })
+
+  test('takes a dry run back and keeps the run the pane offered to apply', () => {
+    const dry = wrapRun('1;', {}, 'rollback')
+    const kept = wrapRun('1;', {}, 'commit')
+
+    expect(dry.code).toContain("$tinkr_tx_mode='rollback';")
+    expect(kept.code).toContain("$tinkr_tx_mode='commit';")
+    // one word is the whole difference between the two wrappers
+    expect(unwrap(dry).split("'rollback'").join("'commit'")).toBe(unwrap(kept))
+  })
+
+  test('refuses the run when the guard cannot be armed', () => {
+    const run = wrapRun('$order = Order::first();', {}, 'rollback')
+
+    // the statements are dropped, so nothing is evaluated and nothing can have
+    // been changed by a run that promised to be undone
+    expect(run.code).toContain('if(!$tinkr_tx_armed){$tinkr_stmts=[];')
+    expect(run.code).toContain("'the transaction guard could not be armed: '.$tinkr_tx_error")
+    // a session with no database to guard is the case it is written for, and a
+    // connection that will not begin a transaction is the other one
+    expect(run.code).toContain("if(!function_exists('app')||!app()->bound('db'))")
+    expect(run.code).toContain('$tinkr_db->beginTransaction();$tinkr_tx_armed=true;}')
+    expect(run.code).toContain('catch(\\Throwable $tinkr_tx_failure){')
+  })
+
+  test('closes the transaction either way, and reports how', () => {
+    const run = wrapRun('1;', {}, 'rollback')
+
+    // a run that threw is still a dry run, so the close is outside the catch the
+    // statements are evaluated in
+    expect(run.code).toContain("$tinkr_tx_outcome='failed';if($tinkr_tx_armed){try{")
+    expect(run.code).toContain("if($tinkr_tx_mode==='commit'){$tinkr_db->commit();$tinkr_tx_outcome='committed';}")
+    expect(run.code).toContain("else{$tinkr_db->rollBack();$tinkr_tx_outcome='rolledBack';}")
+    // what the close threw over travels as its own message: the sentence around
+    // it is the pane's, which is where the connection is named
+    expect(run.code).toContain('catch(\\Throwable $tinkr_tx_failure){$tinkr_tx_error=$tinkr_tx_failure->getMessage();}}')
+    expect(run.code.indexOf('$tinkr_db->rollBack()')).toBeLessThan(run.code.indexOf('json_encode(['))
+  })
+
+  test('reports the guard in the envelope, only when it was asked for', () => {
+    const run = wrapRun('1;', {}, 'rollback')
+    const encode = run.code.slice(run.code.indexOf('json_encode(['))
+
+    expect(encode).toContain("'transaction'=>$tinkr_transaction")
+    // what was asked of it, what it opened on, what it held, how it ended
+    expect(run.code).toContain("'mode'=>$tinkr_tx_mode,'armed'=>$tinkr_tx_armed,'connection'=>$tinkr_tx,")
+    expect(run.code).toContain("'statements'=>($tinkr_tx===null?0:($tinkr_query_connections[$tinkr_tx]??0)),")
+    expect(run.code).toContain("'outcome'=>$tinkr_tx_outcome,'error'=>$tinkr_tx_error];")
+  })
+
+  test('counts the statements of every connection, stored or dropped', () => {
+    const run = wrapRun('1;', {}, 'rollback')
+
+    // the query listener is what counts them, and it counts before the storage
+    // limits can drop one, so a run over them still rolls back what it sent
+    expect(run.code).toContain('function($tinkr_query)use(&$tinkr_queries,&$tinkr_query_connections,')
+    expect(run.code).toContain('$tinkr_query_connections[$tinkr_query->connectionName]=($tinkr_query_connections[$tinkr_query->connectionName]??0)+1;')
+
+    const counted = run.code.indexOf('$tinkr_query_connections[$tinkr_query->connectionName]')
+    const total = run.code.indexOf('$tinkr_query_total++;')
+
+    expect(total).toBeLessThan(counted)
+    expect(counted).toBeLessThan(run.code.indexOf('if(count($tinkr_queries)>=100'))
   })
 })

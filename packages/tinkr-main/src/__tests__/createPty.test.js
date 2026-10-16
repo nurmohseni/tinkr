@@ -59,6 +59,7 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       input: jest.fn(),
+      ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(cb => {
         printed.push(cb)
 
@@ -110,5 +111,68 @@ describe('a run of a connection', () => {
 
     expect(exec).not.toHaveBeenCalled()
     expect(win.webContents.send).toHaveBeenCalledWith('outputConnection', expect.anything())
+  })
+
+  test('writes the run once the session is reading the terminal', async () => {
+    let reading = null
+    let pty = null
+
+    Pty.mockImplementation(() => {
+      pty = {
+        connect: jest.fn(),
+        input: jest.fn(),
+        ready: jest.fn(() => new Promise(resolve => {
+          reading = resolve
+        })),
+        onData: jest.fn(cb => {
+          printed.push(cb)
+
+          return {dispose: jest.fn()}
+        }),
+        onExit: jest.fn(),
+      }
+
+      return pty
+    })
+
+    createPty(connection, 'the snippet')
+
+    // written before the session is reading, anything past the terminal's line
+    // limit is dropped and the run arrives cut in half, which the session reads
+    // as a syntax error instead of as the run
+    expect(pty.input).not.toHaveBeenCalled()
+
+    reading()
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(pty.input.mock.calls[0][0]).toContain('the snippet')
+    expect(pty.input.mock.calls[0][0].endsWith('\r')).toBe(true)
+  })
+
+  test('writes nothing into a session that was replaced while it was booting', async () => {
+    let reading = null
+    let pty = null
+
+    Pty.mockImplementation(() => {
+      pty = {
+        connect: jest.fn(),
+        input: jest.fn(),
+        ready: jest.fn(() => new Promise(resolve => {
+          reading = resolve
+        })),
+        onData: jest.fn(() => ({dispose: jest.fn()})),
+        onExit: jest.fn(),
+      }
+
+      return pty
+    })
+
+    createPty(connection, 'the snippet')
+
+    setPtyProcess('remote', null)
+    reading()
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(pty.input).not.toHaveBeenCalled()
   })
 })

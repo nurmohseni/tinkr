@@ -16,6 +16,22 @@ const {parseSSHCommand} = require('./parseSSHCommand')
 const killDelay = 100
 
 /**
+ * How long a session is given to answer the command it was started with before
+ * the run is written into it anyway, and how still the command has to be after
+ * the shell handed it the terminal to count as the command being up. See
+ * Session#ready.
+ */
+const readyQuiet = 1500
+const readyLimit = 5000
+
+/**
+ * The two escapes readline prints when it takes the terminal over and when it
+ * hands it back: bracket paste on, and bracket paste off. See Session#ready.
+ */
+const terminalTaken = '\u001b[?2004h'
+const terminalGivenUp = '\u001b[?2004l'
+
+/**
  * The command to start the session with, with the pager out of the way.
  *
  * psysh hands output taller than the terminal to a pager, and the pager it picks
@@ -148,6 +164,104 @@ class Session {
   }
 
   /**
+   * Answer once the session's command is reading the terminal, so a run written
+   * into it arrives whole.
+   *
+   * The pty hands over whatever it is given, but the shell reads its own command
+   * line first, and while the command it started is booting the terminal is back
+   * in its canonical mode. The canonical input queue holds 4096 bytes and drops
+   * what does not fit in it: a run written straight after the command — the
+   * wrapper alone is nearly 4 KB, and a guarded run is past it — reaches the
+   * session cut in the middle of a statement. psysh then reads the rest of the
+   * line as a statement that is not finished, waits for the part that was
+   * dropped, and answers nothing at all.
+   *
+   * Readline is what shows the terminal changing hands: a shell hands it back
+   * (`?2004l`) before it runs the command, and the command takes it (`?2004h`)
+   * along with the prompt it prints next. A session is written into once the
+   * command has taken it, and once the handback has been followed by nothing at
+   * all for a moment — a command that does not use readline takes the terminal
+   * without saying so, and by then it is up either way. A session whose shell
+   * never hands the terminal back is written into at the limit instead of being
+   * left idle: a shell that is still reading its own files is quiet too, so
+   * silence on its own says nothing about whether the command is ready.
+   *
+   * @return {Promise<void>}
+   */
+  ready() {
+    return new Promise(resolve => {
+      const pty = this.pty
+
+      if (!pty) {
+        resolve()
+
+        return
+      }
+
+      let quiet = null
+      let limit = null
+      let listener = null
+      let handedBack = false
+      let everSeen = false
+
+      const settle = () => {
+        clearTimeout(quiet)
+        clearTimeout(limit)
+        listener.dispose()
+        resolve()
+      }
+
+      listener = pty.onData(data => {
+        const taken = data.lastIndexOf(terminalTaken)
+        const given = data.lastIndexOf(terminalGivenUp)
+
+        if (given !== -1 || taken !== -1) {
+          everSeen = true
+        }
+
+        // the command is reading: whichever of the two escapes is last is the
+        // state the terminal is in
+        if (given !== -1 && taken > given) {
+          settle()
+
+          return
+        }
+
+        if (given !== -1) {
+          handedBack = true
+          clearTimeout(quiet)
+          quiet = setTimeout(settle, readyQuiet)
+
+          return
+        }
+
+        if (handedBack && taken !== -1) {
+          settle()
+
+          return
+        }
+
+        // a shell that never says either escape — no readline, a session over ssh
+        // — is not saying that the command is reading either, so it is written
+        // into on a longer moment of quiet than reading its own files takes
+        if (!everSeen) {
+          clearTimeout(quiet)
+          quiet = setTimeout(settle, readyQuiet)
+
+          return
+        }
+
+        // the shell has said it is reading and has not handed the terminal over:
+        // a run written into it now is what the line limit cuts, so nothing
+        // settles this but the handover itself, or the limit below
+        clearTimeout(quiet)
+      })
+
+      limit = setTimeout(settle, readyLimit)
+    })
+  }
+
+  /**
    * @param {String} code
    */
   write(code) {
@@ -200,21 +314,27 @@ const runOutput = filter => stripSessionNotes(filter.printed).replace(/\r\n/g, '
  *
  * @param {Record<String, any>} connection
  * @param {String} code
- * @param {{timeout?: Number, command?: String, appName?: String,
+ * @param {{timeout?: Number, command?: String, guard?: String, appName?: String,
  *   appVersion?: String, log?: Object}} [options] `command` is what the session
- *   is started with when the connection names none
+ *   is started with when the connection names none, and `guard` is what the run
+ *   is guarded with: `rollback` for a dry run, `commit` for the same run kept
  * @return {Promise<{value: any, blocks: Array, error: Object|null,
- *   imported?: Object, output: String}>}
+ *   queries: Array, queriesTotal: Number, imported?: Object,
+ *   transaction?: Object, output: String}>}
+ *   `queries` is what the run sent to its connections (see runResult.QUERY_BLOCK),
+ *   and `queriesTotal` counts every query the run sent, stored or not.
+ *   `transaction` is what a guarded run did with the transaction it was sent
+ *   under (see runResult.guardArm), and a run without a guard is not sent one
  */
 const runCode = (connection, code, options = {}) => {
-  const {timeout = 30000, command = null} = options
+  const {timeout = 30000, command = null, guard = null} = options
   const session = new Session(connection, options)
   // a session over ssh runs in the remote project, whose composer files are not
   // on this machine to read
   const imports = !connection.is_over_ssh && connection.path
     ? importsFor(connection.path, code)
     : {}
-  const run = wrapRun(code, imports)
+  const run = wrapRun(code, imports, guard)
   const filter = new RunResultFilter(run.marker, run.start)
 
   return new Promise((resolve, reject) => {
@@ -255,16 +375,23 @@ const runCode = (connection, code, options = {}) => {
       return
     }
 
-    // the session is handed the run before it has finished booting: the pty
-    // queues the input and the shell, then tinker, reads it in order
-    session.write(`${run.code}\r`)
-
     session.onData(data => {
       const {result} = filter.push(data)
 
       if (result) {
         finish(null, Object.assign({}, result, {output: runOutput(filter)}))
       }
+    })
+
+    // the run goes in once the command is reading the terminal: handed over
+    // before that, anything past the terminal's own buffer is dropped and the
+    // run is parsed in half. See Session#ready
+    session.ready().then(() => {
+      if (settled || !session.pty) {
+        return
+      }
+
+      session.write(`${run.code}\r`)
     })
 
     session.onExit(() => {
