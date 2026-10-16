@@ -1,8 +1,22 @@
-import {useState} from 'react'
+import {useEffect, useRef} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
 import Outcome from '../Outcome'
+import ResultGraph from './ResultGraph'
+import ResultHtml from './ResultHtml'
+import ResultTable from './ResultTable'
+import ResultValue from './ResultValue'
+import {copy, copyText} from '../../utils/clipboard'
+import {
+  entriesOf,
+  isComposite,
+  READINGS,
+  readingOf,
+  readingsOf,
+  tableOf,
+  toCsv,
+} from '../../utils/resultReading'
 
 /**
  * The result of the last run, as the design's value tree.
@@ -13,40 +27,16 @@ import Outcome from '../Outcome'
  * design shows beyond that — the class name, the line of the throw, the frame
  * list, the query log — is not in the run result.
  *
- * A value is read in one of two ways, and the run's own strip carries the one
- * that is on: the tree, node by node, or the text the tree is drawn from. A run
- * that printed is read as it printed in both, because its raw reading would say
- * the same words twice.
+ * A value is read in one of several ways, and the run's own strip carries the
+ * one that is on: the tree, the table of a list of records, the graph of
+ * anything with something under it, the frame for a string that is markup, and
+ * the text the value is drawn from. The readings a run does not have are not
+ * offered, and a value a chosen reading does not have is read as its tree,
+ * which is why a reading is never a blank pane.
+ *
+ * A run that printed is read as it printed in the raw reading, because its
+ * raw reading would otherwise say the same words twice.
  */
-
-const isComposite = value => value !== null && typeof value === 'object'
-
-const entriesOf = value => (Array.isArray(value)
-  ? value.map((item, index) => [index, item])
-  : Object.entries(value))
-
-const scalarClass = value => {
-  switch (typeof value) {
-    case 'number':
-      return 't-number'
-    case 'boolean':
-      return 't-bool'
-    case 'string':
-      return 't-string'
-    default:
-      return 't-null'
-  }
-}
-
-const scalarText = value => (typeof value === 'string' ? JSON.stringify(value) : String(value))
-
-// the design's tree carries three indentation steps; anything deeper stays on
-// the third, because a fourth one is not in the stylesheet
-const rowClass = depth => (depth > 0 ? `tree__row tree__row--d${Math.min(depth, 3)}` : 'tree__row')
-
-const copy = value => navigator.clipboard.writeText(
-  typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-)
 
 // the landing is drawn once per run, and React draws an element again only when
 // its key says it is another one: an outcome is keyed by what the run answered,
@@ -87,122 +77,98 @@ const describe = (intl, value) => {
   return id ? intl.formatMessage({id}) : null
 }
 
-const CopyValueButton = ({value}) => {
-  const intl = useIntl()
+const json = value => JSON.stringify(value, null, 2)
 
-  return (
-  <button
-    className='tree__copy'
-    type='button'
-    title={intl.formatMessage({id: 'result.copy_value'})}
-    onClick={event => {
-      // the row around it is a disclosure, and copying must not fold it
-      event.preventDefault()
-      event.stopPropagation()
-      copy(value)
-    }}
-  >
-    {intl.formatMessage({id: 'result.copy'})}
-  </button>
-  )
+/** The reading the switch shows as on: a view this run does not have is its tree. */
+const onReading = (views, view) => (views.includes(view) ? view : 'organized')
+
+/**
+ * The body of one reading: what that reading shows of the value, and nothing
+ * else. Everything a reading needs to say about itself is in the strip above
+ * it, so this is one surface whichever reading is on.
+ */
+const Reading = ({value, view, output}) => {
+  switch (view) {
+    case 'raw':
+      return <pre className='printed'>{output || json(value)}</pre>
+    case 'table':
+      return <ResultTable value={value}/>
+    case 'graph':
+      return <ResultGraph value={value}/>
+    case 'html':
+      return <ResultHtml value={value}/>
+    default:
+      return (
+        <div className='tree'>
+          <ResultValue value={value} depth={0}/>
+        </div>
+      )
+  }
 }
 
-CopyValueButton.propTypes = {
+Reading.propTypes = {
   value: PropTypes.any,
+  view: PropTypes.oneOf(READINGS).isRequired,
+  output: PropTypes.string,
 }
 
-/** A composite node, in the design's `array · 5 items` shape. */
-const TypeLabel = ({value}) => {
-  const intl = useIntl()
-  const isList = Array.isArray(value)
-
-  return (
-    <>
-      <span className='t-class'>{intl.formatMessage({id: isList ? 'result.array' : 'result.object'})}</span>
-      <span className='tree__sep'>·</span>
-      <span className='t-number'>{entriesOf(value).length}</span>
-      <span className='muted'>
-        {intl.formatMessage({id: isList ? 'result.items' : 'result.keys'}, {count: entriesOf(value).length})}
-      </span>
-    </>
-  )
-}
-
-TypeLabel.propTypes = {
-  // a list is labelled too, which is why this is not an object alone
-  value: PropTypes.oneOfType([PropTypes.object, PropTypes.array]).isRequired,
-}
-
-const Value = ({value}) => (
-  isComposite(value)
-    ? <TypeLabel value={value}/>
-    : <span className={scalarClass(value)}>{scalarText(value)}</span>
-)
-
-Value.propTypes = {
-  value: PropTypes.any,
-}
-
-/** The `customer: ` before a child, `0 => ` for a list. */
-const KeyPrefix = ({name}) => {
-  const isIndex = typeof name === 'number'
-
-  return (
-    <>
-      <span className={isIndex ? 't-number' : 'tree__key'}>{name}</span>
-      <span className='tree__sep'>{isIndex ? ' => ' : ': '}</span>
-    </>
-  )
-}
-
-KeyPrefix.propTypes = {
-  name: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+Reading.defaultProps = {
+  output: '',
 }
 
 /**
- * One node of the tree: a `<details>` when there is something under it, a row
- * when there is not. The root is the only node open on arrival.
+ * What a reading does with the whole of itself, in the strip's own buttons: a
+ * table is copied and saved as a csv, and every other reading copies what it
+ * shows — the text it read, or the json the tree and the graph are drawn from.
  */
-const ResultValue = ({value, depth, prefix}) => {
-  const [open, setOpen] = useState(depth === 0)
-  const entries = isComposite(value) ? entriesOf(value) : []
-  const row = (
-    <>
-      <span className='tree__caret'/>
-      {prefix}
-      <Value value={value}/>
-      <CopyValueButton value={value}/>
-    </>
-  )
+const ReadingActions = ({value, view, output}) => {
+  const intl = useIntl()
 
-  if (entries.length === 0) {
-    return <div className={rowClass(depth)}>{row}</div>
+  if (view === 'table') {
+    const {columns, rows} = tableOf(value)
+    const csv = toCsv(columns, rows)
+
+    return (
+      <>
+        <button
+          className='btn btn--ghost btn--sm'
+          type='button'
+          onClick={() => copyText(csv)}
+        >
+          <FormattedMessage id='result.copy_csv'/>
+        </button>
+
+        <button
+          className='btn btn--ghost btn--sm'
+          type='button'
+          onClick={() => window.api.saveFile('result.csv', csv)}
+        >
+          <FormattedMessage id='result.save_csv'/>
+        </button>
+      </>
+    )
   }
 
   return (
-    <details open={open} onToggle={event => setOpen(event.target.open)}>
-      <summary className={rowClass(depth)}>{row}</summary>
-
-      {entries.map(([name, item]) => (
-        <ResultValue
-          key={name}
-          value={item}
-          depth={depth + 1}
-          prefix={<KeyPrefix name={name}/>}
-        />
-      ))}
-    </details>
+    <button
+      className='btn btn--ghost btn--sm'
+      type='button'
+      title={intl.formatMessage({id: view === 'raw' ? 'result.copy_shown' : 'result.copy_json'})}
+      onClick={() => (view === 'raw' ? copyText(output || json(value)) : copy(value))}
+    >
+      {intl.formatMessage({id: 'result.copy_short'})}
+    </button>
   )
 }
 
-ResultValue.propTypes = {
+ReadingActions.propTypes = {
   value: PropTypes.any,
-  depth: PropTypes.number.isRequired,
-  prefix: PropTypes.node,
+  view: PropTypes.oneOf(READINGS).isRequired,
+  output: PropTypes.string,
 }
 
-ResultValue.defaultProps = {
-  prefix: null,
+ReadingActions.defaultProps = {
+  output: '',
 }
 
 /** The run's exception: the class over its message, as the design's surface. */
@@ -211,7 +177,7 @@ const Failure = ({error}) => {
 
   return (
   <>
-    <div className='result-summary'>
+    <div className='result-summary result-summary--head'>
       <Outcome kind='threw' label animate key={failureKey(error)}/>
       <span className='muted'>{intl.formatMessage({id: 'result.no_value'})}</span>
       <span className='grow'/>
@@ -219,7 +185,7 @@ const Failure = ({error}) => {
         className='btn btn--ghost btn--sm'
         type='button'
         title={intl.formatMessage({id: 'result.copy_message'})}
-        onClick={() => navigator.clipboard.writeText(`${error.class}: ${error.message}`)}
+        onClick={() => copyText(`${error.class}: ${error.message}`)}
       >
         {intl.formatMessage({id: 'result.copy_message'})}
       </button>
@@ -259,10 +225,11 @@ const NothingReturned = () => (
 const Block = ({block, view}) => {
   const intl = useIntl()
   const failed = block.error !== null
+  const reading = readingOf(view, block.value)
 
   return (
     <>
-      <div className='result-summary'>
+      <div className='result-summary result-summary--head'>
         <span className='block__line'>
           {intl.formatMessage({id: 'result.line'}, {line: block.line})}
         </span>
@@ -282,14 +249,7 @@ const Block = ({block, view}) => {
             </span>
           )}
         <span className='grow'/>
-        <button
-          className='btn btn--ghost btn--sm'
-          type='button'
-          title={intl.formatMessage({id: 'result.copy_json'})}
-          onClick={() => navigator.clipboard.writeText(JSON.stringify(block.value, null, 2))}
-        >
-          {intl.formatMessage({id: 'result.copy_short'})}
-        </button>
+        <ReadingActions value={block.value} view={reading}/>
       </div>
 
       {failed && (
@@ -300,13 +260,7 @@ const Block = ({block, view}) => {
       )}
 
       {!failed && block.value !== null && (
-        view === 'raw'
-          ? <pre className='printed'>{JSON.stringify(block.value, null, 2)}</pre>
-          : (
-            <div className='tree'>
-              <ResultValue value={block.value} depth={0}/>
-            </div>
-          )
+        <Reading value={block.value} view={reading}/>
       )}
     </>
   )
@@ -321,7 +275,7 @@ Block.propTypes = {
       message: PropTypes.string,
     }),
   }).isRequired,
-  view: PropTypes.oneOf(['organized', 'raw']).isRequired,
+  view: PropTypes.oneOf(READINGS).isRequired,
 }
 
 /**
@@ -333,14 +287,14 @@ const Printed = ({output}) => {
 
   return (
   <>
-    <div className='result-summary'>
+    <div className='result-summary result-summary--head'>
       <Outcome kind='printed' label animate key={output}/>
       <span className='grow'/>
       <button
         className='btn btn--ghost btn--sm'
         type='button'
         title={intl.formatMessage({id: 'result.copy_printed'})}
-        onClick={() => navigator.clipboard.writeText(output)}
+        onClick={() => copyText(output)}
       >
         {intl.formatMessage({id: 'result.copy_short'})}
       </button>
@@ -356,19 +310,33 @@ Printed.propTypes = {
 }
 
 /**
- * The two readings of one value, in the panel's own tab idiom: a radio, and the
- * accent under the reading that is on.
+ * The readings of a value, in the panel's own tab idiom: a radio per reading,
+ * and the accent under the one that is on.
+ *
+ * The readings are the ones this run has, so the switch never offers a way of
+ * reading that would show nothing, and one of them is always on.
  */
-const ViewSwitch = ({view, onChange}) => {
+const ViewSwitch = ({views, view, onChange}) => {
   const intl = useIntl()
+  const group = useRef(null)
+
+  // a pane too narrow for the whole row scrolls it, so the reading in hand is
+  // brought back into sight whenever it changes
+  useEffect(() => {
+    const options = group.current ? [...group.current.querySelectorAll('.view-switch__option')] : []
+    const chosen = options.find(option => option.querySelector('input').checked)
+
+    chosen?.scrollIntoView?.({block: 'nearest', inline: 'nearest'})
+  }, [view])
 
   return (
   <span
     className='view-switch'
+    ref={group}
     role='radiogroup'
     aria-label={intl.formatMessage({id: 'result.how'})}
   >
-    {['organized', 'raw'].map(option => (
+    {views.map(option => (
       <label key={option} className='view-switch__option'>
         <input
           type='radio'
@@ -384,50 +352,36 @@ const ViewSwitch = ({view, onChange}) => {
 }
 
 ViewSwitch.propTypes = {
-  view: PropTypes.oneOf(['organized', 'raw']).isRequired,
+  views: PropTypes.arrayOf(PropTypes.oneOf(READINGS)).isRequired,
+  view: PropTypes.oneOf(READINGS).isRequired,
   onChange: PropTypes.func.isRequired,
 }
 
 /**
  * The value the run returned: what came back, how it is being read, and what
- * that reading shows — the tree, or the text it is drawn from.
+ * that reading shows.
  *
  * A run that printed wrote the raw reading of its value itself, in psysh's
  * words, so that text is what the raw reading shows; a run that printed nothing
- * is read raw as the json the tree is drawn from. Either way the two readings
- * are alternatives: one replaces the other, and neither is said twice.
+ * is read raw as the json the tree is drawn from. Either way the readings are
+ * alternatives: one replaces the other, and neither is said twice.
  */
 const Returned = ({value, view, onView, output}) => {
   const intl = useIntl()
-  const json = JSON.stringify(value, null, 2)
-  const raw = output || json
-  // the copy carries what the reading shows
-  const copy = view === 'raw' ? raw : json
+  const views = readingsOf([value])
+  const reading = readingOf(view, value)
 
   return (
     <>
-      <div className='result-summary'>
+      <div className='result-summary result-summary--head'>
         <Outcome kind='returned' label animate key={answerKey('returned', value)}/>
         <span>{describe(intl, value)}</span>
-        <ViewSwitch view={view} onChange={onView}/>
+        <ViewSwitch views={views} view={reading} onChange={onView}/>
         <span className='grow'/>
-        <button
-          className='btn btn--ghost btn--sm'
-          type='button'
-          title={view === 'raw' ? 'Copy what is shown' : 'Copy the value as JSON'}
-          onClick={() => navigator.clipboard.writeText(copy)}
-        >
-          Copy
-        </button>
+        <ReadingActions value={value} view={reading} output={output}/>
       </div>
 
-      {view === 'raw'
-        ? <pre className='printed'>{raw}</pre>
-        : (
-          <div className='tree'>
-            <ResultValue value={value} depth={0}/>
-          </div>
-        )}
+      <Reading value={value} view={reading} output={output}/>
     </>
   )
 }
@@ -435,7 +389,7 @@ const Returned = ({value, view, onView, output}) => {
 Returned.propTypes = {
   value: PropTypes.any,
   output: PropTypes.string,
-  view: PropTypes.oneOf(['organized', 'raw']).isRequired,
+  view: PropTypes.oneOf(READINGS).isRequired,
   onView: PropTypes.func.isRequired,
 }
 
@@ -459,7 +413,7 @@ const Imported = ({imported}) => {
   const text = entries.map(([name, qualified]) => `${name} → ${qualified}`).join('\n')
 
   return (
-    <div className='result-summary'>
+    <div className='result-summary result-summary--wrap'>
       <span className='badge'>
         <FormattedMessage id='result.imported'/>
       </span>
@@ -473,12 +427,11 @@ const Imported = ({imported}) => {
           </span>
         ))}
       </span>
-      <span className='grow'/>
       <button
         className='btn btn--ghost btn--sm'
         type='button'
         title={intl.formatMessage({id: 'result.copy_imports'})}
-        onClick={() => navigator.clipboard.writeText(text)}
+        onClick={() => copyText(text)}
       >
         {intl.formatMessage({id: 'result.copy_short'})}
       </button>
@@ -490,20 +443,91 @@ Imported.propTypes = {
   imported: PropTypes.object,
 }
 
-const Result = ({result, view, onView, allStatements}) => {
+/**
+ * What a guarded run did with the transaction it was sent under, above what the
+ * run itself did: the guard is the reason none of it is kept, so a dry run is
+ * read starting here.
+ *
+ * Where the guard took the run back it offers the run again with the transaction
+ * kept — the same code, sent as a run of its own, because a run is a session
+ * that has answered and gone by the time this is read and there is no transaction
+ * left to close. The offer is made only where there is something to keep, and
+ * what it runs is the pane's to say, the way the reading is: this strip only
+ * knows it is a run that can be asked for again.
+ *
+ * A guard that could not arm itself ran nothing at all, and the failure under
+ * this line is the guard's own; what the line says is what the guard did, not
+ * what the run did. A run with no guard is not sent a transaction and reads
+ * without this line.
+ */
+const Guard = ({transaction, onKeep}) => {
   const intl = useIntl()
-  const {value, error, output, imported, blocks} = result
+
+  if (!transaction) {
+    return null
+  }
+
+  const {armed, connection, statements, outcome, error} = transaction
+
+  return (
+    <div className='result-summary result-summary--wrap'>
+      <span className='guard__note'>
+        {outcome === 'committed' &&
+          intl.formatMessage({id: 'guard.committed'}, {count: statements, connection})}
+        {outcome === 'rolledBack' &&
+          intl.formatMessage({id: 'guard.rolled_back'}, {count: statements, connection})}
+        {outcome === 'failed' && armed &&
+          intl.formatMessage({id: 'guard.close_failed'}, {connection, error})}
+        {outcome === 'failed' && !armed && intl.formatMessage({id: 'guard.not_armed'})}
+      </span>
+      {outcome === 'rolledBack' && statements > 0 && (
+        <button
+          className='btn btn--ghost btn--sm'
+          type='button'
+          title={intl.formatMessage({id: 'guard.keep_title'})}
+          onClick={onKeep}
+        >
+          {intl.formatMessage({id: 'guard.keep'})}
+        </button>
+      )}
+    </div>
+  )
+}
+
+Guard.propTypes = {
+  onKeep: PropTypes.func,
+  transaction: PropTypes.shape({
+    mode: PropTypes.string,
+    armed: PropTypes.bool,
+    connection: PropTypes.string,
+    statements: PropTypes.number,
+    outcome: PropTypes.string,
+    error: PropTypes.string,
+  }),
+}
+
+Guard.defaultProps = {
+  onKeep: () => {},
+}
+
+const Result = ({result, view, onView, onKeep, allStatements}) => {
+  const intl = useIntl()
+  const {value, error, output, imported, blocks, transaction} = result
 
   // a run of several statements, read statement by statement: the value of the
   // run is the last one's, so this is what "every statement" means
   if (allStatements && blocks && blocks.length > 1) {
+    const views = readingsOf(blocks.map(block => block.value))
+
     return (
       <>
+        <Guard transaction={transaction} onKeep={onKeep}/>
+
         <Imported imported={imported}/>
 
         {output && <Printed output={output}/>}
 
-        <div className='result-summary'>
+        <div className='result-summary result-summary--head'>
           <Outcome
             key={error ? failureKey(error) : answerKey('returned', value)}
             kind={error ? 'threw' : 'returned'}
@@ -511,7 +535,7 @@ const Result = ({result, view, onView, allStatements}) => {
             animate
           />
           <span>{intl.formatMessage({id: 'result.statements'}, {count: blocks.length})}</span>
-          <ViewSwitch view={view} onChange={onView}/>
+          <ViewSwitch views={views} view={onReading(views, view)} onChange={onView}/>
         </div>
 
         {blocks.map(block => (
@@ -523,6 +547,8 @@ const Result = ({result, view, onView, allStatements}) => {
 
   return (
     <>
+      <Guard transaction={transaction} onKeep={onKeep}/>
+
       <Imported imported={imported}/>
 
       {error && <Failure error={error}/>}
@@ -547,8 +573,9 @@ const Result = ({result, view, onView, allStatements}) => {
 }
 
 Result.propTypes = {
-  view: PropTypes.oneOf(['organized', 'raw']),
+  view: PropTypes.oneOf(READINGS),
   onView: PropTypes.func,
+  onKeep: PropTypes.func,
   allStatements: PropTypes.bool,
   result: PropTypes.shape({
     value: PropTypes.any,
@@ -558,12 +585,14 @@ Result.propTypes = {
     }),
     output: PropTypes.string,
     imported: PropTypes.object,
+    transaction: PropTypes.object,
   }).isRequired,
 }
 
 Result.defaultProps = {
   view: 'organized',
   onView: () => {},
+  onKeep: () => {},
   allStatements: false,
 }
 
