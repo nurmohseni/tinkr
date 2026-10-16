@@ -7,6 +7,10 @@ const nodePtyDir = path.dirname(require.resolve('node-pty/package.json', {paths:
 const rendererPkg = path.join(__dirname, '../packages/tinkr-renderer')
 const assetsDir = path.join(__dirname, '../assets')
 
+// the system this build is for: this one, unless one is named (see
+// scripts/package.js, which is where the name comes from)
+const targetPlatform = process.env.BUILD_PLATFORM || process.platform
+
 module.exports = {
   appId: 'com.tinkr.app',
   productName: config.productName,
@@ -101,10 +105,41 @@ module.exports = {
   files: [
     '!**/*',
     {from: mainPkg, filter: ['package.json']},
-    // node-pty's binary is a native module the bundle looks for next to itself,
-    // and the package may be hoisted to the workspace root, so it is resolved
-    {from: path.join(nodePtyDir, 'build'), to: 'main/build'},
+    // node-pty reads its own files back by a path relative to the code it was
+    // read from, and what was read is the bundle: the package's `lib` is `main`
+    // here, so what it reaches for is put there.
+    //
+    // Two of them are its native module — bundled, `__dirname` is `main`, so
+    // the bundle looks in `main/build` and `main/prebuilds`, and the package
+    // may be hoisted to the workspace root, so it is resolved and copied rather
+    // than assumed. A build for another system cannot use this machine's copy:
+    // node-gyp cannot cross-compile it (see npmRebuild above), and the package
+    // carries one built for every system, so only a build for this one takes
+    // it. The winpty files it loads with are the ones beside that module.
+    ...(targetPlatform === process.platform
+      ? [{from: path.join(nodePtyDir, 'build'), to: 'main/build'}]
+      : []),
     {from: path.join(nodePtyDir, 'prebuilds'), to: 'main/prebuilds'},
+    // The rest are scripts node-pty starts itself rather than modules it
+    // imports, and nothing else can bring them along: the worker that drains
+    // the session's output on a thread of its own — which every session on
+    // windows starts, whether it runs on winpty or conpty, and which pulls in
+    // `shared` with it — the agent that asks which processes a console owns,
+    // and what that agent pulls in. A build that leaves the worker out is not
+    // told so by the pty: the worker fails to load (`Cannot find module`) and
+    // the connection never becomes ready, so the terminal stays empty, a run
+    // comes back with nothing and php is not found, while everything that only
+    // reads files keeps working.
+    {
+      from: path.join(nodePtyDir, 'lib'),
+      to: 'main',
+      filter: [
+        'worker/**',
+        'shared/**',
+        'conpty_console_list_agent.js',
+        'utils.js',
+      ],
+    },
     {from: path.join(mainPkg, 'build'), to: 'main', filter: ['!build/']},
     {from: path.join(rendererPkg, 'build'), to: 'renderer'},
   ],
