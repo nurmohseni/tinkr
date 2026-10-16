@@ -1,6 +1,7 @@
 module.exports = {
   // the shortcuts are read off a KeyboardEvent
   testEnvironment: 'jsdom',
+  setupFiles: ['<rootDir>/jest.setup.js'],
   transform: {
     '^.+\\.jsx?$': 'esbuild-jest',
   },

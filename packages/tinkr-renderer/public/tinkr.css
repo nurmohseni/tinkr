@@ -159,6 +159,7 @@
   --row-h: 26px;
   --tree-row-h: 24px;
   --control-h: 26px;
+  --result-summary-h: 36px;
   --keycap-band: 88px;
   --sidebar-w: 240px;
   --rail-w: 184px;
@@ -1022,6 +1023,11 @@ details:not([open]) > summary .tree__caret::before {
   padding: 6px var(--s2) 2px;
   font-size: var(--fs-xs); color: var(--text-faint); font-family: var(--font-mono);
 }
+/* the menu the app itself draws, at the pointer rather than under a caret: it
+   is raised from a row of the output pane, and it floats over the outcome row
+   that row's pane pins above its own content (z-index 4), so it takes a layer
+   over that row — and still under the window's own (15, 20) */
+.pointer-menu { z-index: 6; }
 .autocomplete__item {
   display: flex; align-items: center; gap: var(--s2);
   width: 100%;
@@ -1043,13 +1049,39 @@ details:not([open]) > summary .tree__caret::before {
 .output { display: flex; flex-direction: column; min-height: 0; height: 336px; flex: none; background: var(--panel); }
 .output > .tabset__panel { flex: 1 1 auto; min-height: 0; }
 .output__tabs {
+  /* the row is its own query container: what fits in it is decided by the row
+     it is, not by a window width guessed from the shell's split */
+  container: output-tabs / inline-size;
   display: flex; align-items: stretch; gap: 2px;
   height: var(--tabbar-h); padding: 0 var(--s3) 0 var(--s1);
   background: var(--panel);
 }
+/* a narrow panel, which is what the window's own floor gives: the four labels
+   and the reconnect action need the whole row, so the outcome glyph on the
+   Output tab — and the gap that was holding it — steps aside rather than shave
+   the last label. The outcome is not lost: its word is still this tab's
+   accessible text, the summary at the head of the view says it, and the
+   History ledger keeps it. Measured: the four labels in German plus the action
+   need 284px, so the glyph is affordable above 320 and not below. */
+@container output-tabs (max-width: 320px) {
+  .output__tab { gap: 0; }
+  .output__tab > .outcome .outcome__mark { display: none; }
+}
+/* the labels are as wide as they are, and the row is not: the strip is the part
+   that gives, and the reconnect action after it keeps its own width at any
+   window the editor opens at. the checked view is scrolled back in by the row
+   itself. */
+.output__tabs-strip {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: stretch;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+.output__tabs-strip::-webkit-scrollbar { height: 0; }
+.output__tabs-strip > .output__tab { flex: none; }
+.output__tabs > .btn { flex: none; }
 .output__tab {
   position: relative; display: inline-flex; align-items: center; gap: 6px;
-  padding: 0 10px;
+  padding: 0 var(--s2);
   border: 0; background: transparent; color: var(--text-muted);
   font-family: var(--font-ui); font-size: var(--fs-sm); cursor: pointer;
 }
@@ -1057,7 +1089,7 @@ details:not([open]) > summary .tree__caret::before {
 .output__tab:has(> input:checked) { color: var(--text); font-weight: var(--fw-medium); }
 /* the reading that is on is cut by the same 29° as the return bars */
 .output__tab::after {
-  content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px;
+  content: ""; position: absolute; left: var(--s2); right: var(--s2); bottom: 0; height: 2px;
   background: var(--text); transform: skewX(var(--bar-skew)); border-radius: 1px; opacity: 0;
 }
 .output__tab:has(> input:checked)::after { opacity: 1; }
@@ -1065,16 +1097,42 @@ details:not([open]) > summary .tree__caret::before {
 .output__tab input { position: absolute; opacity: 0; pointer-events: none; }
 .output__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 0 var(--s4); background: var(--panel-inset); }
 
-/* result summary: the head of one statement's answer, pinned while its value
-   scrolls under it */
+/* result summary: what one statement's answer is, pinned while its value
+   scrolls under it.
+   Two roles share one look. A *head* stands over the value it describes and
+   stays put while that value passes under it, so the reading switch never
+   scrolls out from under the pointer. A *report* only talks about the run —
+   what it imported, what its guard did — and keeps no row of the pane: several
+   pinned rows cannot share one offset, and the last of them would cut the ones
+   before it in half. A report taller than the row it started as is therefore
+   free to be as tall as its sentence needs */
 .result-summary {
-  position: sticky; top: 0; z-index: 1;
+  /* pinned across the pane, both roles: a wide table scrolls sideways under a
+     strip that stays at the left edge rather than carrying it off screen */
+  position: sticky; left: 0;
   display: flex; align-items: center; gap: 10px;
-  min-height: 36px; padding: 0 var(--s3);
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  min-height: var(--result-summary-h); padding: 0 var(--s3);
   background: var(--panel-inset);
   box-shadow: 0 1px 0 var(--border);
   font-size: var(--fs-sm); color: var(--text-muted);
 }
+/* the head of the value below it, and above the table's own sticky head and
+   first column. It holds one line in every language: the table's head parks at
+   --result-summary-h and the html reading measures itself against the same
+   number, so a head that grew a second line would hide the column titles under
+   itself and shrink the frame. A pane too narrow for the row scrolls it */
+.result-summary--head { top: 0; z-index: 4; white-space: nowrap; }
+/* a report with an action in it: what it says and what it offers wrap onto two
+   rows where a row cannot hold both, and the action keeps its whole label */
+.result-summary--wrap { flex-wrap: wrap; row-gap: var(--s1); padding-block: var(--s1); }
+.result-summary--wrap > .badge { flex: 0 0 auto; }
+.result-summary--wrap > .mono,
+.result-summary--wrap > .guard__note { flex: 1 1 auto; min-width: 0; }
+.result-summary--wrap > .btn { margin-left: auto; }
+/* a strip scrolled sideways draws no bar of its own: the row is one line tall,
+   and the reading switch scrolls itself into view when the pane is narrow */
+.result-summary::-webkit-scrollbar { height: 0; }
 /* the outcome word is one of the few display roles: it is what the run did */
 .result-summary .outcome__word { font-family: var(--font-display); font-size: 14px; font-weight: var(--fw-medium); color: var(--text); }
 
@@ -1090,6 +1148,92 @@ details:not([open]) > summary .tree__caret::before {
 .qtable td.sql { color: var(--text); }
 .qtable .num { text-align: right; font-variant-numeric: tabular-nums; }
 .qtable tr:hover td { background: var(--hover); }
+
+/* ==========================================================================
+   the readings of one value: the table of a list of records, the graph of
+   anything with something under it, and the frame a markup string is drawn in.
+   The pane is the only scroller — nothing here builds a well inside a well —
+   so the table's head parks under the run's own strip.
+   ========================================================================== */
+
+/* --- the table reading: a row per record, index and head both pinned ------- */
+.qtable--values th { top: var(--result-summary-h); z-index: 2; }
+/* the index column stays put while the records scroll sideways, so it keeps an
+   edge of its own: without it a pinned column reads as two cells in one row */
+.qtable--values th:first-child,
+.qtable--values td:first-child {
+  position: sticky; left: 0; z-index: 1;
+  background-color: var(--panel-inset);
+  box-shadow: 0 -1px 0 var(--border), inset -1px 0 0 var(--border);
+}
+/* the index head is over the column it heads, and keeps the head's own line */
+.qtable--values th:first-child {
+  z-index: 3;
+  background-color: var(--panel-inset);
+  box-shadow: 0 1px 0 var(--border), inset -1px 0 0 var(--border);
+}
+/* the row's own hover, laid over the index cell's opaque paper */
+.qtable--values tr:hover td:first-child { background-image: linear-gradient(var(--hover), var(--hover)); }
+.qtable__index { width: 1%; white-space: nowrap; }
+.qtable__index-cell { display: flex; align-items: center; gap: var(--s1); height: var(--tree-row-h); }
+.qtable__index-cell .muted { font-variant-numeric: tabular-nums; }
+/* the row's actions: they are what a row has, so they stay in reach of the
+   pointer that is already there, and of a keyboard that reaches the cell */
+.qtable__menu {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0;
+  border: 0; border-radius: var(--r-key);
+  background: none; color: var(--text-muted);
+  font-family: var(--font-ui); font-size: var(--fs-sm); line-height: 1;
+  cursor: pointer; opacity: 0;
+  transition: opacity var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.qtable--values tr:hover .qtable__menu,
+.qtable__menu:focus-visible { opacity: 1; }
+.qtable__menu:hover { color: var(--text); }
+.qtable__menu:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
+/* one cell is one line of a record: a long value is cut, and the whole of it is
+   the cell's title rather than a wider row */
+.qtable--values td { white-space: nowrap; }
+.qtable__cell {
+  display: inline-block; max-width: 380px; vertical-align: middle;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.result-table__more { margin: 0; padding: var(--s2) var(--s3) 0; font-size: var(--fs-sm); color: var(--text-muted); }
+
+/* --- the graph reading: a dot and a label per node, one column per depth ---- */
+.graph { padding: var(--s3) var(--s3) var(--s4) 0; }
+.graph__canvas { display: block; }
+/* the edge is a wire, not a rule: it is what says the value under it is under
+   this one, and the wire the pointer came down is the one lit */
+.graph__edge { fill: none; stroke: var(--border); stroke-width: 1; }
+.graph__edge--lit { stroke: var(--text-faint); }
+.graph__node text { fill: currentColor; font-family: var(--font-mono); font-size: var(--fs-code); }
+.graph__node { cursor: default; }
+.graph__node--parent { cursor: pointer; }
+.graph__dot { fill: var(--border-strong); }
+.graph__dot--open { fill: var(--text-faint); }
+/* a folded node is a ring: the value under it is there, and is not drawn */
+.graph__dot--closed { fill: var(--panel-inset); stroke: var(--border-strong); stroke-width: 1.5; }
+.graph__node--lit .graph__dot { fill: var(--text); }
+.graph__ring { fill: none; stroke: var(--focus); stroke-width: 1.5; opacity: 0; }
+.graph__node:focus-visible .graph__ring { opacity: 1; }
+.graph__node:focus-visible { outline: none; }
+.graph__more { margin: var(--s2) 0 0; padding-left: var(--s3); font-size: var(--fs-sm); }
+
+/* --- the html reading: the document in a frame of its own ------------------ */
+/* the frame is the document's own page: it is sandboxed without the app's
+   origin, it gets a white paper of its own, and it draws the whole of what the
+   value said. The reading fills the pane under the strip, so the document
+   scrolls inside its frame rather than pushing the panel around. */
+.html-view {
+  height: calc(100% - var(--result-summary-h));
+  padding: var(--s3) var(--s3) 0;
+}
+.html-view__frame {
+  display: block; width: 100%; height: 100%;
+  border: 0; border-radius: var(--r-key); background: #fff;
+}
 
 /* ==========================================================================
    output states: the failed run — exception surface, stack trace, empty result.
