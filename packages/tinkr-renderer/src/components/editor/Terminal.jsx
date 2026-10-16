@@ -3,23 +3,21 @@ import * as xterm from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 
 import {onOutputConnection, onRunOutput, inputConnection, onReconnectConnection} from '../../utils/api'
-import {getTermOptions} from '../../utils/getTermOptions'
-import {configAtom} from '../../stores/config'
-import {useAtomValue, useSetAtom} from 'jotai'
+import {termOptions, watchTermTheme} from '../../utils/getTermOptions'
+import {useSetAtom} from 'jotai'
 import useFitAddon from '../../hooks/useFitAddon'
 import {appendOutputAtom} from '../../stores/editor'
 
 const Terminal = () => {
   const domRef = useRef()
   const termRef = useRef()
-  const config = useAtomValue(configAtom)
   const {fitAddonRef} = useFitAddon()
   const appendOutput = useSetAtom(appendOutputAtom)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const term = new xterm.Terminal({
-      ...getTermOptions(config.theme),
+      ...termOptions(),
       fontSize: 12,
       cursorBlink: true,
       disableStdin: false,
@@ -56,6 +54,10 @@ const Terminal = () => {
     term.loadAddon(fitAddonRef.current)
     fitAddonRef.current.fit()
 
+    // the mono face lands after that first fit, and a different face is a
+    // different cell width, so the fit is taken again once the fonts are in
+    document.fonts.ready.then(() => fitAddonRef.current.fit())
+
     return () => {
       onOutput.dispose()
       onRun.dispose()
@@ -64,12 +66,9 @@ const Terminal = () => {
     }
   }, [])
 
-  // the terminal paints itself, so it has to be told about a theme change
-  useEffect(() => {
-    if (termRef.current) {
-      termRef.current.options.theme = getTermOptions(config.theme).theme
-    }
-  }, [config.theme])
+  // the terminal paints itself, so it is pointed at the palette and at every
+  // later one through the attribute the rest of the app switches with
+  useEffect(() => watchTermTheme(termRef.current), [])
 
   return useMemo(() => (
     <div

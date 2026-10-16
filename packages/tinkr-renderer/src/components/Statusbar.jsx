@@ -2,6 +2,7 @@ import {atom, useAtomValue} from 'jotai'
 import {useIntl} from 'react-intl'
 import {useRoute} from 'wouter'
 
+import Outcome from './Outcome'
 import {connectionAtom, resultAtom} from '../stores/editor'
 import {phpVersionAtom} from '../stores/php'
 import {configAtom} from '../stores/config'
@@ -19,6 +20,10 @@ const noSnippetAtom = atom(null)
  * where the caret is in the open snippet, whether the AI completions are on,
  * and the version. Run time, memory and the PHP version are shown by the
  * design but nothing in the app measures them, so they are left out.
+ *
+ * A run that threw is the outcome glyph and its class, in the error ink: the
+ * strip says what happened where the eye already is, in the language the rest
+ * of the app says it in.
  */
 const Statusbar = () => {
   const intl = useIntl()
@@ -34,7 +39,7 @@ const Statusbar = () => {
     <footer className='statusbar'>
       {result && result.error && (
         <span className='statusbar__item error'>
-          <span className='dot dot--error'/>
+          <Outcome kind='threw'/>
           {intl.formatMessage({id: 'statusbar.run_failed'}, {class: result.error.class})}
         </span>
       )}

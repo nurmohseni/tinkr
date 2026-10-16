@@ -2,6 +2,7 @@ import {useState} from 'react'
 import {useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 
+import Outcome from '../Outcome'
 import {configAtom, setConfigAtom} from '../../stores/config'
 import {connectionListAtom} from '../../stores/connections'
 import {configureClientAtom, mcpAtom, reloadMcpAtom} from '../../stores/mcp'
@@ -27,7 +28,9 @@ const toolMessages = {
  * A client that keeps its configuration in a file gets that file written; one
  * that keeps it behind a command of its own is given the command to copy. Both
  * are shown the file or the command they will get, because where a setting is
- * written is the thing worth knowing before pressing a button.
+ * written is the thing worth knowing before pressing a button. A client that
+ * already holds the entry says so with the outcome glyph, not with a badge: the
+ * app says a thing landed the same way wherever it says it.
  */
 const McpForm = () => {
   const intl = useIntl()
@@ -133,9 +136,11 @@ const McpForm = () => {
 
           <div className='setting__control'>
             {client.configured && (
-              <span className='badge badge--success'>
-                {intl.formatMessage({id: 'preference.mcp_configured'})}
-              </span>
+              <Outcome
+                kind='returned'
+                label
+                text={intl.formatMessage({id: 'preference.mcp_configured'})}
+              />
             )}
 
             <button

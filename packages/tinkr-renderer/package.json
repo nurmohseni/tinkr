@@ -10,7 +10,6 @@
     "test": "jest"
   },
   "dependencies": {
-    "color": "^4.2.3",
     "evergreen-ui": "^7.1.9",
     "flat": "^5.0.2",
     "immer": "^11.1.21",

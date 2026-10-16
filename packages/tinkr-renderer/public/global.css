@@ -5,18 +5,6 @@ body {
     overflow-y: hidden;
 }
 
-/* for react-split */
-.gutter {
-    position: relative;
-}
-.gutter-horizontal {
-    cursor: col-resize;
-}
-
-.gutter-vertical {
-    cursor: row-resize;
-}
-
 /* tinkr.css draws the design's fixed 1440x900 stage; in the app the window is
    the frame, so the frame fills it. That rule is a single class in tinkr.css
    and this sheet loads before it, so the selector carries `body` to out-
@@ -31,6 +19,7 @@ button.tree-nav__row {
     width: 100%;
     border: 0;
     background: transparent;
+    font-family: inherit;
     text-align: left;
 }
 
@@ -44,7 +33,7 @@ button.tree-nav__row {
     scrollbar-color: var(--border-strong) transparent;
 }
 
-/* the active tab's label is the snippet's rename field: it reads as the pill */
+/* the active tab's label is the snippet's rename field: it reads as the tab */
 .tab__name {
     field-sizing: content;
     min-width: 3ch;
@@ -55,12 +44,29 @@ button.tree-nav__row {
     outline: none;
 }
 
+/* a tab being renamed says so: the field takes the height of the tab's own
+   line and wears the focus ring the rest of the app wears */
+.tab .tab__name:focus {
+    height: 22px;
+    padding: 0 6px;
+    border-radius: var(--r-key);
+    background: var(--panel-raised);
+    box-shadow: inset 0 0 0 1px var(--focus);
+}
+
 /* ---- the settings window's layout ----------------------------------------
    screen-5 draws its rail, scrolling column, section head and section card in a
    <style> block of its own; they arrange one window rather than a primitive, so
    they live here for now. Every value is a token: the rail is the app sidebar,
-   at the width tinkr.css gives it, and the keycap rows are tinkr.css's own
-   .keycap-row. */
+   at the width tinkr.css gives the settings rail, and the keycap rows are
+   tinkr.css's own .keycap-row. */
+
+/* the rail is the sidebar, narrower: the settings window has no documents and
+   no history to list, so it gives the room back to the desk */
+.sidebar.rail {
+    width: var(--rail-w);
+    padding: 8px 6px 10px 8px;
+}
 
 .rail .sidebar__item {
     background: transparent;
@@ -69,78 +75,78 @@ button.tree-nav__row {
     text-align: left;
 }
 
-.rail .sidebar__item--active {
-    position: relative;
-    font-weight: 500;
-}
-
-.rail .sidebar__item--active::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 7px;
-    bottom: 7px;
-    width: 2px;
-    border-radius: 2px;
-    background: var(--primary-2);
-}
-
 .rail .sidebar__item svg {
     flex: none;
     color: var(--text-faint);
 }
 
 .rail .sidebar__item--active svg {
-    color: var(--accent);
+    color: var(--text);
 }
 
-/* the content column: one scrolling column of section groups */
+/* the content column: the desk, one scrolling column of section groups */
 .settings {
+    position: relative;
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    margin: 0 var(--desk-gap) var(--desk-gap) 0;
+    background: var(--panel);
+    border-radius: var(--r-panel);
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
 }
 
-.settings__inner {
-    max-width: 920px;
-    margin: 0 auto;
-    padding: var(--s5) var(--s4) var(--s6);
+/* the desk's own lip, drawn inside it so nothing outside has to know its radius */
+.settings::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--edge);
+    pointer-events: none;
 }
 
-/* section head: the title on the rule its rows hang from */
+.settings__inner {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 28px 32px 40px;
+}
+
 .sgroup + .sgroup {
-    margin-top: var(--s5);
+    margin-top: 28px;
 }
 
 .sgroup__head {
-    display: flex;
-    align-items: center;
-    gap: var(--s3);
-    padding-bottom: var(--s2);
-    border-bottom: 1px solid var(--border);
-    margin-bottom: var(--s3);
+    margin-bottom: 10px;
 }
 
 .sgroup__titles {
-    display: flex;
-    align-items: baseline;
-    gap: var(--s3);
+    display: grid;
+    gap: 2px;
     min-width: 0;
 }
 
+/* a settings group's title is a display role: Sentient, and nothing above it */
 .sgroup__title {
-    font-size: var(--fs-lg);
-    font-weight: 600;
-    flex: none;
+    font-family: var(--font-display);
+    font-size: var(--fs-xl);
+    font-weight: var(--fw-medium);
+    line-height: 1.25;
+    color: var(--text);
 }
 
-/* section card: the rows of one section on one panel */
+.sgroup__desc {
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+/* section card: the rows of one section on one raised panel */
 .scard {
-    background: var(--panel);
-    border: 1px solid var(--border);
+    background: var(--panel-raised);
     border-radius: var(--r-panel);
+    box-shadow: inset 0 0 0 1px var(--edge);
     overflow: hidden;
 }
 
@@ -148,20 +154,22 @@ button.tree-nav__row {
    The rows say which client is pointed at the server and where it stands. What
    is left is the entry a client the app does not know is given, and the list of
    what the server offers: both are blocks of lines rather than controls, so both
-   are one panel with a head — a label, the path the entry runs, and the action —
-   over a mono body. The json is the one place in the app where a line is long
-   enough to need its own scroll. */
+   are one raised panel with a head — a label, the path the entry runs, and the
+   action — over a mono body. The json is the one place in the app where a line
+   is long enough to need its own scroll. */
 
 .mcppane {
-    border-top: 1px solid var(--border);
-    background: var(--panel-inset);
+    margin-top: var(--s4);
+    padding: 12px 16px;
+    background: var(--panel-raised);
+    border-radius: var(--r-panel);
+    box-shadow: inset 0 0 0 1px var(--edge);
 }
 
 .mcppane__head {
     display: flex;
     align-items: center;
-    gap: var(--s3);
-    padding: var(--s2) var(--s3);
+    gap: 10px;
 }
 
 .mcppane__head .field__label {
@@ -170,7 +178,9 @@ button.tree-nav__row {
 
 /* the path the entry runs, on the head's own line, cut rather than wrapped */
 .mcppane__head .mono {
-    color: var(--text-faint);
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -183,17 +193,20 @@ button.tree-nav__row {
 
 /* what to do with the entry, over the entry itself */
 .mcppane__note {
-    padding: 0 var(--s3) var(--s2);
+    margin: 6px 0 10px;
     font-size: var(--fs-sm);
-    color: var(--text-faint);
+    color: var(--text-muted);
 }
 
 .mcppane__body {
     margin: 0;
-    padding: 0 var(--s3) var(--s3);
-    overflow-x: auto;
+    padding: 10px 12px;
+    background: var(--panel-inset);
+    border-radius: var(--r-btn);
+    overflow: auto;
+    max-height: 220px;
     font-family: var(--font-mono);
-    font-size: var(--fs-code);
+    font-size: var(--fs-sm);
     line-height: var(--lh-code);
     color: var(--text-muted);
     white-space: pre;
@@ -201,19 +214,17 @@ button.tree-nav__row {
 
 /* one tool a row: its name at the app's own ink, what it does beside it */
 .mcppane__row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    column-gap: var(--s3);
+    min-height: var(--tree-row-h);
     align-items: baseline;
-    gap: var(--s3);
     white-space: normal;
 }
 
-.mcppane__row + .mcppane__row {
-    margin-top: var(--s1);
-}
-
 .mcppane__name {
-    flex: none;
-    min-width: 168px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
     color: var(--text);
 }
 
@@ -238,13 +249,15 @@ button.tree-nav__row {
 
 .autocomplete.snippet-menu {
     position: fixed;
-    min-width: 180px;
+    width: 180px;
 }
 
 .snippet-menu .autocomplete__item {
     width: 100%;
     border: 0;
     background: transparent;
+    font-family: var(--font-ui);
+    font-size: var(--fs-md);
     text-align: left;
 }
 
@@ -264,34 +277,46 @@ button.tree-nav__row {
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    background: var(--panel-inset);
 }
 
 .logs__bar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     flex: none;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: var(--s2);
-    padding: var(--s2) var(--s3);
-    border-bottom: 1px solid var(--border);
+    height: var(--tabbar-h);
+    padding: 0 var(--s3);
+    background: var(--panel-inset);
+    box-shadow: 0 1px 0 var(--border);
 }
 
-/* two rows: the file and reading it again, then the filters. The pane is a third
-   of the window, and five controls are not one line of it */
 .logs__row {
     display: flex;
     align-items: center;
     gap: var(--s2);
+    flex: 1 1 auto;
     min-width: 0;
 }
 
 .logs__file {
     flex: 1 1 auto;
     min-width: 0;
+    max-width: 320px;
 }
 
-.logs__row .input {
+.logs__bar .select {
+    width: 120px;
+    flex: none;
+}
+
+.logs__bar .input {
     flex: 1 1 90px;
     min-width: 0;
+    max-width: 280px;
 }
 
 /* the follow switch is a label and a switch, as the settings rows have them */
@@ -300,6 +325,8 @@ button.tree-nav__row {
     align-items: center;
     gap: var(--s2);
     flex: none;
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
     cursor: pointer;
 }
 
@@ -319,24 +346,27 @@ button.tree-nav__row {
 .logs__note {
     padding: var(--s3);
     font-size: var(--fs-sm);
-    color: var(--text-muted);
+    color: var(--text-faint);
 }
 
 .logs__note.error {
     color: var(--error);
 }
 
+/* one entry a row: when, what level, what it said. The level is data the file
+   itself prints, so it stays a chip there and nowhere else. */
 .log__row {
-    display: flex;
-    align-items: baseline;
-    gap: var(--s2);
-    height: var(--row-h);
+    display: grid;
+    grid-template-columns: 19ch 9ch minmax(0, 1fr);
+    column-gap: 10px;
+    align-items: center;
+    min-height: var(--tree-row-h);
     padding: 0 var(--s3);
     cursor: pointer;
+    font-family: var(--font-mono);
     font-size: var(--fs-sm);
 }
 
-/* the summary's own marker is the design's caret, drawn by the app's sheets */
 .log__row::marker,
 .log__row::-webkit-details-marker {
     display: none;
@@ -344,32 +374,48 @@ button.tree-nav__row {
 }
 
 .log:hover > .log__row {
-    background: var(--panel-raised);
+    background: var(--hover);
 }
 
 .log__at {
-    flex: none;
-    font-family: var(--font-mono);
     font-size: var(--fs-xs);
-    width: 130px;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .log__row .badge {
-    flex: none;
-    min-width: 62px;
-    text-align: center;
+    background: none;
+    height: auto;
+    padding: 0;
+    font-family: inherit;
+    font-size: var(--fs-xs);
+    text-align: left;
 }
 
 .log__message {
     min-width: 0;
     color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* an entry that is open shows its whole message, and what it came with */
+.log[open] > .log__row .log__message {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .log__details {
-    margin: 0;
-    padding: var(--s2) var(--s3) var(--s3) calc(var(--s3) + 130px + var(--s2));
+    margin: 0 var(--s3) var(--s2);
+    padding: 10px 12px;
+    max-height: 280px;
+    overflow: auto;
+    background: var(--panel);
+    border-radius: var(--r-btn);
     font-family: var(--font-mono);
-    font-size: var(--fs-xs);
+    font-size: var(--fs-sm);
     line-height: var(--lh-code);
     color: var(--text-muted);
     white-space: pre-wrap;
@@ -381,9 +427,10 @@ button.tree-nav__row {
     display: flex;
     align-items: center;
     gap: var(--s2);
-    padding: 0 var(--s3) var(--s2);
+    padding: 8px var(--s3);
     font-size: var(--fs-xs);
     font-family: var(--font-mono);
+    color: var(--text-faint);
     min-width: 0;
 }
 
@@ -428,6 +475,7 @@ button.tree-nav__row {
     bottom: 100%;
     left: 0;
     right: 0;
+    width: auto;
     margin-bottom: var(--s2);
     max-height: 220px;
     overflow-y: auto;
@@ -435,12 +483,32 @@ button.tree-nav__row {
 
 .ai__mention .autocomplete__item {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--s2);
     width: 100%;
     border: 0;
     background: transparent;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
     text-align: left;
+}
+
+/* a file is read by its name, so the name comes first and keeps its room, and
+   the path after it gives way. The kind is the app's trailing detail in the
+   completion list; here it is the leading word. */
+.ai__mention .autocomplete__item .autocomplete__kind {
+    margin-left: 0;
+    order: -1;
+    flex: none;
+    min-width: 0;
+    font-size: var(--fs-sm);
+    text-align: left;
+    color: var(--text);
+}
+
+.ai__mention .autocomplete__item .truncate {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .ai__mention .autocomplete__item:hover,
@@ -453,14 +521,15 @@ button.tree-nav__row {
     flex: none;
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
     gap: var(--s3);
     padding: 0 var(--s3) var(--s2);
-    color: var(--text-muted);
+    color: var(--text-faint);
     font-size: var(--fs-xs);
+    min-width: 0;
 }
 
 .ai__context-label {
+    flex: none;
     color: var(--text-faint);
 }
 
@@ -474,7 +543,10 @@ button.tree-nav__row {
 .close-session .modal__body {
     display: flex;
     flex-direction: column;
-    gap: var(--s3);
+}
+
+.close-session .modal__body .checkbox {
+    margin-top: 14px;
 }
 
 /* monaco's suggestion rows: the widget colours its rows from its own

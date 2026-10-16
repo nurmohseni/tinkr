@@ -39,11 +39,15 @@ import {
   onUpdateState,
 } from './utils/api'
 
-// the split handle is the design's 6px divider, not react-split's 10px default
+// the split handle is the design's 9px divider, which is the room the `=` grip
+// needs and the hit area that makes it easy to grab, not react-split's 10px
+// default
 const splitGutter = (index, direction) => {
   const gutter = document.createElement('div')
 
   gutter.className = `gutter gutter-${direction} split`
+  // the handle is a hit area, not a control: it takes no keys and says nothing
+  gutter.setAttribute('aria-hidden', 'true')
 
   return gutter
 }
@@ -108,10 +112,8 @@ const EditorWindow = () => {
     <WindowContainer>
       <div className='app'>
         <Titlebar>
-          <span className='mono' style={{fontSize: 'var(--fs-sm)', color: 'var(--text)'}}>
-            {connection.name}
-          </span>
-          <span className='muted'>·</span>
+          <span className='mono'>{connection.name}</span>
+          <span className='titlebar__sep'>·</span>
           <span className='muted'>{connection.is_over_ssh ? 'ssh' : 'local'}</span>
         </Titlebar>
 
@@ -126,7 +128,7 @@ const EditorWindow = () => {
             ref={splitRef}
             sizes={[50, 50]}
             minSize={100}
-            gutterSize={6}
+            gutterSize={9}
             gutter={splitGutter}
             direction={side ? 'horizontal' : 'vertical'}
             onDrag={handleDrag}

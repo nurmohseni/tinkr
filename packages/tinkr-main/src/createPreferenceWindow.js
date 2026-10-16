@@ -1,6 +1,7 @@
 const {BrowserWindow} = require('electron')
 
 const {getEntryUrl, getPreloadEntryUrl} = require('./utils/entryUrl')
+const {devIcon} = require('./utils/devIcon')
 const {appName} = require('./constants')
 const {getIntl} = require('./locale')
 
@@ -14,6 +15,7 @@ const createPreferenceWindow = () => {
     minHeight: 520,
     parent: BrowserWindow.getFocusedWindow(),
     title: `${appName} - ${getIntl().formatMessage({id: 'preference.preferences'})}`,
+    ...devIcon(),
     webPreferences: {
       preload: getPreloadEntryUrl(),
       contextIsolation: true,

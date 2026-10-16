@@ -11,6 +11,7 @@ const {
   killPtys,
 } = require('./processes')
 const {getEntryUrl, getPreloadEntryUrl} = require('./utils/entryUrl')
+const {devIcon} = require('./utils/devIcon')
 const {appName} = require('./constants')
 
 const createEditorWindow = async connection => {
@@ -22,6 +23,7 @@ const createEditorWindow = async connection => {
     minWidth: 800,
     minHeight: 800,
     title: `${appName} - ${name}`,
+    ...devIcon(),
     webPreferences: {
       preload: getPreloadEntryUrl(),
       contextIsolation: true,

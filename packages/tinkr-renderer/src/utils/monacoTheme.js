@@ -8,49 +8,17 @@
  * the whole app, and it is already set on the first paint.
  */
 
+import {colour, token} from './cssColor'
+
 const THEME = 'tinkr'
-
-const token = name => window.getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-
-/**
- * Monaco parses theme colours as hex, and the design's current-line band is an
- * rgba() token, so the colour is converted on the way in.
- *
- * @param {String} value a css colour: hex, rgb() or rgba()
- * @return {String} the same colour as #rrggbb or #rrggbbaa
- */
-const toHex = value => {
-  const parts = value.match(/^rgba?\(([^)]+)\)$/)
-
-  if (!parts) {
-    return value
-  }
-
-  const [r, g, b, alpha = 1] = parts[1].split(',').map(part => parseFloat(part))
-  const channels = alpha < 1 ? [r, g, b, alpha * 255] : [r, g, b]
-
-  return `#${channels.map(channel => Math.round(channel).toString(16).padStart(2, '0')).join('')}`
-}
-
-/**
- * A design token as the hex monaco parses, or undefined when the palette does
- * not declare it — a missing colour is left out of the theme rather than
- * guessed at.
- *
- * @param {String} name
- * @return {String|undefined}
- */
-const colour = name => {
-  const value = token(name)
-
-  return value ? toHex(value) : undefined
-}
 
 const rules = () => [
   // the php-snippet grammar emits keyword.php, number.float.php, string.php and
   // the rest; monaco matches a rule against the head of the token
   {token: 'keyword', foreground: colour('--code-keyword')},
-  {token: 'constant', foreground: colour('--code-num')},
+  // true, false, null and the constants a run reaches for, which the grammar
+  // emits as constant.php
+  {token: 'constant', foreground: colour('--code-const')},
   {token: 'number', foreground: colour('--code-num')},
   {token: 'string', foreground: colour('--code-str')},
   {token: 'comment', foreground: colour('--code-comment'), fontStyle: 'italic'},
@@ -71,13 +39,22 @@ const colors = () => {
     'editor.lineHighlightBackground': colour('--code-caret-line'),
     'editor.lineHighlightBorder': '#00000000',
     'editorCursor.foreground': colour('--accent'),
-    // the design's ::selection tint, so the editor selects in the same indigo
+    // the design's ::selection tint, so the editor selects in the same verdigris
     'editor.selectionBackground': colour('--selection'),
+    // the completion list is a floating layer like a menu, and monaco's own
+    // palette would leave it grey against the paper
+    'editorSuggestWidget.background': colour('--panel-raised'),
+    'editorWidget.background': colour('--panel-raised'),
+    'editorHoverWidget.background': colour('--panel-raised'),
+    'editorSuggestWidget.border': colour('--border-strong'),
+    'editorHoverWidget.border': colour('--border-strong'),
+    'editorSuggestWidget.foreground': colour('--text'),
+    'editorSuggestWidget.selectedForeground': colour('--text'),
+    'editorSuggestWidget.selectedBackground': colour('--primary-soft'),
+    'editorSuggestWidget.highlightForeground': colour('--accent'),
+    'editorIndentGuide.background1': colour('--border'),
   }
 
-  // the suggestion popup is left to monaco's own dark palette: theming it from
-  // the tokens left its text and background indistinguishable, and a readable
-  // popup matters more than one that matches the panels
   return Object.fromEntries(Object.entries(map).filter(([, value]) => value))
 }
 
@@ -127,6 +104,10 @@ export const watchEditorTheme = monaco => {
   const observer = new window.MutationObserver(() => defineEditorTheme(monaco))
 
   observer.observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']})
+
+  // monaco measures its glyphs when the editor is created, which is before the
+  // mono face lands; remeasuring once it is in keeps the caret on a character
+  document.fonts.ready.then(() => monaco.editor.remeasureFonts())
 
   return () => observer.disconnect()
 }

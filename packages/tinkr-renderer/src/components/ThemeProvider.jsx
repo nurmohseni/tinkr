@@ -1,31 +1,33 @@
-import {useEffect} from 'react'
+import {useLayoutEffect, useState} from 'react'
 import PropTypes from 'prop-types'
-import {ThemeProvider as UIThemeProvider, defaultTheme} from 'evergreen-ui'
+import {ThemeProvider as UIThemeProvider} from 'evergreen-ui'
 import {useAtomValue} from 'jotai'
 
 import {configAtom} from '../stores/config'
-import darkTheme from '../utils/darkTheme'
+import {uiTheme} from '../utils/uiTheme'
 
-// evergreen 7 dropped the classic theme, so a setting saved as classic lands
-// on the default one
-const themes = {
-  default: defaultTheme,
-  classic: defaultTheme,
-  dark: darkTheme,
-}
-
+// the config predates the palette: `dark` is the dark interface and every other
+// value — `default`, the `classic` an old setting may still hold, the design's
+// own `light` — is the light one, which is how the preference's switch reads it
 const ThemeProvider = ({children}) => {
   const config = useAtomValue(configAtom)
-  const theme = themes[config.theme] || defaultTheme
-  const isDark = config.theme === 'dark'
+  const mode = config.theme === 'dark' ? 'dark' : 'light'
+  const [theme, setTheme] = useState(() => {
+    // tinkr.css carries both palettes under the same token names and the
+    // attribute is what picks one; it goes on <html> so the frame around the
+    // panes, and not only the panes, is themed
+    document.documentElement.dataset.theme = mode
 
-  // tinkr.css carries both palettes under the same token names, and the
-  // attribute is what picks one; it goes on <html> so the frame around the
-  // panes, and not only the panes, is themed. evergreen has no light/dark
-  // switch of its own, so the dark theme is only dark where it is chosen.
-  useEffect(() => {
-    document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
-  }, [isDark])
+    return uiTheme(mode)
+  })
+
+  // evergreen reads the tokens while rendering, and setting the attribute in a
+  // layout effect puts it on the document before the re-render that draws the
+  // new mode, so no frame is painted in the mode that was left
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = mode
+    setTheme(uiTheme(mode))
+  }, [mode])
 
   return (
     <UIThemeProvider

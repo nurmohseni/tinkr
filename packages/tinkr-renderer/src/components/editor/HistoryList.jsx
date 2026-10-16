@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import {FormattedMessage, useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 
+import Outcome from '../Outcome'
 import {clearHistoryPromptAtom, historyListAtom} from '../../stores/history'
 import useNewSession from '../../hooks/useNewSession'
 
@@ -72,20 +73,10 @@ const outcomeMessage = outcome => {
   }
 }
 
-const outcomeBadge = outcome => {
-  switch (outcome) {
-    case 'returned':
-      return 'badge badge--success'
-    case 'threw':
-      return 'badge badge--error'
-    default:
-      return 'badge'
-  }
-}
-
 /**
- * One run in the sidebar: the first line of the code that ran, when it ran, and
- * what came back.
+ * One run in the sidebar: what the run answered, the first line of the code that
+ * ran, and when it ran — the ledger's row, with the outcome glyph where the
+ * eye can read a column of them at once.
  *
  * Opening it is a new tab holding that code, named for the time it ran: it
  * replaces nothing, so a snippet the window has open is still open afterwards.
@@ -97,23 +88,22 @@ const HistoryItem = ({entry, onOpen}) => {
   const time = isToday(entry.at)
     ? intl.formatTime(entry.at)
     : intl.formatDate(entry.at, {day: 'numeric', month: 'short'})
+  const outcome = intl.formatMessage({id: outcomeMessage(entry.outcome)})
 
   return (
     <button
-      className='tree-nav__row tree-nav__row--child'
+      className='tree-nav__row tree-nav__row--run'
       type='button'
-      title={`${intl.formatMessage({id: 'editor.history_load'})} · ${intl.formatDate(entry.at)} ${intl.formatTime(entry.at)}`}
+      title={`${outcome} · ${intl.formatMessage({id: 'editor.history_load'})} · ${intl.formatDate(entry.at)} ${intl.formatTime(entry.at)}`}
       onClick={() => onOpen(entry)}
     >
-      <span className='truncate mono' style={{fontSize: 'var(--fs-sm)'}}>
+      <Outcome kind={entry.outcome} text={outcome}/>
+
+      <span className='run-code'>
         {line || <FormattedMessage id='editor.history_empty_code'/>}
       </span>
 
       <span className='sidebar__meta'>{time}</span>
-
-      <span className={outcomeBadge(entry.outcome)}>
-        <FormattedMessage id={outcomeMessage(entry.outcome)}/>
-      </span>
     </button>
   )
 }
