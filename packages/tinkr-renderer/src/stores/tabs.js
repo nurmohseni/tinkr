@@ -15,6 +15,33 @@ import {atom} from 'jotai'
 const openTabsAtom = atom([])
 
 /**
+ * A log file's tab is named for the file, in a namespace of its own.
+ *
+ * A snippet's id and a session's id are nanoids, which are 21 characters of
+ * `A-Za-z0-9_-`: neither can ever begin with `log:`, so one list of open tabs
+ * holds all three kinds without the kinds being told apart by their order.
+ */
+const logPrefix = 'log:'
+
+const logTabId = name => `${logPrefix}${name}`
+
+const logTabName = id => (String(id).startsWith(logPrefix) ? String(id).slice(logPrefix.length) : null)
+
+/**
+ * The name a log route hands back, decoded.
+ *
+ * The route is written with the name encoded, and a name that is somehow not
+ * decodable is taken as it came rather than throwing a route away.
+ */
+const decodeLogName = value => {
+  try {
+    return decodeURIComponent(value)
+  } catch (e) {
+    return value
+  }
+}
+
+/**
  * Open a document's tab. A document has one tab, and the tab bar asks for
  * whatever the window is on whenever the route moves, so opening one that is
  * already there does nothing.
@@ -44,6 +71,9 @@ const replaceTabAtom = atom(null, (get, set, {from, to}) => {
 })
 
 export {
+  logTabId,
+  logTabName,
+  decodeLogName,
   openTabsAtom,
   openTabAtom,
   closeTabAtom,

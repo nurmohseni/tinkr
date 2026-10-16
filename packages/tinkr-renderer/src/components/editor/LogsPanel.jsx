@@ -4,11 +4,15 @@ import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
 import {
+  atEnd,
+  atStart,
   logsAtom,
   logsFollowAtom,
   logsIntervalAtom,
   logsLevelAtom,
   logsSearchAtom,
+  newerLogAtom,
+  olderLogAtom,
   readLogAtom,
 } from '../../stores/logs'
 
@@ -18,6 +22,9 @@ const intervals = [1000, 2000, 5000, 10000]
 // how far from the foot a list counts as being at the foot: a tail keeps its end
 // in view while new entries arrive, until someone scrolls away from it
 const atFoot = 24
+
+// kilobytes as the footer says them: a window is a whole number of them, near enough
+const kb = bytes => Math.max(1, Math.round(bytes / 1024))
 
 /**
  * The badge an entry's level wears, in the design's own badges: what went wrong
@@ -67,20 +74,23 @@ Entry.propTypes = {
  *
  * Which file is read is the sidebar's to say — its list is the picker — and the
  * viewer fills the editor pane, because a log line is as wide as it is and a
- * third of a window is where it wraps. It reads the end of the file, which is
- * where the newest entries are, and it reads it from the connection's own
- * machine, wherever that is.
+ * third of a window is where it wraps. It opens on the end of the file, which is
+ * where the newest entries are, and steps back and forward through it a window at
+ * a time, so a file too big to hold is read as cheaply as a small one.
  */
 const LogsPanel = () => {
   const intl = useIntl()
   const logs = useAtomValue(logsAtom)
   const read = useSetAtom(readLogAtom)
+  const older = useSetAtom(olderLogAtom)
+  const newer = useSetAtom(newerLogAtom)
   const [level, setLevel] = useAtom(logsLevelAtom)
   const [search, setSearch] = useAtom(logsSearchAtom)
   const [follow, setFollow] = useAtom(logsFollowAtom)
   const [interval, setInterval] = useAtom(logsIntervalAtom)
   const listRef = useRef()
   const pinned = useRef(true)
+  const landing = useRef(null)
 
   // following: the file is being appended to, so the same read is made again
   useEffect(() => {
@@ -93,13 +103,25 @@ const LogsPanel = () => {
     return () => clearInterval(timer)
   }, [follow, interval, logs.file])
 
-  // a tail keeps its foot in view, unless it has been scrolled away from
+  // where the eye lands: a window that was stepped back to lands on its bottom,
+  // because it continues from the top of what was just being read, and one that
+  // was stepped forward to lands on its top for the same reason. A window that
+  // arrives on its own keeps the foot in view, unless it has been scrolled away
+  // from.
   useEffect(() => {
     const list = listRef.current
 
-    if (list && pinned.current) {
+    if (!list) {
+      return
+    }
+
+    if (landing.current === 'top') {
+      list.scrollTop = 0
+    } else if (landing.current === 'bottom' || pinned.current) {
       list.scrollTop = list.scrollHeight
     }
+
+    landing.current = null
   }, [logs.entries, level, search])
 
   const handleScroll = () => {
@@ -149,6 +171,30 @@ const LogsPanel = () => {
           />
 
           <span className='grow'/>
+
+          <button
+            className='btn btn--secondary btn--sm'
+            type='button'
+            disabled={logs.file === '' || atStart(logs)}
+            onClick={() => {
+              landing.current = 'bottom'
+              older()
+            }}
+          >
+            {intl.formatMessage({id: 'editor.logs_older'})}
+          </button>
+
+          <button
+            className='btn btn--secondary btn--sm'
+            type='button'
+            disabled={logs.file === '' || atEnd(logs)}
+            onClick={() => {
+              landing.current = 'top'
+              newer()
+            }}
+          >
+            {intl.formatMessage({id: 'editor.logs_newer'})}
+          </button>
 
           <label
             className='logs__follow'
@@ -212,10 +258,23 @@ const LogsPanel = () => {
 
       <div className='logs__foot'>
         <span className='logs__read faint truncate'>
-          <FormattedMessage
-            id='editor.logs_read_of'
-            values={{read: Math.max(1, Math.round(logs.read / 1024)), size: Math.max(1, Math.round(logs.size / 1024))}}
-          />
+          {atEnd(logs)
+            ? (
+              <FormattedMessage
+                id='editor.logs_read_of'
+                values={{read: kb(logs.read), size: kb(logs.size)}}
+              />
+            )
+            : (
+              <FormattedMessage
+                id='editor.logs_read_of_before'
+                values={{
+                  read: kb(logs.read),
+                  back: kb(logs.size - logs.from - logs.read),
+                  size: kb(logs.size),
+                }}
+              />
+            )}
         </span>
         <span className='logs__dir faint truncate' title={logs.dir}>{logs.dir}</span>
       </div>

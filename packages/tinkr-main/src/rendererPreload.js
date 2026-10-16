@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('api', {
   quickConnect: () => ipcRenderer.send('quickConnect'),
   openPreference: () => ipcRenderer.send('openPreference'),
   logFiles: () => ipcRenderer.invoke('logFiles', connectionId()),
-  logRead: (name, bytes) => ipcRenderer.invoke('logRead', connectionId(), name, bytes),
+  logRead: (name, options) => ipcRenderer.invoke('logRead', connectionId(), name, options),
   mcpInfo: () => ipcRenderer.sendSync('mcpInfo'),
   configureMcp: id => ipcRenderer.invoke('configureMcp', id),
   popupConnectionContextMenu: id => ipcRenderer.send('popupConnectionContextMenu', id),

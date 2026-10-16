@@ -92,7 +92,6 @@
     "ai_mention": "Reference a project file",
     "ai_mention_empty": "No file of this project matches that",
     "logs_files": "Log files",
-    "logs_none": "no log files",
     "logs_pick": "Pick a log file in the sidebar.",
     "logs_level": "level",
     "logs_level_all": "all",
@@ -103,7 +102,10 @@
     "logs_read": "Read it again",
     "logs_empty": "There are no log files in {dir}.",
     "logs_no_entries": "Nothing matches.",
+    "logs_older": "Older",
+    "logs_newer": "Newer",
     "logs_read_of": "read the last {read} KB of {size} KB",
+    "logs_read_of_before": "read {read} KB ending {back} KB before the end of {size} KB",
     "logs_reading": "Reading the log files…"
   },
   "preference": {

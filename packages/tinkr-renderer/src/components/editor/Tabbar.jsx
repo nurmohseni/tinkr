@@ -6,13 +6,11 @@ import SnippetNameInput from './SnippetNameInput'
 import RunButton from './RunButton'
 import FormButton from './FormButton'
 import SaveSnippetButton from './SaveSnippetButton'
-import {LinesIcon} from './icons'
 import useNewSession from '../../hooks/useNewSession'
 import useOpenDocuments from '../../hooks/useOpenDocuments'
 import {updateSnippetAtom} from '../../stores/snippets'
 import {closeSessionPromptAtom, snippetMenuAtom} from '../../stores/snippetMenu'
-import {editorViewAtom, runCodeAtom} from '../../stores/editor'
-import {logsAtom} from '../../stores/logs'
+import {runCodeAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
 
 const CloseIcon = () => (
@@ -43,8 +41,6 @@ const Tabbar = () => {
   const updateSnippet = useSetAtom(updateSnippetAtom)
   const runCode = useAtomValue(runCodeAtom)
   const config = useAtomValue(configAtom)
-  const view = useAtomValue(editorViewAtom)
-  const logs = useAtomValue(logsAtom)
   const setMenu = useSetAtom(snippetMenuAtom)
   const setClosePrompt = useSetAtom(closeSessionPromptAtom)
 
@@ -64,23 +60,10 @@ const Tabbar = () => {
 
   const unsavedLabel = intl.formatMessage({id: 'editor.unsaved'})
   const newSessionLabel = intl.formatMessage({id: 'editor.new_session'})
-  const open = documents.filter(tab => tab.document)
+  // a log file is a document with nothing behind it but the file, so it is a tab
+  // like the others and not a reading of one
+  const open = documents.filter(tab => tab.document || tab.isLog)
   const active = open.find(tab => tab.id === activeId) || null
-
-  // the logs reading is the pane's other half: the strip stops naming documents
-  // and names the file it is showing instead, and Save and Run — which act on
-  // code — have nothing to act on there. The way back to the code is the
-  // sidebar's own button, which is where the two readings are switched.
-  if (view === 'logs') {
-    return (
-      <div className='tabbar'>
-        <span className='tabbar__file truncate' title={logs.file}>
-          <LinesIcon/>
-          {logs.file || <FormattedMessage id='editor.logs_none'/>}
-        </span>
-      </div>
-    )
-  }
 
   return (
     <div className='tabbar'>
@@ -92,11 +75,12 @@ const Tabbar = () => {
         {open.map(tab => {
           const isOpen = tab.id === activeId
           // a session has a name when a run was opened in it, and Unsaved is
-          // what a session the window started itself is called
-          const label = tab.isSession
-            ? (tab.document.name || unsavedLabel)
-            : tab.snippet.name
-          const isEdited = runs[tab.id] !== undefined && runs[tab.id] !== tab.document.code
+          // what a session the window started itself is called; a log file is
+          // called what it is called on the machine it lives on
+          const label = tab.isLog
+            ? tab.log
+            : (tab.isSession ? (tab.document.name || unsavedLabel) : tab.snippet.name)
+          const isEdited = !tab.isLog && runs[tab.id] !== undefined && runs[tab.id] !== tab.document.code
 
           return (
             <div
@@ -111,10 +95,11 @@ const Tabbar = () => {
                 }
               }}
               onContextMenu={event => {
-                // a session has no row in the sidebar to rename or delete, and
-                // the open tab's label is a text field, where a right click is
-                // the field's own menu rather than this one
-                if (tab.isSession || event.target.closest('input')) {
+                // a session has no row in the sidebar to rename or delete, a log
+                // file is renamed by the machine that writes it, and the open
+                // tab's label is a text field, where a right click is the
+                // field's own menu rather than this one
+                if (tab.isSession || tab.isLog || event.target.closest('input')) {
                   return
                 }
 
@@ -128,7 +113,7 @@ const Tabbar = () => {
                   onChange={name => updateSnippet({id: tab.id, name})}
                 />
               ) : (
-                <span className='truncate'>{label}</span>
+                <span className={tab.isLog ? 'truncate mono' : 'truncate'}>{label}</span>
               )}
 
               {isEdited && (
@@ -182,7 +167,7 @@ const Tabbar = () => {
       <div className='row'>
         {active?.snippet && config.form_switch && <FormButton/>}
         {active?.isSession && <SaveSnippetButton/>}
-        <RunButton/>
+        {!active?.isLog && <RunButton/>}
       </div>
     </div>
   )
