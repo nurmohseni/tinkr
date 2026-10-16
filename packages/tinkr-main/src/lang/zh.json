@@ -85,7 +85,13 @@
     "history_clear_content": "运行过的代码、时间和返回结果都会被忘记。除此之外不会改变，也无法找回。",
     "php_missing_title": "没有找到 PHP",
     "php_missing_content": "这个连接没有回应 `php -v`，tinker 可能无法在这里运行。命令行里可以看到它说了什么。",
-    "php_run_anyway": "仍然运行 tinker"
+    "php_run_anyway": "仍然运行 tinker",
+    "ai_send_with": "同时发送",
+    "ai_send_code": "编辑器里的代码",
+    "ai_send_output": "上一次运行的返回",
+    "ai_mention": "引用项目中的文件",
+    "ai_mention_empty": "项目里没有匹配的文件",
+    "ai_placeholder": "询问这段代码，或用 @ 指名一个文件"
   },
   "preference": {
     "preferences": "偏好设置",
@@ -153,7 +159,9 @@
     "mcp_tool_list_snippets": "列出某个连接保存的片段",
     "mcp_tool_save_snippet": "把代码保存为某个连接的片段",
     "mcp_tool_list_history": "列出某个连接保留的运行记录",
-    "mcp_tool_read_run": "读取一条运行记录及其返回的内容"
+    "mcp_tool_read_run": "读取一条运行记录及其返回的内容",
+    "shortcut_ai": "AI 面板",
+    "shortcut_ai_description": "打开 AI 面板并把光标放进输入框"
   },
   "ok": "确定",
   "cancel": "取消",

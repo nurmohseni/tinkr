@@ -85,7 +85,13 @@
     "history_clear_content": "Der ausgeführte Code, wann er lief und was zurückkam, wird vergessen. Sonst ändert sich nichts, und zurückholen lässt es sich nicht.",
     "php_missing_title": "Hier hat kein php geantwortet",
     "php_missing_content": "Diese Verbindung hat nicht auf `php -v` geantwortet, tinker läuft darauf womöglich nicht. Im Terminal steht, was sie gesagt hat.",
-    "php_run_anyway": "Tinker trotzdem ausführen"
+    "php_run_anyway": "Tinker trotzdem ausführen",
+    "ai_send_with": "Mitsenden",
+    "ai_send_code": "den Code des Editors",
+    "ai_send_output": "die Antwort des letzten Laufs",
+    "ai_mention": "Eine Projektdatei referenzieren",
+    "ai_mention_empty": "Keine Datei dieses Projekts passt dazu",
+    "ai_placeholder": "Frag zum Code, oder nenne mit @ eine Datei"
   },
   "preference": {
     "preferences": "Einstellungen",
@@ -153,7 +159,9 @@
     "mcp_tool_list_snippets": "listet die Snippets einer Verbindung",
     "mcp_tool_save_snippet": "legt Code als Snippet einer Verbindung ab",
     "mcp_tool_list_history": "listet die Läufe, die eine Verbindung behalten hat",
-    "mcp_tool_read_run": "liest einen behaltenen Lauf und was dabei herauskam"
+    "mcp_tool_read_run": "liest einen behaltenen Lauf und was dabei herauskam",
+    "shortcut_ai": "KI-Panel",
+    "shortcut_ai_description": "das KI-Panel öffnen und den Cursor in seine Eingabe setzen"
   },
   "ok": "OK",
   "cancel": "Abbrechen",

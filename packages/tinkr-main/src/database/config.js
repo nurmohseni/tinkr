@@ -44,6 +44,8 @@ const defaults = {
   result_blocks: 'all',
   shortcut_run: ['Control', 'r'],
   shortcut_new_connection: ['Meta', 'Shift', 'n'],
+  // what opens the ai panel and puts the cursor in its prompt
+  shortcut_ai: ['Control', 'Shift', 'l'],
   ai_provider: 'openai',
   ai_endpoint: '',
   ai_token: '',

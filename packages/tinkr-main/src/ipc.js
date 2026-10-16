@@ -27,6 +27,8 @@ const {complete, ask, check} = require('./services/ai')
 const {providers} = require('./aiProviders')
 const {checkForUpdates, downloadUpdate, installUpdate} = require('./updater')
 const {info: mcpInfo, configureClient} = require('./services/mcp')
+const {filesFor, attachmentsFor} = require('./services/files')
+const {getEditorConnection} = require('./processes')
 
 ipcMain.on('selectDirectory', (event, defaultPath) => {
   event.returnValue = selectDirectory(defaultPath)
@@ -121,6 +123,15 @@ ipcMain.on('openPreference', () => {
   createPreferenceWindow()
 })
 
+/**
+ * The directory a session of this connection runs in, when it runs on this
+ * machine: a project over ssh is not one whose files are here to read.
+ *
+ * @param {Record<String, any>} connection
+ * @return {String|null}
+ */
+const projectOf = connection => (connection && !connection.is_over_ssh ? connection.path : null)
+
 ipcMain.on('mcpInfo', event => {
   event.returnValue = mcpInfo()
 })
@@ -169,8 +180,20 @@ ipcMain.handle('aiComplete', async (event, code) => {
   return await complete(code)
 })
 
-ipcMain.handle('aiAsk', async (event, request) => {
-  return await ask(request)
+ipcMain.handle('aiAsk', async (event, connectionId, request) => {
+  const connection = getEditorConnection(connectionId)
+
+  // an `@` in the prompt names a file of the project the connection runs in, and
+  // the content goes into the request here rather than through the window
+  return await ask(Object.assign({}, request, {
+    files: attachmentsFor(projectOf(connection), request.prompt),
+  }))
+})
+
+ipcMain.handle('aiFiles', async (event, connectionId, typed) => {
+  const connection = getEditorConnection(connectionId)
+
+  return filesFor(projectOf(connection), typed)
 })
 
 ipcMain.handle('aiCheck', async event => {

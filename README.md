@@ -30,6 +30,7 @@ Installers are published to the Releases page of the repository that builds the 
 - [x] **Editor**: Run your terminal code via editor;
 - [x] **Output**: Focus on the results you really care that terminal return;
 - [x] **AI completions**: complete the snippet from whatever provider you point it at: OpenAI, Claude, Ollama, OpenCode Zen or Go, OpenRouter, or your own endpoint;
+- [x] **AI panel**: ask about the code in front of you, with the answer the last run gave going along and the project files you name with `@`, and take the code an answer proposes;
 - [x] **Structured results**: the value a run answers with arrives as data, so objects and arrays come as expandable structure instead of text;
 - [x] **Fresh session**: every run boots a new Tinker session, so the code you just changed on disk is the code that runs;
 - [x] **Snippet Form**: Switch the editor to the form, so that you can modify your variable value via form, like an admin panel;

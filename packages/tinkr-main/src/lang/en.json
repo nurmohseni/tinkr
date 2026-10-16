@@ -85,7 +85,13 @@
     "history_clear_content": "The code that ran, when, and what came back will be forgotten. Nothing else changes, and it cannot be brought back.",
     "php_missing_title": "No php answered here",
     "php_missing_content": "This connection did not answer `php -v`, so tinker may not work on it. The terminal is the place to see what it said.",
-    "php_run_anyway": "Run tinker anyway"
+    "php_run_anyway": "Run tinker anyway",
+    "ai_send_with": "Send with",
+    "ai_send_code": "the editor's code",
+    "ai_send_output": "the last run's answer",
+    "ai_mention": "Reference a project file",
+    "ai_mention_empty": "No file of this project matches that",
+    "ai_placeholder": "Ask about the code, or name a file with @"
   },
   "preference": {
     "preferences": "Preferences",
@@ -153,7 +159,9 @@
     "mcp_tool_list_snippets": "lists the snippets saved for a connection",
     "mcp_tool_save_snippet": "keeps code as a snippet of a connection",
     "mcp_tool_list_history": "lists the runs a connection has kept",
-    "mcp_tool_read_run": "reads one kept run, and what it came back with"
+    "mcp_tool_read_run": "reads one kept run, and what it came back with",
+    "shortcut_ai": "AI panel",
+    "shortcut_ai_description": "open the AI panel and put the cursor in its prompt"
   },
   "ok": "OK",
   "cancel": "Cancel",
