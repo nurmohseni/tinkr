@@ -5,7 +5,7 @@ import {runConnection, getConnection, reconnectConnection} from '../utils/api'
 const connectionAtom = atom(getConnection())
 const sizesAtom = atom([])
 const outputAtom = atom('')
-const outputTabIndexAtom = atom(0)
+const outputTabIndexAtom = atom(1)
 // how the result of the last run is read: the tree of its value, or the text
 // that value is drawn from. The last choice is kept, and it is what the run
 // after it opens in.

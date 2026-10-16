@@ -10,3 +10,7 @@ yarn-error.log
 
 # a local index of this checkout, written by the editor tooling
 codedb.snapshot
+
+# Switzer and Sentient: the ITF Free Font License lets the app embed them but
+# not redistribute them, so `node scripts/fetch-fonts.js` puts them here
+packages/tinkr-renderer/public/fonts/itf/

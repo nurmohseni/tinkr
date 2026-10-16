@@ -31,7 +31,7 @@ describe('the result panel', () => {
     expect(markup).toContain('Order')
     expect(markup).toContain('App\\Models\\Order')
     expect(markup).toContain('App\\Models\\Invoice')
-    expect(markup).toContain('ok')
+    expect(markup).toContain('returned')
   })
 
   test('a run that threw still says what it aliased', () => {

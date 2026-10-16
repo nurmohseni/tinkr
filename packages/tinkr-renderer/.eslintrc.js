@@ -15,5 +15,8 @@ module.exports = {
   },
   rules: {
     'react/react-in-jsx-scope': 'off',
+    // the contrast tests assert through one helper, so every ink and surface
+    // pair is checked the same way and its failure names the pair
+    'jest/expect-expect': ['warn', {assertFunctionNames: ['expect', 'expectReadable']}],
   },
 }

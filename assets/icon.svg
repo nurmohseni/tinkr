@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Tinkr's mark: the return bars. PsySH answers a returned value with "=",
+       and that glyph is the identity: a bar for the answer, a bar for the value
+       that landed on it, both cut at 29 degrees. The field is the app floor,
+       the upper bar is the ink, the lower bar is the accent. Flat, and no tile
+       behind a glyph. Doubled hyphens are illegal inside XML comments, which is
+       why the token names are written out rather than spelled. -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="#171a18"/>
+  <rect x="0.75" y="0.75" width="1022.5" height="1022.5" rx="223.25" fill="none" stroke="#e4e9e5" stroke-opacity="0.08" stroke-width="1.5"/>
+  <g>
+    <path d="M4.6 4.5H14L12.6 7H3.2Z" fill="#e4e9e5" transform="translate(64 64) scale(56)"/>
+    <path d="M3.4 9H12.8L11.4 11.5H2Z" fill="#82d0b7" transform="translate(64 64) scale(56)"/>
+  </g>
+</svg>

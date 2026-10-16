@@ -35,7 +35,10 @@ const defaults = {
   form_switch: true,
   form_prefix: 'field_',
   confirm_close_session: true,
-  theme: 'classic',
+  // what the app opens as: the interface is drawn dark, and the light palette
+  // is the same system on paper. 'classic' is the light theme, which is what
+  // ThemeProvider maps anything that is not 'dark' onto
+  theme: 'dark',
   // where the result panel sits: 'side' is the code on the left and the result
   // on the right, anything else is one above the other
   editor_layout: 'side',

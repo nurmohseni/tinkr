@@ -4,7 +4,7 @@ import * as xterm from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import debounce from 'lodash/debounce'
 
-import {getTermOptions} from '../../utils/getTermOptions'
+import {termOptions, watchTermTheme} from '../../utils/getTermOptions'
 import {outputAtom, outputViewAtom, resultAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
 import Result from './Result'
@@ -63,7 +63,7 @@ const Output = () => {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    const options = getTermOptions(config.theme)
+    const options = termOptions()
 
     const term = new xterm.Terminal({
       ...options,
@@ -78,6 +78,10 @@ const Output = () => {
     term.loadAddon(fitAddonRef.current)
     fitAddonRef.current.fit()
 
+    // the mono face lands after that first fit, and a different face is a
+    // different cell width, so the fit is taken again once the fonts are in
+    document.fonts.ready.then(() => fitAddonRef.current.fit())
+
     termRef.current = term
 
     return () => {
@@ -85,12 +89,10 @@ const Output = () => {
     }
   }, [])
 
-  // the terminal paints itself, so it has to be told about a theme change
-  useEffect(() => {
-    if (termRef.current) {
-      termRef.current.options.theme = hideCursor(getTermOptions(config.theme).theme)
-    }
-  }, [config.theme])
+  // the terminal paints itself, so it is pointed at the palette and at every
+  // later one through the attribute the rest of the app switches with; this
+  // pane takes no input, so its cursor stays the colour of its paper
+  useEffect(() => watchTermTheme(termRef.current, hideCursor), [])
 
   return useMemo(() => (
     <>

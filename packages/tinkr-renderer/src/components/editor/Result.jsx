@@ -2,6 +2,8 @@ import {useState} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
+import Outcome from '../Outcome'
+
 /**
  * The result of the last run, as the design's value tree.
  *
@@ -46,9 +48,22 @@ const copy = value => navigator.clipboard.writeText(
   typeof value === 'string' ? value : JSON.stringify(value, null, 2),
 )
 
+// the landing is drawn once per run, and React draws an element again only when
+// its key says it is another one: an outcome is keyed by what the run answered,
+// so a run landing where the last one stood replays the landing rather than
+// keeping the glyph that is already there. A value is named by its type and its
+// size, which keeps the key cheap; the tree under it is the reading that counts.
+const answerKey = (kind, value) => (value !== null && typeof value === 'object'
+  ? `${kind}:${Array.isArray(value) ? 'array' : 'object'}:${entriesOf(value).length}`
+  : `${kind}:${String(value)}`)
+
+const failureKey = error => `threw:${error.class}:${error.message}`
+
 /**
- * What the value is, in the language the app is in: `3 elementos devueltos`,
- * `2 keys returned`, or the type of a leaf.
+ * What the value is, in the language the app is in: `3 items`, `2 keys`, or the
+ * type of a leaf. It names the noun and nothing else, because the outcome
+ * beside it already says what happened to it — `= returned 3 items` twice over
+ * was one word too many.
  *
  * @param {IntlShape} intl
  * @param {any} value
@@ -56,11 +71,11 @@ const copy = value => navigator.clipboard.writeText(
  */
 const describe = (intl, value) => {
   if (Array.isArray(value)) {
-    return intl.formatMessage({id: 'result.returned_items'}, {count: value.length})
+    return intl.formatMessage({id: 'result.items'}, {count: value.length})
   }
 
   if (isComposite(value)) {
-    return intl.formatMessage({id: 'result.returned_keys'}, {count: Object.keys(value).length})
+    return intl.formatMessage({id: 'result.keys'}, {count: Object.keys(value).length})
   }
 
   const id = {
@@ -114,7 +129,8 @@ const TypeLabel = ({value}) => {
 }
 
 TypeLabel.propTypes = {
-  value: PropTypes.object.isRequired,
+  // a list is labelled too, which is why this is not an object alone
+  value: PropTypes.oneOfType([PropTypes.object, PropTypes.array]).isRequired,
 }
 
 const Value = ({value}) => (
@@ -196,9 +212,7 @@ const Failure = ({error}) => {
   return (
   <>
     <div className='result-summary'>
-      <span className='badge badge--error'>
-        <span className='dot dot--error'/>{intl.formatMessage({id: 'result.threw'})}
-      </span>
+      <Outcome kind='threw' label animate key={failureKey(error)}/>
       <span className='muted'>{intl.formatMessage({id: 'result.no_value'})}</span>
       <span className='grow'/>
       <button
@@ -229,12 +243,7 @@ Failure.propTypes = {
 /** The run finished with nothing to draw: no value, and nothing printed either. */
 const NothingReturned = () => (
   <div className='empty empty--benign'>
-    <span className='empty__icon' aria-hidden='true'>
-      <svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.3'>
-        <circle cx='8' cy='8' r='6.2'/>
-        <path d='M8 4.8v4.4M8 11.4v.2' strokeLinecap='round'/>
-      </svg>
-    </span>
+    <Outcome kind='printed'/>
     <p><FormattedMessage id='result.nothing_returned'/></p>
     <p className='muted'><FormattedMessage id='result.nothing_printed'/></p>
   </div>
@@ -257,24 +266,21 @@ const Block = ({block, view}) => {
         <span className='block__line'>
           {intl.formatMessage({id: 'result.line'}, {line: block.line})}
         </span>
+        <Outcome
+          key={failed ? failureKey(block.error) : answerKey('returned', block.value)}
+          kind={failed ? 'threw' : 'returned'}
+          label
+          animate
+        />
         {failed
-          ? (
-            <span className='badge badge--error'>
-              <span className='dot dot--error'/>{block.error.class}
-            </span>
-          )
+          ? <span className='mono'>{block.error.class}</span>
           : (
-            <span className='badge badge--success'>
-              <span className='dot dot--live'/>{intl.formatMessage({id: 'result.ok'})}
+            <span className='muted'>
+              {block.value === null
+                ? intl.formatMessage({id: 'result.value_none'})
+                : describe(intl, block.value)}
             </span>
           )}
-        {!failed && (
-          <span className='muted'>
-            {block.value === null
-              ? intl.formatMessage({id: 'result.value_none'})
-              : describe(intl, block.value)}
-          </span>
-        )}
         <span className='grow'/>
         <button
           className='btn btn--ghost btn--sm'
@@ -319,8 +325,8 @@ Block.propTypes = {
 }
 
 /**
- * What the run printed, as the session's console: the badge says it is the
- * session's own words, and the text is drawn under it.
+ * What the run printed, as the session's console: the one bar says nothing came
+ * back, and the text is drawn under it.
  */
 const Printed = ({output}) => {
   const intl = useIntl()
@@ -328,9 +334,7 @@ const Printed = ({output}) => {
   return (
   <>
     <div className='result-summary'>
-      <span className='badge'>
-        <span className='dot dot--accent'/><FormattedMessage id='result.printed'/>
-      </span>
+      <Outcome kind='printed' label animate key={output}/>
       <span className='grow'/>
       <button
         className='btn btn--ghost btn--sm'
@@ -403,7 +407,7 @@ const Returned = ({value, view, onView, output}) => {
   return (
     <>
       <div className='result-summary'>
-        <span className='badge badge--success'><span className='dot dot--live'/>ok</span>
+        <Outcome kind='returned' label animate key={answerKey('returned', value)}/>
         <span>{describe(intl, value)}</span>
         <ViewSwitch view={view} onChange={onView}/>
         <span className='grow'/>
@@ -457,7 +461,7 @@ const Imported = ({imported}) => {
   return (
     <div className='result-summary'>
       <span className='badge'>
-        <span className='dot dot--accent'/><FormattedMessage id='result.imported'/>
+        <FormattedMessage id='result.imported'/>
       </span>
       <span className='mono'>
         {entries.map(([name, qualified], index) => (
@@ -500,15 +504,12 @@ const Result = ({result, view, onView, allStatements}) => {
         {output && <Printed output={output}/>}
 
         <div className='result-summary'>
-          {error
-            ? (
-              <span className='badge badge--error'>
-                <span className='dot dot--error'/>{error.class}
-              </span>
-            )
-            : (
-              <span className='badge badge--success'><span className='dot dot--live'/>ok</span>
-            )}
+          <Outcome
+            key={error ? failureKey(error) : answerKey('returned', value)}
+            kind={error ? 'threw' : 'returned'}
+            label
+            animate
+          />
           <span>{intl.formatMessage({id: 'result.statements'}, {count: blocks.length})}</span>
           <ViewSwitch view={view} onChange={onView}/>
         </div>

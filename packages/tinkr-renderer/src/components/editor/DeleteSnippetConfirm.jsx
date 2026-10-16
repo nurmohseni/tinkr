@@ -76,7 +76,7 @@ const DeleteSnippetConfirm = () => {
           </button>
 
           <button
-            className='btn btn--primary'
+            className='btn btn--danger'
             type='button'
             onClick={confirm}
           >
