@@ -77,6 +77,16 @@ class Pty {
   input(code) {
     this.session.write(code)
   }
+
+  /**
+   * The session is reading the terminal, so the run it was started with can go
+   * in without being dropped. See Session#ready.
+   *
+   * @returns {Promise<void>}
+   */
+  ready() {
+    return this.session.ready()
+  }
 }
 
 module.exports = {

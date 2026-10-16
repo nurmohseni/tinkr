@@ -9,9 +9,11 @@ const {refreshIndex} = require('./services/project')
 /**
  * Boot a session for the connection, and optionally run `code` in it.
  *
- * The code is written right after the connection command, before the session
- * has finished booting. That is safe: the pty queues the input and the shell
- * (then tinker) reads it in order, exactly like a paste into a fresh terminal.
+ * The code is written once the session is reading the terminal, which is what
+ * the session's own ready() settles on (see Session#ready). The pty takes only
+ * so much input before the command that reads it is up: past 4096 bytes, the
+ * terminal's line limit, the rest is dropped, and a run that goes in earlier
+ * arrives cut in half and is parsed as a syntax error instead of as the run.
  *
  * The code is wrapped (see runResult.wrapRun) so the session prints its value
  * as json between two markers. That envelope never reaches the terminal: it is
@@ -21,10 +23,14 @@ const {refreshIndex} = require('./services/project')
  * session can alias them before it evaluates it (see classIndex.importsFor).
  * That is a lookup in an index the connection pays for once.
  *
- * @param {Record<string, any>} connection
+ * A guarded run is wrapped with the transaction it is evaluated inside, so the
+ * run's envelope carries how that transaction ended (see runResult.guardArm).
+ *
+ * @param {Record<String, any>} connection
  * @param {String} [code]
+ * @param {String} [guard] `rollback` or `commit`
  */
-const createPty = (connection, code) => {
+const createPty = (connection, code, guard = null) => {
   const {id} = connection
 
   const pty = new Pty(connection)
@@ -33,14 +39,10 @@ const createPty = (connection, code) => {
   const imports = code && !connection.is_over_ssh && connection.path
     ? importsFor(connection.path, code)
     : {}
-  const run = code ? wrapRun(code, imports) : null
+  const run = code ? wrapRun(code, imports, guard) : null
   const filter = run ? new RunResultFilter(run.marker, run.start) : null
 
   pty.connect()
-
-  if (run) {
-    pty.input(`${run.code}\r`)
-  }
 
   const onData = pty.onData(data => {
     // a session that has been replaced may still print while it goes away
@@ -98,6 +100,17 @@ const createPty = (connection, code) => {
   })
 
   setPtyProcess(id, pty)
+
+  if (run) {
+    pty.ready().then(() => {
+      // the session may have been replaced, or closed, while it was booting
+      if (getPtyProcess(id) !== pty) {
+        return
+      }
+
+      pty.input(`${run.code}\r`)
+    })
+  }
 }
 
 module.exports = {

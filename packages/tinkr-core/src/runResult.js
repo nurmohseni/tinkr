@@ -79,8 +79,13 @@ const importBlock = entries => {
 /**
  * php splits the snippet itself, and this is the loop that does it, kept in one
  * string per line for reading.
+ *
+ * The split and the loop that evaluates what it found are two arrays rather
+ * than one, because a transaction guard is armed between them: a transaction has
+ * to be open before the first statement is evaluated, and this is where that
+ * seam is.
  */
-const PHP_BLOCKS = [
+const SPLIT_BLOCKS = [
   "$tinkr_tokens=token_get_all('<?php '.$tinkr_code);$tinkr_total=count($tinkr_tokens);",
   "$tinkr_stmts=[];$tinkr_stmt='';$tinkr_line=0;$tinkr_depth=0;",
   "$tinkr_next=function($tinkr_all,$tinkr_at,$tinkr_count){for($tinkr_i=$tinkr_at+1;$tinkr_i<$tinkr_count;$tinkr_i++){$tinkr_t=$tinkr_all[$tinkr_i];if(is_array($tinkr_t)&&($tinkr_t[0]===T_WHITESPACE||$tinkr_t[0]===T_COMMENT||$tinkr_t[0]===T_DOC_COMMENT)){continue;}$tinkr_v=is_array($tinkr_t)?$tinkr_t[0]:$tinkr_t;return in_array($tinkr_v,[';',')',T_ELSE,T_ELSEIF,T_CATCH,T_FINALLY,T_WHILE],true);}return false;};",
@@ -98,8 +103,25 @@ const PHP_BLOCKS = [
   "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];$tinkr_stmt='';$tinkr_line=0;}",
   '}',
   "if(trim($tinkr_stmt)!==''){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}",
+]
+
+/**
+ * The loop that evaluates what the splitter found, one statement at a time.
+ *
+ * Every statement is evaluated in turn and its value kept beside its line, and
+ * the loop stops at the first one that throws — at the statement it threw on,
+ * with the ones before it standing. That is what running the snippet would have
+ * done, and it is what the pane reads: `$tinkr_error` is the failure of the
+ * whole run, and the blocks before it are what the run got through.
+ *
+ * It is one string per line for reading, and it is one line to php: the wrapped
+ * command is a single line, which is what every block of the wrapper has to
+ * keep being.
+ */
+const EVAL_BLOCKS = [
   '$tinkr_results=[];$tinkr_value=null;$tinkr_error=null;',
   'foreach($tinkr_stmts as $tinkr_one){',
+  "$tinkr_query_line=$tinkr_one['line'];",
   "$tinkr_source=rtrim($tinkr_one['code']);",
   "if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}",
   '$tinkr_block_error=null;',
@@ -113,6 +135,127 @@ const PHP_BLOCKS = [
   'if($tinkr_block_error!==null){$tinkr_error=$tinkr_block_error;break;}',
   '}',
 ]
+
+/**
+ * The php that collects the queries the snippet runs.
+ *
+ * Laravel dispatches `QueryExecuted` for every statement it sends to any of its
+ * connections, and a listener on that event is how the run sees its own queries
+ * without turning query logging on: nothing is enabled, nothing has to be turned
+ * off when the run ends, and every connection is covered, not only the default
+ * one.
+ *
+ * The listener writes into the run's own variables by reference, so the list the
+ * envelope reports is the list the event filled while the statements ran.
+ * `$tinkr_query_line` is the line of the statement being evaluated, which is what
+ * tells a query apart from the statement that asked for it, and
+ * `$tinkr_query_connections` counts what each connection was sent, which is what
+ * lets a transaction guard say how many statements it held. That count is of
+ * every query, not of the stored ones, so a run past the storage limits still
+ * reports what it sent.
+ *
+ * A session that is not a booted laravel application has no event dispatcher,
+ * and then no query is collected rather than the run failing: the envelope
+ * reports an empty list, and the pane says the run executed none. The whole
+ * block is guarded, because a project that cannot answer for its dispatcher must
+ * still run its snippet.
+ *
+ * What is stored is bounded twice over, so a run over a thousand rows cannot
+ * send a megabyte back through the terminal: the list holds a hundred queries,
+ * and it stops taking new ones once it holds a couple of hundred kilobytes. A
+ * query over that limit is not stored at all rather than stored cut, so what the
+ * pane copies is always what the connection ran. The count is of every query
+ * either way, which is what lets the pane say how many it is not showing.
+ *
+ * It is written in one line, like the rest of the wrapper: the wrapped command
+ * is a single line of php, and it is php's own tokenizer that splits the snippet
+ * afterwards, so the lines the envelope reports are the snippet's and not the
+ * file's.
+ */
+const QUERY_BLOCK = '$tinkr_queries=[];$tinkr_query_connections=[];$tinkr_query_total=0;$tinkr_query_size=0;$tinkr_query_line=0;' +
+  '$tinkr_query_binding=function($tinkr_one){' +
+  "if(is_string($tinkr_one)){return strlen($tinkr_one)>120?substr($tinkr_one,0,120).'...':$tinkr_one;}" +
+  'if($tinkr_one===null||is_bool($tinkr_one)||is_int($tinkr_one)||is_float($tinkr_one)){return $tinkr_one;}' +
+  "return '['.(is_object($tinkr_one)?get_class($tinkr_one):gettype($tinkr_one)).']';};" +
+  "try{if(function_exists('app')&&app()->bound('events')&&class_exists('Illuminate\\\\Database\\\\Events\\\\QueryExecuted')){" +
+  "app('events')->listen('Illuminate\\\\Database\\\\Events\\\\QueryExecuted'," +
+  'function($tinkr_query)use(&$tinkr_queries,&$tinkr_query_connections,&$tinkr_query_total,&$tinkr_query_size,&$tinkr_query_line,&$tinkr_query_binding){' +
+  '$tinkr_query_total++;' +
+  // how many statements each connection got, so a transaction guard can say how
+  // many it held. It counts every query, stored or not: a run over the storage
+  // limits still rolls back everything it sent.
+  '$tinkr_query_connections[$tinkr_query->connectionName]=($tinkr_query_connections[$tinkr_query->connectionName]??0)+1;$tinkr_bindings=[];' +
+  'foreach($tinkr_query->bindings as $tinkr_one){$tinkr_bindings[]=$tinkr_query_binding($tinkr_one);}' +
+  "$tinkr_bytes=strlen($tinkr_query->sql)+strlen(implode('',$tinkr_bindings));" +
+  'if(count($tinkr_queries)>=100||$tinkr_query_size+$tinkr_bytes>200000){return;}' +
+  '$tinkr_query_size+=$tinkr_bytes;' +
+  "$tinkr_queries[]=['line'=>$tinkr_query_line,'sql'=>$tinkr_query->sql,'bindings'=>$tinkr_bindings," +
+  "'time'=>round($tinkr_query->time,2),'connection'=>$tinkr_query->connectionName];});}}" +
+  'catch(\\Throwable $tinkr_query_failure){}'
+
+/**
+ * The php that opens the transaction a guarded run is evaluated inside.
+ *
+ * It runs after the snippet has been split and before its first statement is
+ * evaluated, so everything the run sends to the default connection is inside the
+ * transaction — including the statements a run that throws got through before it
+ * threw, which is the half-written state a dry run exists to avoid.
+ *
+ * The mode is baked in: `rollback` closes the transaction by taking it back, and
+ * `commit` closes it by keeping it, which is what a run the pane offered to
+ * apply is sent with.
+ *
+ * A guard that cannot be armed refuses the run rather than letting it through:
+ * the statements are dropped, so nothing is evaluated and nothing can be
+ * changed. A run that could not be undone must not be run under a promise that
+ * it was, and a session with no database to guard (a project that is not a
+ * booted laravel application, a connection that will not begin a transaction)
+ * is exactly that case. The failure is reported twice over, the way the pane
+ * reads a run: `$tinkr_error` is the run's failure, and it stops where the
+ * snippet would have started, so the run reads as a run that did not happen.
+ *
+ * @param {String} mode `rollback` or `commit`
+ * @return {String} one line
+ */
+const guardArm = mode => `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=null;$tinkr_tx_mode='${mode}';` +
+  "try{if(!function_exists('app')||!app()->bound('db')){" +
+  "$tinkr_tx_error='this session has no database connection to guard';}" +
+  "else{$tinkr_db=app('db')->connection();$tinkr_tx=$tinkr_db->getName();" +
+  '$tinkr_db->beginTransaction();$tinkr_tx_armed=true;}}' +
+  'catch(\\Throwable $tinkr_tx_failure){' +
+  "$tinkr_tx_error='the connection refused to begin a transaction: '.$tinkr_tx_failure->getMessage();}" +
+  'if(!$tinkr_tx_armed){$tinkr_stmts=[];' +
+  "$tinkr_error=['class'=>'RuntimeException','message'=>'the transaction guard could not be armed: '.$tinkr_tx_error];}"
+
+/**
+ * The php that closes the transaction, and the envelope key that reports it.
+ *
+ * It runs after the last statement, on the way out of a run that threw as much
+ * as out of one that returned: the transaction is closed either way, because a
+ * dry run that threw is still a dry run and keeps nothing.
+ *
+ * `statements` is what the guarded connection was sent, taken from the query
+ * listener's own tally rather than from the stored list, so a run over the
+ * collection limits reports the whole count and not the stored part of it.
+ *
+ * The outcome is one word rather than a pair of flags, because exactly one of
+ * them can be true: `rolledBack`, `committed`, or `failed` — the last one either
+ * because the guard never armed (and then nothing ran) or because closing the
+ * transaction threw. What it threw over is reported as its own message, with no
+ * sentence around it: the pane is where the connection is named.
+ *
+ * @return {String} one line
+ */
+const guardFinish = "$tinkr_tx_outcome='failed';" +
+  'if($tinkr_tx_armed){try{' +
+  "if($tinkr_tx_mode==='commit'){$tinkr_db->commit();$tinkr_tx_outcome='committed';}" +
+  "else{$tinkr_db->rollBack();$tinkr_tx_outcome='rolledBack';}}" +
+  'catch(\\Throwable $tinkr_tx_failure){' +
+  '$tinkr_tx_error=$tinkr_tx_failure->getMessage();}}' +
+  '$tinkr_transaction=[' +
+  "'mode'=>$tinkr_tx_mode,'armed'=>$tinkr_tx_armed,'connection'=>$tinkr_tx," +
+  "'statements'=>($tinkr_tx===null?0:($tinkr_query_connections[$tinkr_tx]??0))," +
+  "'outcome'=>$tinkr_tx_outcome,'error'=>$tinkr_tx_error];"
 
 /**
  * Wrap a snippet so the session prints what every statement in it answered.
@@ -134,15 +277,32 @@ const PHP_BLOCKS = [
  * line itself: the filter would otherwise find the marker in that echo, which
  * has no closing marker, and swallow the value that comes later.
  *
- * A run that resolved no import is the run the app has always sent, line for
- * line: a project without a composer directory cannot tell that this is here.
+ * The envelope carries what every statement answered, what the run printed, and
+ * every query the run sent to a connection, with the line of the statement that
+ * sent it: `QUERY_BLOCK` listens before the first statement runs and the list it
+ * fills travels out with the values. Those queries are kept out of the run's own
+ * answer, so a snippet that never asks about the database is unaffected by the
+ * collection.
+ *
+ * A guarded run — `rollback` is a dry run, `commit` is one the pane offers to
+ * apply — carries a `transaction` key as well: what was asked of the guard, the
+ * connection it opened on, how many statements that connection was sent, and how
+ * the transaction ended. An unguarded run is sent without the key, so a snippet
+ * run the way it always was is unaffected by the guard as well.
+ *
+ * What a project without a composer directory cannot tell is the `imported` key
+ * and the aliasing that fills it: those are the parts of the wrapper that
+ * depend on what the project resolved, and a run that resolved nothing is sent
+ * without them.
  *
  * @param {String} source
  * @param {Object<String, String>} [imports] short class name => fully qualified
  * name, as classIndex.importsFor resolves them
+ * @param {String} [guard] `rollback` or `commit`, and nothing else: an
+ * unrecognized mode is not guessed at, it is no guard at all
  * @return {{marker: String, start: String, imports: Object, code: String}}
  */
-const wrapRun = (source, imports = {}) => {
+const wrapRun = (source, imports = {}, guard = null) => {
   // a snippet can be written like a file and open with `<?php`, but it is eval'd
   // here, where the opening tag is a parse error, so it is dropped
   const code = source.replace(/^\s*<\?(?:php)?\s*/, '')
@@ -152,6 +312,8 @@ const wrapRun = (source, imports = {}) => {
   const encoded = Buffer.from(code, 'utf8').toString('base64')
   const entries = Object.entries(imports)
   const imported = entries.length ? ",'imported'=>(object)$tinkr_imported" : ''
+  const mode = guard === 'commit' ? 'commit' : (guard === 'rollback' ? 'rollback' : null)
+  const transaction = mode ? ",'transaction'=>$tinkr_transaction" : ''
   const split = 4
 
   return {
@@ -167,11 +329,19 @@ const wrapRun = (source, imports = {}) => {
       // the pane reads the run from here: everything the session printed before
       // this line is the session booting
       'echo $tinkr_start;',
-      ...PHP_BLOCKS,
+      // the queries are collected from before the first statement runs, and the
+      // listener stays for as long as the session does
+      QUERY_BLOCK,
+      ...SPLIT_BLOCKS,
+      // the transaction is open before the first statement of the run, and it is
+      // closed after the last one, whether that last one returned or threw
+      mode ? guardArm(mode) : '',
+      ...EVAL_BLOCKS,
+      mode ? guardFinish : '',
       // a run that ended in an error returned nothing, whatever the statement
       // before the one that threw had left in the variable
       'if($tinkr_error!==null){$tinkr_value=null;}',
-      `echo $tinkr,'@',base64_encode(json_encode(['blocks'=>$tinkr_results,'value'=>$tinkr_value ?? null,'error'=>$tinkr_error${imported}],JSON_PARTIAL_OUTPUT_ON_ERROR)),'@';`,
+      `echo $tinkr,'@',base64_encode(json_encode(['blocks'=>$tinkr_results,'value'=>$tinkr_value ?? null,'error'=>$tinkr_error,'queries'=>$tinkr_queries,'queriesTotal'=>$tinkr_query_total${imported}${transaction}],JSON_PARTIAL_OUTPUT_ON_ERROR)),'@';`,
     ].join(''),
   }
 }
