@@ -6,10 +6,14 @@ const connectionAtom = atom(getConnection())
 const sizesAtom = atom([])
 const outputAtom = atom('')
 const outputTabIndexAtom = atom(1)
-// how the result of the last run is read: the tree of its value, or the text
+// what the result of the last run is read as: the tree of its value, or the text
 // that value is drawn from. The last choice is kept, and it is what the run
 // after it opens in.
 const outputViewAtom = atom('organized')
+// what the editor pane is showing: the code in front of you, or the connection's
+// own logs. The pane is one surface with two readings, so the switch is the
+// pane's own and it sits in the strip above it.
+const editorViewAtom = atom('tinker')
 const resultAtom = atom(null)
 // the code the ai panel asked the editor to take. The editor is what holds the
 // model, so the panel cannot write into it: it asks, and the editor takes what
@@ -68,6 +72,7 @@ export {
   outputAtom,
   outputTabIndexAtom,
   outputViewAtom,
+  editorViewAtom,
   resultAtom,
   applyCodeAtom,
   runCodeAtom,

@@ -879,6 +879,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .tree-nav { padding-left: 0; }
+/* .sidebar__note: a couple of lines inside a sidebar list, where a row cannot
+   hold them — where a directory was looked in, and that it held nothing */
+.sidebar__note {
+  padding: 0 var(--s2) 6px var(--s5);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
 /* a child row starts on its group's label axis: 8 + 8 + 8 + 14 + 8 */
 .tree-nav__row--child { padding-left: 46px; }
 /* .tree-nav__row--run: one run of the ledger — its outcome, the code that ran,
@@ -977,6 +986,14 @@ details:not([open]) > summary .tree__caret::before {
   background: transparent; color: var(--text-faint); cursor: pointer; line-height: 1;
 }
 .tabbar__new:hover { background: var(--hover); color: var(--text); }
+/* while the pane is showing logs the strip names the file instead of the
+   documents: mono, because a file name is data, and one line of it */
+.tabbar__file {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  padding: 0 var(--s3);
+  font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted);
+}
+.tabbar__file svg { flex: none; color: var(--text-faint); }
 
 /* code well: gutter + code, one scroll container, monospace 13/1.6 */
 .editor {

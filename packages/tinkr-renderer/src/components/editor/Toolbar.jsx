@@ -11,8 +11,10 @@ import {outputTabIndexAtom, resultAtom} from '../../stores/editor'
  * tab reads as the assignment the run made — and the reconnect action where the
  * design puts the run's label.
  *
- * The design's Dump, Queries and Logs are not here: nothing in the app collects
- * what they would print.
+ * The logs are not one of these views: a log line is as wide as it is, and the
+ * editor pane is where they are read now, with the connection's files listed in
+ * the sidebar. The design's Dump and Queries are not here either, because
+ * nothing in the app collects what they would print.
  */
 const Toolbar = () => {
   const intl = useIntl()
@@ -32,7 +34,6 @@ const Toolbar = () => {
   const tabs = [
     {index: 1, id: 'editor.output', mark: mark()},
     {index: 0, id: 'editor.terminal', mark: null},
-    {index: 3, id: 'editor.logs', mark: null},
     {index: 2, id: 'editor.ai', mark: null},
   ]
 

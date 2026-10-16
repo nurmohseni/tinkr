@@ -78,6 +78,8 @@
     "edited_since_run": "Edited since the last run",
     "output_views": "Output views",
     "pane": "Editor",
+    "tinker": "Tinker",
+    "views": "Editor views",
     "history_clear": "Clear history",
     "history_clear_title": "Forget this connection's runs?",
     "history_clear_content": "The code that ran, when, and what came back will be forgotten. Nothing else changes, and it cannot be brought back.",
@@ -90,8 +92,9 @@
     "ai_mention": "Reference a project file",
     "ai_mention_empty": "No file of this project matches that",
     "logs": "Logs",
-    "logs_file": "the log file",
+    "logs_files": "Log files",
     "logs_none": "no log files",
+    "logs_pick": "Pick a log file in the sidebar.",
     "logs_level": "level",
     "logs_level_all": "all",
     "logs_search": "Search the entries",
@@ -101,7 +104,8 @@
     "logs_read": "Read it again",
     "logs_empty": "There are no log files in {dir}.",
     "logs_no_entries": "Nothing matches.",
-    "logs_read_of": "read the last {read} KB of {size} KB"
+    "logs_read_of": "read the last {read} KB of {size} KB",
+    "logs_reading": "Reading the log files…"
   },
   "preference": {
     "preferences": "Preferences",

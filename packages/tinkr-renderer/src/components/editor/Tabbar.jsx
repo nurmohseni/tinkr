@@ -6,16 +6,28 @@ import SnippetNameInput from './SnippetNameInput'
 import RunButton from './RunButton'
 import FormButton from './FormButton'
 import SaveSnippetButton from './SaveSnippetButton'
+import EditorViews from './EditorViews'
 import useNewSession from '../../hooks/useNewSession'
 import useOpenDocuments from '../../hooks/useOpenDocuments'
 import {updateSnippetAtom} from '../../stores/snippets'
 import {closeSessionPromptAtom, snippetMenuAtom} from '../../stores/snippetMenu'
-import {runCodeAtom} from '../../stores/editor'
+import {editorViewAtom, runCodeAtom} from '../../stores/editor'
+import {logsAtom} from '../../stores/logs'
 import {configAtom} from '../../stores/config'
 
 const CloseIcon = () => (
   <svg width='8' height='8' viewBox='0 0 8 8' aria-hidden='true'>
     <path d='M1 1l6 6M7 1l-6 6' stroke='currentColor' strokeWidth='1.1' strokeLinecap='round'/>
+  </svg>
+)
+
+// the log file the strip names while the pane is showing logs, in the same bar
+// family as the app's other marks
+const FileIcon = () => (
+  <svg width='13' height='13' viewBox='0 0 16 16' aria-hidden='true' fill='currentColor'>
+    <path d='M3 3H13L12 5H2Z'/>
+    <path d='M3 6.5H12L11 8.5H2Z'/>
+    <path d='M3 10H10L9 12H2Z'/>
   </svg>
 )
 
@@ -41,6 +53,8 @@ const Tabbar = () => {
   const updateSnippet = useSetAtom(updateSnippetAtom)
   const runCode = useAtomValue(runCodeAtom)
   const config = useAtomValue(configAtom)
+  const view = useAtomValue(editorViewAtom)
+  const logs = useAtomValue(logsAtom)
   const setMenu = useSetAtom(snippetMenuAtom)
   const setClosePrompt = useSetAtom(closeSessionPromptAtom)
 
@@ -62,6 +76,24 @@ const Tabbar = () => {
   const newSessionLabel = intl.formatMessage({id: 'editor.new_session'})
   const open = documents.filter(tab => tab.document)
   const active = open.find(tab => tab.id === activeId) || null
+
+  // the logs reading is the pane's other half: the strip stops naming documents
+  // and names the file it is showing instead, and Save and Run — which act on
+  // code — have nothing to act on there
+  if (view === 'logs') {
+    return (
+      <div className='tabbar'>
+        <span className='tabbar__file truncate' title={logs.file}>
+          <FileIcon/>
+          {logs.file || <FormattedMessage id='editor.logs_none'/>}
+        </span>
+
+        <span className='grow'/>
+
+        <EditorViews/>
+      </div>
+    )
+  }
 
   return (
     <div className='tabbar'>
@@ -161,6 +193,7 @@ const Tabbar = () => {
       <span className='grow'/>
 
       <div className='row'>
+        <EditorViews/>
         {active?.snippet && config.form_switch && <FormButton/>}
         {active?.isSession && <SaveSnippetButton/>}
         <RunButton/>
