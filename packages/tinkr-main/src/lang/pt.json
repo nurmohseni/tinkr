@@ -92,7 +92,6 @@
     "ai_mention": "Referenciar um arquivo do projeto",
     "ai_mention_empty": "Nenhum arquivo deste projeto corresponde",
     "logs_files": "Arquivos de log",
-    "logs_none": "nenhum arquivo de log",
     "logs_pick": "Escolhe um arquivo de log na barra lateral.",
     "logs_level": "nível",
     "logs_level_all": "todos",
@@ -103,7 +102,10 @@
     "logs_read": "Ler de novo",
     "logs_empty": "Não há arquivos de log em {dir}.",
     "logs_no_entries": "Nada corresponde.",
+    "logs_older": "Mais antigo",
+    "logs_newer": "Mais recente",
     "logs_read_of": "lidos os últimos {read} KB de {size} KB",
+    "logs_read_of_before": "{read} KB lidos, {back} KB antes do fim de {size} KB",
     "logs_reading": "Lendo os arquivos de log…"
   },
   "preference": {

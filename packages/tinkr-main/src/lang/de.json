@@ -92,7 +92,6 @@
     "ai_mention": "Eine Projektdatei referenzieren",
     "ai_mention_empty": "Keine Datei dieses Projekts passt dazu",
     "logs_files": "Logdateien",
-    "logs_none": "keine Logdateien",
     "logs_pick": "Wähle eine Logdatei in der Seitenleiste.",
     "logs_level": "Stufe",
     "logs_level_all": "alle",
@@ -103,7 +102,10 @@
     "logs_read": "Neu lesen",
     "logs_empty": "In {dir} liegen keine Logdateien.",
     "logs_no_entries": "Nichts passt dazu.",
+    "logs_older": "Älter",
+    "logs_newer": "Neuer",
     "logs_read_of": "die letzten {read} KB von {size} KB gelesen",
+    "logs_read_of_before": "{read} KB gelesen, {back} KB vor dem Ende von {size} KB",
     "logs_reading": "Logdateien werden gelesen …"
   },
   "preference": {

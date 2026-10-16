@@ -1,25 +1,28 @@
 import {useEffect} from 'react'
-import {useAtom, useAtomValue, useSetAtom} from 'jotai'
+import {useAtomValue, useSetAtom} from 'jotai'
 import {FormattedMessage, useIntl} from 'react-intl'
+import {useRoute} from 'wouter'
 
 import {LinesIcon} from './icons'
-import {editorViewAtom} from '../../stores/editor'
-import {loadLogsAtom, logsAtom, selectLogAtom} from '../../stores/logs'
+import useHashLocation from '../../utils/useHashLocation'
+import {decodeLogName, logTabId, openTabAtom} from '../../stores/tabs'
+import {loadLogsAtom, logsAtom} from '../../stores/logs'
 
 /**
  * The connection's log files, as the sidebar lists them.
  *
- * A log file is read by opening it: the list is the picker, and what it opens
- * into is the editor pane's other reading — which is why a click here moves that
- * pane rather than filling a panel somewhere else. The list is read from the
+ * A file is opened by clicking it, and what it opens is a tab of its own — a
+ * document like a snippet, read where it lives. The list is read from the
  * connection's own machine, wherever it runs.
  */
 const LogFileList = () => {
   const intl = useIntl()
   const logs = useAtomValue(logsAtom)
   const load = useSetAtom(loadLogsAtom)
-  const select = useSetAtom(selectLogAtom)
-  const [, setView] = useAtom(editorViewAtom)
+  const openTab = useSetAtom(openTabAtom)
+  const [, setLocation] = useHashLocation()
+  const [, params] = useRoute('/logs/:name')
+  const showing = params?.name ? decodeLogName(params.name) : null
 
   // the files of the connection are read when there are none: the first time the
   // sidebar is drawn, and after a window has switched to another connection
@@ -60,13 +63,13 @@ const LogFileList = () => {
         {logs.files.map(file => (
           <button
             key={file.name}
-            className={file.name === logs.file ? 'tree-nav__row tree-nav__row--active' : 'tree-nav__row'}
+            className={file.name === showing ? 'tree-nav__row tree-nav__row--active' : 'tree-nav__row'}
             type='button'
             title={file.name}
-            aria-current={file.name === logs.file ? 'true' : undefined}
+            aria-current={file.name === showing ? 'true' : undefined}
             onClick={() => {
-              select(file.name)
-              setView('logs')
+              openTab(logTabId(file.name))
+              setLocation(`/logs/${encodeURIComponent(file.name)}`)
             }}
           >
             <span className='tree-nav__caret'/>

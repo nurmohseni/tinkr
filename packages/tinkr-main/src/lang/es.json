@@ -92,7 +92,6 @@
     "ai_mention": "Referenciar un archivo del proyecto",
     "ai_mention_empty": "Ningún archivo de este proyecto coincide",
     "logs_files": "Archivos de registro",
-    "logs_none": "no hay archivos de registro",
     "logs_pick": "Elige un archivo de registro en la barra lateral.",
     "logs_level": "nivel",
     "logs_level_all": "todos",
@@ -103,7 +102,10 @@
     "logs_read": "Volver a leerlo",
     "logs_empty": "No hay archivos de registro en {dir}.",
     "logs_no_entries": "No coincide nada.",
+    "logs_older": "Más antiguo",
+    "logs_newer": "Más reciente",
     "logs_read_of": "se han leído los últimos {read} KB de {size} KB",
+    "logs_read_of_before": "{read} KB leídos, {back} KB antes del final de {size} KB",
     "logs_reading": "Leyendo los archivos de registro…"
   },
   "preference": {

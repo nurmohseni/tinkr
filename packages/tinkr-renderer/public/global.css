@@ -280,16 +280,19 @@ button.tree-nav__row {
     background: var(--panel-inset);
 }
 
+/* The bar holds seven controls and the pane can be dragged narrow, so it is a
+   row that wraps rather than a row that overflows: at a third of the window the
+   paging and the follow switch drop to a second line, and the height follows. */
 .logs__bar {
     position: sticky;
     top: 0;
     z-index: 1;
     flex: none;
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: var(--s2);
-    height: var(--tabbar-h);
-    padding: 0 var(--s3);
+    min-height: var(--tabbar-h);
+    padding: var(--s1) var(--s3);
     background: var(--panel-inset);
     box-shadow: 0 1px 0 var(--border);
 }
@@ -297,6 +300,7 @@ button.tree-nav__row {
 .logs__row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--s2);
     flex: 1 1 auto;
     min-width: 0;
@@ -308,13 +312,15 @@ button.tree-nav__row {
     max-width: 320px;
 }
 
+/* each control takes the room its own words need: the levels are the widest
+   select, the intervals the narrowest */
 .logs__bar .select {
-    width: 120px;
+    width: auto;
     flex: none;
 }
 
 .logs__bar .input {
-    flex: 1 1 90px;
+    flex: 1 1 120px;
     min-width: 0;
     max-width: 280px;
 }

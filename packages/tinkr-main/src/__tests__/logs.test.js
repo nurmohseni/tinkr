@@ -167,13 +167,39 @@ describe('the log files of a connection', () => {
     fs.writeFileSync(file, many.join('\n'))
 
     const connection = {path: root, is_over_ssh: false}
-    const answer = read(connection, 'big.log', 2048)
+    const answer = read(connection, 'big.log', {bytes: 2048})
 
     expect(answer.size).toBeGreaterThan(2048)
     expect(answer.read).toBe(2048)
+    expect(answer.from).toBe(answer.size - 2048)
     expect(answer.entries.every(entry => entry.message.startsWith('entry '))).toBe(true)
     expect(answer.entries.length).toBeLessThan(400)
     expect(answer.entries[answer.entries.length - 1].message.startsWith('entry 399')).toBe(true)
+  })
+
+  test('are read a window at a time, ending where the reader asks and not always at the end', () => {
+    const root = project([])
+    const file = path.join(root, 'storage', 'logs', 'big.log')
+    const many = Array.from({length: 400}, (unused, at) => line('2026-08-27 11:10:52', 'local', 'INFO', `entry ${at} `.padEnd(60, '.')))
+    const whole = many.join('\n')
+
+    fs.writeFileSync(file, whole)
+
+    const connection = {path: root, is_over_ssh: false}
+    // a window of 2048 bytes ending at 4096, which is a byte in the middle of a
+    // line: the window starts at 2048, and the line it lands in is dropped
+    const answer = read(connection, 'big.log', {bytes: 2048, before: 4096})
+
+    expect(answer.size).toBe(Buffer.byteLength(whole))
+    expect(answer.from).toBe(2048)
+    expect(answer.read).toBe(2048)
+    // what is shown starts at the first whole line of the window
+    expect(answer.entries[0].message).toBe('entry 22 '.padEnd(60, '.'))
+    // and ends at the last one before the byte it ends in, what was read of that
+    // line hanging off the entry above it
+    expect(answer.entries[answer.entries.length - 1].message).toBe('entry 42 '.padEnd(60, '.'))
+    expect(answer.entries[answer.entries.length - 1].details).toBe(whole.slice(4085, 4096))
+    expect(answer.entries.length).toBeLessThan(400)
   })
 
   test('cannot be read by a name that is a path', () => {
@@ -183,6 +209,8 @@ describe('the log files of a connection', () => {
     expect(() => read(connection, '../storage/logs/laravel.log')).toThrow(/is not a log file/)
     expect(() => read(connection, '/etc/passwd')).toThrow(/is not a log file/)
     expect(() => read(connection, 'gone.log')).toThrow(/is not there any more/)
+    // a window onto a file that is not a log of this connection is no window either
+    expect(() => read(connection, '/etc/passwd', {bytes: 2048, before: 4096})).toThrow(/is not a log file/)
   })
 
   test('keep a name a project writes, and read nothing else', () => {
@@ -242,6 +270,7 @@ describe('the log files of a connection that keeps them on another machine', () 
       file: 'laravel.log',
       size: Buffer.byteLength(text),
       read: Buffer.byteLength(text),
+      from: 0,
       entries: [
         {
           at: '2026-08-27 11:10:52',
@@ -260,13 +289,34 @@ describe('the log files of a connection that keeps them on another machine', () 
 
     spawn.mockImplementation(() => answering(JSON.stringify({size: Buffer.byteLength(whole), text: whole.slice(-2048)})))
 
-    const answer = await read(connection, 'big.log', 2048)
+    const answer = await read(connection, 'big.log', {bytes: 2048})
 
     expect(answer.size).toBe(Buffer.byteLength(whole))
     expect(answer.read).toBe(2048)
+    expect(answer.from).toBe(Buffer.byteLength(whole) - 2048)
     expect(answer.entries.every(entry => entry.message.startsWith('entry '))).toBe(true)
     expect(answer.entries.length).toBeLessThan(400)
     expect(answer.entries[answer.entries.length - 1].message.startsWith('entry 399')).toBe(true)
+  })
+
+  test('are asked for as a window, so the other machine reads only those bytes', async () => {
+    const many = Array.from({length: 400}, (unused, at) => line('2026-08-27 11:10:52', 'local', 'INFO', `entry ${at} `.padEnd(60, '.')))
+    const whole = many.join('\n')
+
+    spawn.mockImplementation(() => answering(JSON.stringify({size: Buffer.byteLength(whole), text: whole.slice(2048, 4096)})))
+
+    const answer = await read(connection, 'big.log', {bytes: 2048, before: 4096})
+
+    expect(answer.size).toBe(Buffer.byteLength(whole))
+    expect(answer.from).toBe(2048)
+    expect(answer.read).toBe(2048)
+    expect(answer.entries[0].message).toBe('entry 22 '.padEnd(60, '.'))
+
+    const [command, args] = spawn.mock.calls[0]
+
+    expect(command).toBe('ssh')
+    expect(args[args.length - 1]).toContain('$tinkr_to=min(4096,$tinkr_size);')
+    expect(args[args.length - 1]).toContain('stream_get_contents($tinkr_handle,$tinkr_to-$tinkr_from)')
   })
 
   test('cannot be read by a name that is a path, over ssh either', () => {

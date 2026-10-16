@@ -9,10 +9,12 @@ const {exec, quoted} = require('../remote')
 /**
  * The application's log files, as Laravel writes them.
  *
- * A log viewer is a window onto the newest end of a file that is being appended
- * to, so what is read is the tail of it — a hundred and twenty-eight kilobytes is
- * thousands of entries — and what is shown is what those lines are: an entry per
- * line that starts one, and everything under it belonging to it.
+ * A log viewer is a window onto a file that is being appended to, and the viewer's
+ * window is the one it opens on: the newest end of it — a hundred and twenty-eight
+ * kilobytes is thousands of entries — read a window at a time from wherever the
+ * reader asks, so that a file too big to hold is still read to the end. What is
+ * shown is what those lines are: an entry per line that starts one, and everything
+ * under it belonging to it.
  *
  * Laravel writes each entry as monolog's line formatter does:
  *
@@ -48,8 +50,8 @@ const levels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'aler
 const dirOf = connection => path.join(connection.path || '', config.get('log_dir', '') || 'storage/logs')
 
 /**
- * How much of the end of a log is read: what was asked for, within what a viewer
- * is worth reading.
+ * How wide a window onto a log is: what was asked for, within what a viewer is
+ * worth reading.
  *
  * @param {Number} [bytes]
  * @return {Number}
@@ -215,86 +217,122 @@ const parse = lines => {
 }
 
 /**
- * The tail of one of a connection's log files that lives on another machine.
+ * Where a window onto a log ends, in bytes.
  *
- * The same tail the local read takes, asked for: the size of the file and its
- * last `wanted` bytes as json, because the bytes are what crosses and what they
- * mean is what this side reads them as.
+ * The end of the file is the one place a reader cannot name in advance, because
+ * only the file knows it, so a window that was not told where to stop stops there.
  *
- * @param {Record<String, any>} connection
- * @param {String} name a file in the connection's log directory, by name
- * @param {Number} [bytes] how much of the end of it to read
- * @return {Promise<Object>} `text`, `entries`, and what was read of what there is
+ * @param {Number} [before] the offset the window ends at
+ * @param {Number} size how much there is
+ * @return {Number}
  */
-const sshRead = async (connection, name, bytes = defaultBytes) => {
-  const file = path.join(dirOf(connection), name)
-  const wanted = wantedOf(bytes)
+const endOf = (before, size) => before == null ? size : Math.min(Math.max(Number(before) || 0, 0), size)
 
-  const answer = await ask(
-    connection,
-    '$tinkr_file=' + phpString(file) + ';' +
-    '$tinkr_size=@filesize($tinkr_file);' +
-    'if($tinkr_size===false){exit(1);}' +
-    '$tinkr_from=max($tinkr_size-' + wanted + ',0);' +
-    "$tinkr_handle=fopen($tinkr_file,'r');" +
-    'fseek($tinkr_handle,$tinkr_from);' +
-    "echo json_encode(['size'=>$tinkr_size,'text'=>stream_get_contents($tinkr_handle)],JSON_INVALID_UTF8_SUBSTITUTE);",
-  )
-
-  let tail = null
-
-  try {
-    tail = JSON.parse(answer)
-  } catch (e) {
-    // an answer that is not the size of a file and the tail of it is no answer,
-    // which is what a machine that cannot say has said
-    tail = null
-  }
-
-  if (!tail || typeof tail.size !== 'number') {
-    throw new Error(`${name} is not there any more.`)
-  }
-
-  const size = Number(tail.size)
-  const from = Math.max(size - wanted, 0)
-
-  // a tail starts wherever it starts: the first line of it is the rest of a line
-  // that was not read, so it is dropped rather than shown as a mangled entry
-  const lines = String(tail.text).split('\n')
+/**
+ * What a window onto a log is, out of the bytes of it.
+ *
+ * A window starts wherever it starts: the first line of one that does not start at
+ * the beginning of the file is the rest of a line that was not read, so it is
+ * dropped rather than shown as a mangled entry.
+ *
+ * @param {String} file the name of the log
+ * @param {Number} size how much the file holds
+ * @param {Number} from the offset the window starts at
+ * @param {Number} to the offset it ends at
+ * @param {String} text the bytes in between
+ * @return {Object} the entries of the window, and where it sits in the file
+ */
+const windowOf = (file, size, from, to, text) => {
+  const lines = text.split('\n')
 
   if (from > 0) {
     lines.shift()
   }
 
   return {
-    file: name,
+    file,
     size,
-    read: size - from,
+    read: to - from,
+    from,
     // the file is being written to, so the last line of it may be half written
     entries: parse(lines.filter(line => line !== '')),
   }
 }
 
 /**
- * The tail of one of a connection's log files.
+ * The window onto one of a connection's log files that lives on another machine.
  *
- * A project on this machine has its file here and is read from here, in this
- * process; a project on another one has it there, and only the bytes of the tail
- * come back.
+ * The same window the local read takes, asked for: the size of the file and the
+ * bytes of it as json, because the bytes are what crosses and what they mean is
+ * what this side reads them as.
  *
  * @param {Record<String, any>} connection
  * @param {String} name a file in the connection's log directory, by name
- * @param {Number} [bytes] how much of the end of it to read
+ * @param {Object} [options] `bytes` for how wide the window is, `before` for where it ends
+ * @return {Promise<Object>} `text`, `entries`, and what was read of what there is
+ */
+const sshRead = async (connection, name, {bytes, before} = {}) => {
+  const file = path.join(dirOf(connection), name)
+  const wanted = wantedOf(bytes)
+  // where the end of the file is is what the other machine knows and this one does
+  // not, so a window that ends there is the one thing the php is told to work out
+  const ends = before == null ? '$tinkr_size' : String(Math.max(Number(before) || 0, 0))
+
+  const answer = await ask(
+    connection,
+    '$tinkr_file=' + phpString(file) + ';' +
+    '$tinkr_size=@filesize($tinkr_file);' +
+    'if($tinkr_size===false){exit(1);}' +
+    '$tinkr_to=min(' + ends + ',$tinkr_size);' +
+    '$tinkr_from=max($tinkr_to-' + wanted + ',0);' +
+    "$tinkr_handle=fopen($tinkr_file,'r');" +
+    'fseek($tinkr_handle,$tinkr_from);' +
+    "echo json_encode(['size'=>$tinkr_size,'text'=>stream_get_contents($tinkr_handle,$tinkr_to-$tinkr_from)],JSON_INVALID_UTF8_SUBSTITUTE);",
+  )
+
+  let described = null
+
+  try {
+    described = JSON.parse(answer)
+  } catch (e) {
+    // an answer that is not the size of a file and the bytes of it is no answer,
+    // which is what a machine that cannot say has said
+    described = null
+  }
+
+  if (!described || typeof described.size !== 'number') {
+    throw new Error(`${name} is not there any more.`)
+  }
+
+  const size = Number(described.size)
+  const to = endOf(before, size)
+  const from = Math.max(to - wanted, 0)
+
+  return windowOf(name, size, from, to, String(described.text))
+}
+
+/**
+ * A window onto one of a connection's log files.
+ *
+ * A project on this machine has its file here and is read from here, in this
+ * process; a project on another one has it there, and only the bytes of the window
+ * come back. Either way the file is never held: what is held is the window the
+ * caller asked for, which is why a log of forty megabytes costs what a log of a
+ * hundred kilobytes does.
+ *
+ * @param {Record<String, any>} connection
+ * @param {String} name a file in the connection's log directory, by name
+ * @param {Object} [options] `bytes` for how wide the window is, `before` for where it ends
  * @return {Object|Promise<Object>} `text`, `entries`, and what was read of what there is
  */
-const read = (connection, name, bytes = defaultBytes) => {
+const read = (connection, name, {bytes, before} = {}) => {
   // the name comes from a window, and a window has no business naming a path
   if (name !== path.basename(name) || !name.endsWith('.log')) {
     throw new Error(`${name} is not a log file of this connection.`)
   }
 
   if (connection && connection.is_over_ssh) {
-    return sshRead(connection, name, bytes)
+    return sshRead(connection, name, {bytes, before})
   }
 
   const file = path.join(dirOf(connection), name)
@@ -308,13 +346,14 @@ const read = (connection, name, bytes = defaultBytes) => {
     throw new Error(`${name} is not there any more.`)
   }
 
-  const from = Math.max(size - wanted, 0)
+  const to = endOf(before, size)
+  const from = Math.max(to - wanted, 0)
   const descriptor = fs.openSync(file, 'r')
 
   let text = ''
 
   try {
-    const buffer = Buffer.alloc(size - from)
+    const buffer = Buffer.alloc(to - from)
 
     fs.readSync(descriptor, buffer, 0, buffer.length, from)
     text = buffer.toString('utf8')
@@ -322,21 +361,7 @@ const read = (connection, name, bytes = defaultBytes) => {
     fs.closeSync(descriptor)
   }
 
-  // a tail starts wherever it starts: the first line of it is the rest of a line
-  // that was not read, so it is dropped rather than shown as a mangled entry
-  const lines = text.split('\n')
-
-  if (from > 0) {
-    lines.shift()
-  }
-
-  return {
-    file: name,
-    size,
-    read: size - from,
-    // the file is being written to, so the last line of it may be half written
-    entries: parse(lines.filter(line => line !== '')),
-  }
+  return windowOf(name, size, from, to, text)
 }
 
 module.exports = {

@@ -194,8 +194,8 @@ ipcMain.handle('logFiles', async (event, connectionId) => {
   return logFiles(connection)
 })
 
-ipcMain.handle('logRead', async (event, connectionId, name, bytes) => {
-  return readLog(getEditorConnection(connectionId), name, bytes)
+ipcMain.handle('logRead', async (event, connectionId, name, options) => {
+  return readLog(getEditorConnection(connectionId), name, options)
 })
 
 ipcMain.handle('aiFiles', async (event, connectionId, typed) => {
