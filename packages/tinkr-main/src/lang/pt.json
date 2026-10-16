@@ -78,6 +78,8 @@
     "edited_since_run": "Editado desde a última execução",
     "output_views": "Visões da saída",
     "pane": "Editor",
+    "tinker": "Tinker",
+    "views": "Vistas do editor",
     "history_clear": "Limpar o histórico",
     "history_clear_title": "Esquecer as execuções desta conexão?",
     "history_clear_content": "O código executado, quando e o que retornou serão esquecidos. Nada mais muda, e não dá para recuperar.",
@@ -90,8 +92,9 @@
     "ai_mention": "Referenciar um arquivo do projeto",
     "ai_mention_empty": "Nenhum arquivo deste projeto corresponde",
     "logs": "Logs",
-    "logs_file": "o arquivo de log",
+    "logs_files": "Arquivos de log",
     "logs_none": "nenhum arquivo de log",
+    "logs_pick": "Escolhe um arquivo de log na barra lateral.",
     "logs_level": "nível",
     "logs_level_all": "todos",
     "logs_search": "Buscar nas entradas",
@@ -101,7 +104,8 @@
     "logs_read": "Ler de novo",
     "logs_empty": "Não há arquivos de log em {dir}.",
     "logs_no_entries": "Nada corresponde.",
-    "logs_read_of": "lidos os últimos {read} KB de {size} KB"
+    "logs_read_of": "lidos os últimos {read} KB de {size} KB",
+    "logs_reading": "Lendo os arquivos de log…"
   },
   "preference": {
     "preferences": "Preferências",

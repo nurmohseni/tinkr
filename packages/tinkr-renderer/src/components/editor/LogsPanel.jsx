@@ -4,14 +4,12 @@ import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
 import {
-  loadLogsAtom,
   logsAtom,
   logsFollowAtom,
   logsIntervalAtom,
   logsLevelAtom,
   logsSearchAtom,
   readLogAtom,
-  selectLogAtom,
 } from '../../stores/logs'
 
 // what the intervals the viewer offers are, in the order it offers them
@@ -64,18 +62,18 @@ Entry.propTypes = {
 }
 
 /**
- * The log viewer: the application's own log files, filtered by level and by a
- * term, and followed while they are being written to.
+ * The log viewer: one of the connection's log files, filtered by level and by a
+ * term, and followed while it is being written to.
  *
- * It reads the files of the connection's project on this machine — `storage/logs`
- * unless the preferences say otherwise — and it reads the end of them, which is
- * where the newest entries are.
+ * Which file is read is the sidebar's to say — its list is the picker — and the
+ * viewer fills the editor pane, because a log line is as wide as it is and a
+ * third of a window is where it wraps. It reads the end of the file, which is
+ * where the newest entries are, and it reads it from the connection's own
+ * machine, wherever that is.
  */
 const LogsPanel = () => {
   const intl = useIntl()
   const logs = useAtomValue(logsAtom)
-  const load = useSetAtom(loadLogsAtom)
-  const select = useSetAtom(selectLogAtom)
   const read = useSetAtom(readLogAtom)
   const [level, setLevel] = useAtom(logsLevelAtom)
   const [search, setSearch] = useAtom(logsSearchAtom)
@@ -83,14 +81,6 @@ const LogsPanel = () => {
   const [interval, setInterval] = useAtom(logsIntervalAtom)
   const listRef = useRef()
   const pinned = useRef(true)
-
-  // the files of the connection are read when there are none: the first time the
-  // panel is shown, and after a window has switched to another connection
-  useEffect(() => {
-    if (logs.dir === '' && !logs.loading) {
-      load()
-    }
-  }, [logs.dir, logs.loading])
 
   // following: the file is being appended to, so the same read is made again
   useEffect(() => {
@@ -138,38 +128,6 @@ const LogsPanel = () => {
       <div className='logs__bar'>
         <div className='logs__row'>
           <select
-            className='select logs__file'
-            value={logs.file}
-            aria-label={intl.formatMessage({id: 'editor.logs_file'})}
-            onChange={event => select(event.target.value)}
-          >
-            {logs.files.length === 0 && (
-              <option value=''>{intl.formatMessage({id: 'editor.logs_none'})}</option>
-            )}
-            {logs.files.map(file => (
-              <option key={file.name} value={file.name}>
-                {`${file.name} · ${Math.max(1, Math.round(file.size / 1024))} KB`}
-              </option>
-            ))}
-          </select>
-
-          <span className='grow'/>
-
-          <button
-            className='btn btn--secondary btn--sm'
-            type='button'
-            disabled={logs.file === ''}
-            onClick={() => {
-              pinned.current = true
-              read()
-            }}
-          >
-            {intl.formatMessage({id: 'editor.logs_read'})}
-          </button>
-        </div>
-
-        <div className='logs__row'>
-            <select
             className='select'
             value={level}
             aria-label={intl.formatMessage({id: 'editor.logs_level'})}
@@ -189,6 +147,8 @@ const LogsPanel = () => {
             aria-label={intl.formatMessage({id: 'editor.logs_search'})}
             onChange={event => setSearch(event.target.value)}
           />
+
+          <span className='grow'/>
 
           <label
             className='logs__follow'
@@ -215,15 +175,27 @@ const LogsPanel = () => {
               <option key={seconds} value={seconds}>{`${seconds / 1000}s`}</option>
             ))}
           </select>
+
+          <button
+            className='btn btn--secondary btn--sm'
+            type='button'
+            disabled={logs.file === ''}
+            onClick={() => {
+              pinned.current = true
+              read()
+            }}
+          >
+            {intl.formatMessage({id: 'editor.logs_read'})}
+          </button>
         </div>
       </div>
 
       <div className='logs__body' ref={listRef} onScroll={handleScroll}>
         {logs.error !== '' && <p className='logs__note error'>{logs.error}</p>}
 
-        {logs.error === '' && logs.files.length === 0 && (
+        {logs.error === '' && logs.file === '' && (
           <p className='logs__note'>
-            <FormattedMessage id='editor.logs_empty' values={{dir: logs.dir}}/>
+            <FormattedMessage id='editor.logs_pick'/>
           </p>
         )}
 

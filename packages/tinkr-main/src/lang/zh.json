@@ -78,6 +78,8 @@
     "edited_since_run": "自上次运行后已修改",
     "output_views": "输出视图",
     "pane": "编辑器",
+    "tinker": "Tinker",
+    "views": "编辑器视图",
     "history_clear": "清空运行记录",
     "history_clear_title": "忘记这个连接的运行记录？",
     "history_clear_content": "运行过的代码、时间和返回结果都会被忘记。除此之外不会改变，也无法找回。",
@@ -90,8 +92,9 @@
     "ai_mention": "引用项目中的文件",
     "ai_mention_empty": "项目里没有匹配的文件",
     "logs": "日志",
-    "logs_file": "日志文件",
+    "logs_files": "日志文件",
     "logs_none": "没有日志文件",
+    "logs_pick": "在侧边栏选择一个日志文件。",
     "logs_level": "级别",
     "logs_level_all": "全部",
     "logs_search": "搜索条目",
@@ -101,7 +104,8 @@
     "logs_read": "重新读取",
     "logs_empty": "{dir} 里没有日志文件。",
     "logs_no_entries": "没有匹配的内容。",
-    "logs_read_of": "已读取最后 {read} KB，共 {size} KB"
+    "logs_read_of": "已读取最后 {read} KB，共 {size} KB",
+    "logs_reading": "正在读取日志文件……"
   },
   "preference": {
     "preferences": "偏好设置",

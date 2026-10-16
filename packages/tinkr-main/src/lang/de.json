@@ -78,6 +78,8 @@
     "edited_since_run": "Seit dem letzten Lauf geändert",
     "output_views": "Ausgabeansichten",
     "pane": "Editor",
+    "tinker": "Tinker",
+    "views": "Editor-Ansichten",
     "history_clear": "Verlauf löschen",
     "history_clear_title": "Die Läufe dieser Verbindung vergessen?",
     "history_clear_content": "Der ausgeführte Code, wann er lief und was zurückkam, wird vergessen. Sonst ändert sich nichts, und zurückholen lässt es sich nicht.",
@@ -90,8 +92,9 @@
     "ai_mention": "Eine Projektdatei referenzieren",
     "ai_mention_empty": "Keine Datei dieses Projekts passt dazu",
     "logs": "Logs",
-    "logs_file": "die Logdatei",
+    "logs_files": "Logdateien",
     "logs_none": "keine Logdateien",
+    "logs_pick": "Wähle eine Logdatei in der Seitenleiste.",
     "logs_level": "Stufe",
     "logs_level_all": "alle",
     "logs_search": "Die Einträge durchsuchen",
@@ -101,7 +104,8 @@
     "logs_read": "Neu lesen",
     "logs_empty": "In {dir} liegen keine Logdateien.",
     "logs_no_entries": "Nichts passt dazu.",
-    "logs_read_of": "die letzten {read} KB von {size} KB gelesen"
+    "logs_read_of": "die letzten {read} KB von {size} KB gelesen",
+    "logs_reading": "Logdateien werden gelesen …"
   },
   "preference": {
     "preferences": "Einstellungen",

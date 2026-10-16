@@ -1,7 +1,6 @@
 import {useAtomValue} from 'jotai'
 
 import AiPanel from './AiPanel'
-import LogsPanel from './LogsPanel'
 import Output from './Output'
 import Terminal from './Terminal'
 import {outputTabIndexAtom} from '../../stores/editor'
@@ -11,13 +10,16 @@ import {outputTabIndexAtom} from '../../stores/editor'
 const hidden = {visibility: 'hidden', position: 'absolute', zIndex: -999}
 
 /**
- * The output panel's views: the run's output, the session's terminal, the
- * application's logs, and the ai panel.
+ * The output panel's views: the run's output, the session's terminal, and the ai
+ * panel.
  *
  * They all stay mounted, so switching tabs never restarts a terminal: the
  * terminal keeps the session's tty, the output keeps the tty it writes the run's
  * own text to, and the ai panel keeps the thread it is in the middle of. The
  * view that scrolls is the design's `.output__body` itself.
+ *
+ * The logs left this panel for the editor pane, where the width is: what they
+ * show is the connection's own files, and the sidebar is what picks one.
  */
 const OutputTabView = () => {
   const tabIndex = useAtomValue(outputTabIndexAtom)
@@ -43,10 +45,6 @@ const OutputTabView = () => {
         style={tabIndex === 1 ? {height: 'inherit'} : {height: 'inherit', ...hidden}}
       >
         <Output/>
-      </div>
-
-      <div style={tabIndex === 3 ? {height: 'inherit'} : {height: 'inherit', ...hidden}}>
-        <LogsPanel/>
       </div>
 
       <div style={tabIndex === 2 ? {height: 'inherit'} : {height: 'inherit', ...hidden}}>
