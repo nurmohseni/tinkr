@@ -41,7 +41,7 @@ const withMention = (prompt, mention, file) => [
   prompt.slice(mention.at + mention.typed.length + 1),
 ].join('')
 
-module.exports = {
+export {
   mentionAt,
   withMention,
 }
