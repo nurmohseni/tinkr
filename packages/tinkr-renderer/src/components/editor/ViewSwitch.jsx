@@ -18,7 +18,7 @@ const ViewSwitch = () => {
 
   return (
     <button
-      className='tree-nav__row view-switch'
+      className='tree-nav__row pane-switch'
       type='button'
       onClick={() => setView(toLogs ? 'logs' : 'tinker')}
     >

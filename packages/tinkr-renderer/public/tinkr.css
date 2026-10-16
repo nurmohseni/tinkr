@@ -879,13 +879,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .tree-nav { padding-left: 0; }
-/* .view-switch: the one way between the pane's two readings, at the foot of the
-   sidebar. It says what it will do rather than showing two states at once, so its
-   label and its mark change with the pane. */
-.view-switch { color: var(--text-muted); }
-.view-switch svg { flex: none; color: var(--text-faint); }
-.view-switch:hover { color: var(--text); }
-.view-switch:hover svg { color: var(--text-muted); }
+/* .pane-switch: the one way between the pane's two readings, at the foot of the
+   sidebar. It is a control rather than one of the lists above it, so it is inset
+   from the sidebar's edges the way the search field is — the two share an axis —
+   and it keeps a margin under itself so it does not read as one block with the
+   version line. It says what it will do rather than showing two states at once,
+   so its label and its mark change with the pane.
+
+   It is not called .view-switch: that name is the result panel's two readings of
+   one value, and a button that wears it inherits that control's box. */
+.tree-nav__row.pane-switch {
+  /* named twice over because the app gives every clickable row `width: 100%`:
+     a row that is 100% wide and then given a margin is 4px wider than its parent,
+     and this is the one row that is inset. `calc` rather than `auto`, which a
+     button reads as shrink to fit. */
+  width: calc(100% - 4px);
+  margin: var(--s2) 2px;
+  color: var(--text-muted);
+}
+.pane-switch svg { flex: none; color: var(--text-faint); }
+.pane-switch:hover { color: var(--text); }
+.pane-switch:hover svg { color: var(--text-muted); }
 
 /* .sidebar__note: a couple of lines inside a sidebar list, where a row cannot
    hold them — where a directory was looked in, and that it held nothing */
