@@ -19,6 +19,20 @@ const {matchingFiles, projectFiles} = require('tinkr-core')
 const maxFile = 24 * 1024
 const maxFiles = 3
 
+/**
+ * A file as a prompt carries it: whole when a prompt can carry it, and cut where
+ * the rest of it stops being worth sending.
+ *
+ * The same note is written for a file read on this machine and one read through
+ * a session, so a model is told the same thing either way.
+ *
+ * @param {String} code
+ * @return {String}
+ */
+const capped = code => code.length > maxFile
+  ? `${code.slice(0, maxFile)}\n// … the rest of this file was not sent`
+  : code
+
 // `@Name` where a word starts: `ada@example.com` is an address, not a mention
 const mention = /(?:^|[\s(])@([A-Za-z_\\][A-Za-z0-9_\\]*)/g
 
@@ -94,7 +108,7 @@ const attachmentsFor = (projectPath, prompt) => {
         name,
         qualified,
         path: path.relative(projectPath, file),
-        code: code.length > maxFile ? `${code.slice(0, maxFile)}\n// … the rest of this file was not sent` : code,
+        code: capped(code),
       }
     })
     .filter(Boolean)
@@ -103,6 +117,7 @@ const attachmentsFor = (projectPath, prompt) => {
 module.exports = {
   maxFile,
   maxFiles,
+  capped,
   filesFor,
   mentions,
   attachmentsFor,

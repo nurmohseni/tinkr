@@ -1,28 +1,27 @@
-const fs = require('fs')
-const os = require('os')
-const path = require('path')
-const {randomBytes} = require('crypto')
-
 const {
-  classIndex,
-  matchingClasses,
   stripNonCode,
   importedClasses,
   phpString,
+  matchingIn,
 } = require('tinkr-core')
 
 const {getEditorConnection, getBackgroundPtyProcess} = require('./processes')
 const {ensureBackgroundPty} = require('./createBackgroundPty')
+const {indexFor} = require('./services/project')
 
 /**
  * What the editor's suggestion popup shows: the project's class names while a
  * name is being typed, and the public methods of the class a `::` is called on.
  *
- * Class names come from the connection's project index (see classIndex), which
- * is composer's own answer to "what does this project declare". Methods come
- * from the session's reflection instead, because only the session has the class
- * loaded: a `Teatro` that a package or a macro adds to is not in any file the
- * project has, and reflection is exact where reading the source is a guess.
+ * Class names come from the connection's project index (see services/project),
+ * which is composer's own answer to "what does this project declare", read from
+ * this machine for a local project and put to the session for one over ssh.
+ * Methods come from the session's reflection instead, because only the session
+ * has the class loaded: a `Teatro` that a package or a macro adds to is not in
+ * any file the project has, and reflection is exact where reading the source is
+ * a guess. Both questions are answered on the machine the connection runs on, so
+ * a project over ssh suggests what that machine holds — its own copy, which is
+ * the one a run there would load.
  *
  * Two questions the popup never answers: a name that stands for two classes, and
  * the member of a `->`. Nothing knows which of the two classes a snippet means,
@@ -79,7 +78,7 @@ const phpCompletions = async (connectionId, request = {}) => {
       return {items: []}
     }
 
-    return {items: classNameItems(connection, typedName(before), triggerCharacter)}
+    return {items: await classNameItems(connection, typedName(before), triggerCharacter)}
   } catch (e) {
     return {items: []}
   }
@@ -100,22 +99,16 @@ const typedName = before => {
  * @param {Object} connection
  * @param {String} typed
  * @param {String} [triggerCharacter] what monaco was typed to open the popup
- * @return {Array<Object>}
+ * @return {Promise<Array<Object>>}
  */
-const classNameItems = (connection, typed, triggerCharacter) => {
+const classNameItems = async (connection, typed, triggerCharacter) => {
   // `App\Models\` asks for the project's names, but a `:` or a `->` with nothing
   // typed after it does not: an empty popup is better than the alphabet
   if (typed === null || typed === '') {
     return []
   }
 
-  // a session over ssh runs in the remote project, whose composer files are not
-  // on this machine to read
-  if (connection.is_over_ssh) {
-    return []
-  }
-
-  return matchingClasses(connection.path, typed, nameLimit).map(({name, qualified: full}) => ({
+  return matchingIn(await indexFor(connection), typed, nameLimit).map(({name, qualified: full}) => ({
     type: 'class',
     label: name,
     detail: full,
@@ -132,7 +125,7 @@ const classNameItems = (connection, typed, triggerCharacter) => {
  * @return {Promise<Array<Object>>}
  */
 const methodItems = async (connection, before, written, typed) => {
-  const qualifiedName = resolveClass(connection, before, written)
+  const qualifiedName = await resolveClass(connection, before, written)
 
   if (qualifiedName === null) {
     return []
@@ -156,10 +149,10 @@ const methodItems = async (connection, before, written, typed) => {
  * @param {Object} connection
  * @param {String} before the code before the cursor, stripped
  * @param {String} written
- * @return {String|null} the fully qualified name, or null when the name does
- * not say which class it is
+ * @return {Promise<String|null>} the fully qualified name, or null when the name
+ * does not say which class it is
  */
-const resolveClass = (connection, before, written) => {
+const resolveClass = async (connection, before, written) => {
   const name = written.replace(/^\\+/, '')
 
   // `App\Models\Teatro` already says where the class is
@@ -175,7 +168,7 @@ const resolveClass = (connection, before, written) => {
     return imported
   }
 
-  const found = classIndex(connection.path)
+  const found = await indexFor(connection)
   const candidates = found ? found.index.get(name.toLowerCase()) : null
 
   // one class carries the name, or none does: two are not a guess to make
@@ -248,28 +241,17 @@ const reflectedMethods = (pty, qualifiedName) => {
  * @return {Promise<Array<Object>|null>} null when the session did not answer
  */
 const asked = async (pty, qualifiedName) => {
-  // what the session writes is a file, not a line: psysh pages whatever it prints
-  // that is taller than the terminal through a pager, and a pager holds the
-  // session — and every question after it — until a key is pressed. A reflection
-  // of a model is far taller than any terminal, so it is read from the file the
-  // session wrote and the session only prints how much it wrote.
-  const file = path.join(os.tmpdir(), `tinkr-reflection-${process.pid}-${randomBytes(6).toString('hex')}.json`)
-
   try {
-    await pty.jsonResult(reflectionCode(qualifiedName, file))
-
-    return methodsOf(JSON.parse(fs.readFileSync(file, 'utf8')))
+    // the reflection comes back as the value of the form, and the session prints
+    // it for the form's own reader rather than for whoever is looking at the
+    // terminal: nothing of it is ever displayed as a screenful, so there is
+    // nothing for a pager to hold, and the answer of a session over ssh is the
+    // answer of any other session
+    return methodsOf(JSON.parse(await pty.jsonResult(reflectionCode(qualifiedName))))
   } catch (e) {
     // the session was restarted mid-question, its boot never came up, or the
-    // class is one it cannot reflect; a session over ssh writes its file on the
-    // machine it runs on, where this cannot read it
+    // class is one it cannot reflect
     return null
-  } finally {
-    try {
-      fs.unlinkSync(file)
-    } catch (e) {
-      // nothing was written, or it was already read
-    }
   }
 }
 
@@ -350,16 +332,17 @@ const shortType = type => type.replace(
  * or a `use` statement brings in really holds. A class that is not there is an
  * answer too, not an error the popup should show.
  *
- * What it writes is a number: the reflection goes to `file`, which is how the
- * whole of a class reaches the editor without the session printing a screenful.
+ * It returns the reflection, and the form prints it the way it prints any other
+ * value: the whole of a class reaches the editor without the session having to
+ * display a screenful of it, which is what a pager would stop on if it were
+ * displayed (see BackgroundPty.jsonResult).
  *
  * @param {String} qualifiedName
- * @param {String} file what the session writes the reflection to
  * @return {String}
  */
-const reflectionCode = (qualifiedName, file) => 'function(){' +
-  `try{$tinkr_reflection=new \\ReflectionClass(${phpString(qualifiedName)});}` +
-  `catch(\\Throwable $tinkr_missing){file_put_contents(${phpString(file)},json_encode(['error'=>$tinkr_missing->getMessage()]));return 0;}` +
+const reflectionCode = qualifiedName => 'function(){' +
+  'try{$tinkr_reflection=new \\ReflectionClass(' + phpString(qualifiedName) + ');}' +
+  "catch(\\Throwable $tinkr_missing){return ['error'=>$tinkr_missing->getMessage()];}" +
   '$tinkr_methods=[];' +
   'foreach($tinkr_reflection->getMethods(\\ReflectionMethod::IS_PUBLIC) as $tinkr_method){' +
   '$tinkr_parameters=[];' +
@@ -369,8 +352,7 @@ const reflectionCode = (qualifiedName, file) => 'function(){' +
   "'optional'=>$tinkr_parameter->isOptional(),'variadic'=>$tinkr_parameter->isVariadic()];}" +
   "$tinkr_methods[]=['name'=>$tinkr_method->getName(),'parameters'=>$tinkr_parameters," +
   "'return'=>$tinkr_method->hasReturnType()?(string)$tinkr_method->getReturnType():null];}" +
-  `file_put_contents(${phpString(file)},json_encode(['class'=>$tinkr_reflection->getName(),'methods'=>$tinkr_methods]));` +
-  'return 1;' +
+  "return ['class'=>$tinkr_reflection->getName(),'methods'=>$tinkr_methods];" +
   '}'
 
 module.exports = {

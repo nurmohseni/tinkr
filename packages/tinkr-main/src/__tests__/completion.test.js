@@ -57,20 +57,20 @@ const teatro = () => project([
 ])
 
 /**
- * A session that answers the way the reflection does: it writes what it was asked
- * for to the file the question names, and prints nothing but a number, so that a
- * popup never hands psysh a screenful to page.
+ * A session that answers the two questions a completion puts to it, the way the
+ * form reads them: a class is reflected for its methods, and the project the
+ * session runs in is described as the composer files it holds.
+ *
+ * @param {String} answer what a reflection of a class comes back as
+ * @param {String} [project] what the project of the session is, for a connection
+ * over ssh; a local connection is read from this machine and never asks
  */
-const session = answer => ({
+const session = (answer, project = 'null') => ({
   asked: [],
   jsonResult(code) {
     this.asked.push(code)
 
-    const file = /file_put_contents\('((?:[^'\\]|\\.)*)'/.exec(code)
-
-    fs.writeFileSync(file[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\'), answer)
-
-    return Promise.resolve('1')
+    return Promise.resolve(code.includes('ReflectionClass') ? answer : project)
   },
 })
 
@@ -340,10 +340,106 @@ describe('the completion of a php snippet', () => {
     expect(await phpCompletions(undefined, {})).toEqual({items: []})
   })
 
-  test('answers no class names for a session over ssh, whose project is not here', async () => {
+  test('asks the session for the project it runs in, and not this machine\'s copy of one', async () => {
+    // this machine has a project under the path the connection was saved with,
+    // which is another checkout: the session runs in the project on the machine
+    // the connection reaches
     setEditorConnection('remote', {id: 'remote', path: teatro(), is_over_ssh: true})
 
-    expect(await phpCompletions('remote', at('Tea'))).toEqual({items: []})
+    const pty = session(methods([]), JSON.stringify({
+      classmap: ['App\\Models\\Actor'],
+      psr4: {'App\\': ['app']},
+      files: ['app/Models/Actor.php'],
+    }))
+
+    setBackgroundPtyProcess('remote', pty)
+
+    const {items} = await phpCompletions('remote', at('Act'))
+
+    expect(items.map(item => item.detail)).toEqual(['App\\Models\\Actor'])
+    expect(pty.asked).toHaveLength(1)
+    expect(pty.asked[0]).toContain('autoload_classmap')
+    expect(pty.asked[0]).not.toContain('ReflectionClass')
+
+    // a name of this machine's copy is not one the session's project declares
+    expect((await phpCompletions('remote', at('Tea'))).items).toEqual([])
+    expect(pty.asked).toHaveLength(1)
+
+    setBackgroundPtyProcess('remote', null)
+  })
+
+  test('resolves the class of a `::` over ssh through the project the session answered', async () => {
+    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+
+    const pty = session(methods([where]), JSON.stringify({
+      classmap: ['App\\Models\\Teatro'],
+      psr4: {},
+      files: [],
+    }))
+
+    setBackgroundPtyProcess('remote', pty)
+
+    const {items} = await phpCompletions('remote', at('Teatro::'))
+
+    expect(items.map(item => item.label)).toEqual(['where(mixed $column, [mixed $operator])'])
+    // the project first, which is what says what the name stands for, and then
+    // the reflection of the class it stood for
+    expect(pty.asked).toHaveLength(2)
+    expect(pty.asked[0]).toContain('autoload_classmap')
+    expect(pty.asked[1]).toContain(`new \\ReflectionClass('${reflected}')`)
+
+    setBackgroundPtyProcess('remote', null)
+  })
+
+  test('asks the project of a connection over ssh once, however many keystrokes follow', async () => {
+    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+
+    const pty = session(methods([]), JSON.stringify({classmap: ['App\\Models\\Actor'], psr4: {}, files: []}))
+
+    setBackgroundPtyProcess('remote', pty)
+
+    await phpCompletions('remote', at('A'))
+    await phpCompletions('remote', at('Ac'))
+    await phpCompletions('remote', at('Act'))
+
+    expect(pty.asked).toHaveLength(1)
+
+    setBackgroundPtyProcess('remote', null)
+  })
+
+  test('asks the project again of a session a run replaced', async () => {
+    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+
+    const first = session(methods([]), JSON.stringify({classmap: ['App\\Models\\Actor'], psr4: {}, files: []}))
+
+    setBackgroundPtyProcess('remote', first)
+    expect((await phpCompletions('remote', at('Act'))).items).toHaveLength(1)
+
+    // a run replaces the session, and a class can have been added to the project
+    // since, so the new session is asked rather than answered from what the old
+    // one said
+    const second = session(methods([]), JSON.stringify({classmap: ['App\\Models\\Stage'], psr4: {}, files: []}))
+
+    setBackgroundPtyProcess('remote', second)
+    expect((await phpCompletions('remote', at('Sta'))).items.map(item => item.detail))
+      .toEqual(['App\\Models\\Stage'])
+
+    expect(first.asked).toHaveLength(1)
+    expect(second.asked).toHaveLength(1)
+
+    setBackgroundPtyProcess('remote', null)
+  })
+
+  test('offers nothing, rather than an error, when the session cannot describe its project', async () => {
+    setEditorConnection('remote', {id: 'remote', path: '/var/www/app', is_over_ssh: true})
+
+    setBackgroundPtyProcess('remote', {
+      jsonResult: () => Promise.reject(new Error('Timeout, try to reconnect!')),
+    })
+
+    expect((await phpCompletions('remote', at('Tea'))).items).toEqual([])
+
+    setBackgroundPtyProcess('remote', null)
   })
 
   test('asks for a class over ssh by the name the snippet wrote, which needs no index', async () => {
@@ -367,24 +463,15 @@ describe('the completion of a php snippet', () => {
     expect(classIndex(connection.path)).toBe(classIndex(connection.path))
   })
 
-  test('writes the reflection of a class into the session in one line, and into a file', () => {
-    const code = reflectionCode('App\\Models\\Teatro', '/tmp/tinkr-reflection.json')
+  test('returns the reflection of a class from the session, in one line', () => {
+    const code = reflectionCode('App\\Models\\Teatro')
 
     expect(code).not.toContain('\n')
     expect(code).toContain('getMethods')
-    expect(code).toContain("file_put_contents('/tmp/tinkr-reflection.json'")
-  })
-
-  test('leaves no file of a reflection behind', async () => {
-    connection.path = teatro()
-
-    const pty = session(methods([where]))
-
-    setBackgroundPtyProcess(connection.id, pty)
-    await phpCompletions(connection.id, at('Teatro::'))
-
-    const written = pty.asked[0].match(/file_put_contents\('([^']+)'/)
-
-    expect(fs.existsSync(written[1])).toBe(false)
+    // the reflection is the value the form reads back, so it reaches the editor
+    // from a session on any machine without the session printing a screenful of
+    // it for a pager to hold
+    expect(code).toContain("return ['class'=>$tinkr_reflection->getName()")
+    expect(code).not.toContain('file_put_contents')
   })
 })

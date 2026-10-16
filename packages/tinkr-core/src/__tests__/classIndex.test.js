@@ -2,7 +2,17 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const {classIndex, matchingClasses, importsFor, projectFiles, matchingFiles, clearClassIndex} = require('../classIndex')
+const {
+  classIndex,
+  indexFrom,
+  matchingIn,
+  matchingClasses,
+  matchingFilesIn,
+  importsFor,
+  projectFiles,
+  matchingFiles,
+  clearClassIndex,
+} = require('../classIndex')
 
 const write = (file, content) => {
   fs.mkdirSync(path.dirname(file), {recursive: true})
@@ -300,5 +310,186 @@ describe('the project class index', () => {
 
     expect(matchingClasses(root, 'Order')).toEqual([])
     expect(matchingClasses(undefined, 'Order')).toEqual([])
+  })
+})
+
+/**
+ * The rule both machines read a project with: this one through the files it
+ * walks, the machine on the other side of an ssh connection through the paths
+ * its php lists. The cases here are the answers without a project to read them
+ * from, which is the only shape the other machine can send.
+ */
+describe('the index composer\'s answers make', () => {
+  test('is the whole of what building the project amounts to', () => {
+    const root = project({
+      classes: [
+        ['App\\Models\\Order', 'app/Models/Order.php'],
+        ['App\\Support\\Helper', 'app/Support/Helper.php'],
+      ],
+      prefixes: [['App\\\\', "$baseDir . '/app'"]],
+    })
+
+    // the same project, as the two machines describe it: the composer files
+    // read, the walk done, and the naming left to the one rule
+    expect(classIndex(root)).toEqual(indexFrom({
+      classmap: ['App\\Models\\Order', 'App\\Support\\Helper'],
+      psr4: {'App\\': [path.join(root, 'app')]},
+      files: [
+        path.join(root, 'app', 'Models', 'Order.php'),
+        path.join(root, 'app', 'Support', 'Helper.php'),
+      ],
+      vendor: path.join(root, 'vendor'),
+    }))
+  })
+
+  test('reads the paths of another machine\'s project as the classes they hold', () => {
+    const found = indexFrom({
+      classmap: ['App\\Models\\Order'],
+      psr4: {'App\\': ['app']},
+      files: ['app/Models/Order.php', 'app/Support/JustCreated.php'],
+      vendor: 'vendor',
+    })
+
+    // the classmap is a moment in the project's life, and the file a class that
+    // came after it is in is what makes the name answerable
+    expect(Array.from(found.index.get('justcreated'))).toEqual(['App\\Support\\JustCreated'])
+    expect(Array.from(found.index.get('order'))).toEqual(['App\\Models\\Order'])
+    expect(found.own).toEqual(['app\\'])
+    expect(found.files).toEqual([
+      {name: 'JustCreated', qualified: 'App\\Support\\JustCreated', file: 'app/Support/JustCreated.php'},
+      {name: 'Order', qualified: 'App\\Models\\Order', file: 'app/Models/Order.php'},
+    ])
+  })
+
+  test('names a class of a path composer\'s map spells its own way', () => {
+    const found = indexFrom({
+      classmap: [],
+      psr4: {'Database\\Factories\\': ['database/factories']},
+      files: ['database/factories/OrderFactory.php'],
+    })
+
+    expect(Array.from(found.index.get('orderfactory'))).toEqual(['Database\\Factories\\OrderFactory'])
+  })
+
+  test('names nothing for a path php does not let a class be called', () => {
+    const found = indexFrom({
+      classmap: [],
+      psr4: {'App\\': ['app']},
+      files: [
+        'app/Models/Order.php',
+        'app/Models/order-line.php',
+        'app/node_modules/thing/Order.php',
+        'app/.hidden/Order.php',
+        'app/Models/Order.php.txt',
+      ],
+    })
+
+    expect(found.files.map(one => one.qualified)).toEqual(['App\\Models\\Order'])
+  })
+
+  test('keeps a package\'s files out of the project\'s own', () => {
+    const found = indexFrom({
+      classmap: [],
+      psr4: {'App\\': ['app'], 'Acme\\': ['vendor/acme/src']},
+      files: ['app/Models/Order.php', 'vendor/acme/src/Gadget.php'],
+      vendor: 'vendor',
+    })
+
+    // a package's names are ones a snippet can call, so they are in the index,
+    // and one of them is nothing anyone is working on, so it is in no file list
+    expect(Array.from(found.index.get('gadget'))).toEqual(['Acme\\Gadget'])
+    expect(found.files.map(one => one.qualified)).toEqual(['App\\Models\\Order'])
+    expect(found.own).toEqual(['app\\'])
+  })
+
+  test('walks no package directory of a project a classmap has already named', () => {
+    const found = indexFrom({
+      classmap: ['Acme\\Gadget'],
+      psr4: {'App\\': ['app'], 'Acme\\': ['vendor/acme/src']},
+      files: ['app/Models/Order.php', 'vendor/acme/src/Gadget.php'],
+      vendor: 'vendor',
+    })
+
+    expect(Array.from(found.index.get('gadget'))).toEqual(['Acme\\Gadget'])
+    expect(found.files.map(one => one.qualified)).toEqual(['App\\Models\\Order'])
+  })
+
+  test('reads a class of the global namespace as the name a snippet writes', () => {
+    const found = indexFrom({classmap: ['Order']})
+
+    // `Order` is already what a snippet writes, so there is no short name to
+    // look up, and the classmap names no file of the project's own
+    expect(found.index.has('order')).toBe(false)
+    expect(found.files).toEqual([])
+  })
+
+  test('makes one class of two spellings of the name, the one the classmap wrote', () => {
+    const found = indexFrom({
+      classmap: ['App\\Models\\Order'],
+      psr4: {'App\\': ['app']},
+      files: ['app/models/order.php'],
+    })
+
+    expect(Array.from(found.index.get('order'))).toEqual(['App\\Models\\Order'])
+  })
+
+  test('answers an empty index for a project with no answers at all', () => {
+    const found = indexFrom()
+
+    expect(found.index.size).toBe(0)
+    expect(found.own).toEqual([])
+    expect(found.files).toEqual([])
+  })
+})
+
+describe('the classes an index offers a typed name', () => {
+  const found = indexFrom({
+    classmap: ['Illuminate\\Support\\Arr', 'App\\Models\\Order', 'Other\\Order'],
+    psr4: {'App\\': ['app']},
+    files: ['app/Models/Order.php'],
+    vendor: 'vendor',
+  })
+
+  test('reads the typed name as a short name or as a whole one', () => {
+    expect(matchingIn(found, 'Ord').map(one => one.qualified))
+      .toEqual(['App\\Models\\Order', 'Other\\Order'])
+    expect(matchingIn(found, 'App\\Models\\Or')).toEqual([{name: 'Order', qualified: 'App\\Models\\Order'}])
+    expect(matchingIn(found, '\\Other\\Order')).toEqual([{name: 'Order', qualified: 'Other\\Order'}])
+    expect(matchingIn(found, 'Nothing')).toEqual([])
+  })
+
+  test('offers the project\'s own namespaces before a package\'s', () => {
+    expect(matchingIn(found, 'Or').map(one => one.qualified)[0]).toBe('App\\Models\\Order')
+  })
+
+  test('holds a popup to the number of names it was asked for', () => {
+    expect(matchingIn(found, 'Or', 1)).toHaveLength(1)
+    expect(matchingIn(found, '')).toHaveLength(3)
+  })
+
+  test('offers nothing for a project there is no index of', () => {
+    expect(matchingIn(null, 'Ord')).toEqual([])
+    expect(matchingIn(undefined, 'Ord')).toEqual([])
+  })
+})
+
+describe('the files an index offers a prompt', () => {
+  const found = indexFrom({
+    classmap: [],
+    psr4: {'App\\': ['app']},
+    files: ['app/Models/Order.php', 'app/Models/OrderLine.php'],
+  })
+
+  test('takes what is typed after an `@` as the beginning of a name', () => {
+    expect(matchingFilesIn(found, 'Order').map(one => one.qualified))
+      .toEqual(['App\\Models\\Order', 'App\\Models\\OrderLine'])
+    expect(matchingFilesIn(found, 'App\\Models\\OrderL').map(one => one.qualified))
+      .toEqual(['App\\Models\\OrderLine'])
+    expect(matchingFilesIn(found, 'Nothing')).toEqual([])
+  })
+
+  test('holds the list to the number of files it was asked for', () => {
+    expect(matchingFilesIn(found, 'Order', 1)).toHaveLength(1)
+    expect(matchingFilesIn(null, 'Order')).toEqual([])
   })
 })
