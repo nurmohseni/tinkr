@@ -58,6 +58,9 @@ const defaults = {
   // the connection the MCP server runs code in when a client does not say which
   // project it is working on: nothing means the client's own directory
   mcp_connection: '',
+  // where the log viewer looks for a connection's log files, relative to the
+  // project: Laravel writes them in storage/logs
+  log_dir: 'storage/logs',
 }
 
 const config = new Store({

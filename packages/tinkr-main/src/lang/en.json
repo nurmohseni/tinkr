@@ -34,7 +34,7 @@
   "editor": {
     "ai": "AI",
     "ai_empty": "Ask for a snippet, or ask what the code in the editor does.",
-    "ai_placeholder": "Ask for code, or ask about the code…",
+    "ai_placeholder": "Ask about the code, or name a file with @",
     "ai_ask": "Ask",
     "ai_you": "you",
     "ai_asking": "asking…",
@@ -91,7 +91,19 @@
     "ai_send_output": "the last run's answer",
     "ai_mention": "Reference a project file",
     "ai_mention_empty": "No file of this project matches that",
-    "ai_placeholder": "Ask about the code, or name a file with @"
+    "logs": "Logs",
+    "logs_file": "the log file",
+    "logs_none": "no log files",
+    "logs_level": "level",
+    "logs_level_all": "all",
+    "logs_search": "Search the entries",
+    "logs_follow": "Follow",
+    "logs_follow_description": "read it again every {seconds} seconds",
+    "logs_interval": "how often to read it",
+    "logs_read": "Read it again",
+    "logs_empty": "There are no log files in {dir}.",
+    "logs_no_entries": "Nothing matches.",
+    "logs_read_of": "read the last {read} KB of {size} KB"
   },
   "preference": {
     "preferences": "Preferences",
@@ -161,7 +173,9 @@
     "mcp_tool_list_history": "lists the runs a connection has kept",
     "mcp_tool_read_run": "reads one kept run, and what it came back with",
     "shortcut_ai": "AI panel",
-    "shortcut_ai_description": "open the AI panel and put the cursor in its prompt"
+    "shortcut_ai_description": "open the AI panel and put the cursor in its prompt",
+    "log_dir": "Log files",
+    "log_dir_description": "where a project keeps them, relative to its directory — Laravel writes storage/logs"
   },
   "ok": "OK",
   "cancel": "Cancel",

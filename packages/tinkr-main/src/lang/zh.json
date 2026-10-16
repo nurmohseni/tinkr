@@ -34,7 +34,7 @@
   "editor": {
     "ai": "AI",
     "ai_empty": "让 AI 写一段代码，也可以问编辑器里的代码在做什么。",
-    "ai_placeholder": "让 AI 写代码，或者问这段代码的问题…",
+    "ai_placeholder": "询问这段代码，或用 @ 指名一个文件",
     "ai_ask": "提问",
     "ai_you": "你",
     "ai_asking": "正在询问…",
@@ -91,7 +91,19 @@
     "ai_send_output": "上一次运行的返回",
     "ai_mention": "引用项目中的文件",
     "ai_mention_empty": "项目里没有匹配的文件",
-    "ai_placeholder": "询问这段代码，或用 @ 指名一个文件"
+    "logs": "日志",
+    "logs_file": "日志文件",
+    "logs_none": "没有日志文件",
+    "logs_level": "级别",
+    "logs_level_all": "全部",
+    "logs_search": "搜索条目",
+    "logs_follow": "跟随",
+    "logs_follow_description": "每 {seconds} 秒重新读取",
+    "logs_interval": "读取频率",
+    "logs_read": "重新读取",
+    "logs_empty": "{dir} 里没有日志文件。",
+    "logs_no_entries": "没有匹配的内容。",
+    "logs_read_of": "已读取最后 {read} KB，共 {size} KB"
   },
   "preference": {
     "preferences": "偏好设置",
@@ -161,7 +173,9 @@
     "mcp_tool_list_history": "列出某个连接保留的运行记录",
     "mcp_tool_read_run": "读取一条运行记录及其返回的内容",
     "shortcut_ai": "AI 面板",
-    "shortcut_ai_description": "打开 AI 面板并把光标放进输入框"
+    "shortcut_ai_description": "打开 AI 面板并把光标放进输入框",
+    "log_dir": "日志文件",
+    "log_dir_description": "项目存放日志的位置，相对于项目目录 —— Laravel 写入 storage/logs"
   },
   "ok": "确定",
   "cancel": "取消",

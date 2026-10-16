@@ -17,6 +17,7 @@ import {aiThreadAtom} from './ai'
 import {activeSessionIdAtom, newSession, sessionsAtom} from './sessions'
 import {snippetDataAtom} from './snippets'
 import {openTabsAtom} from './tabs'
+import {emptyLogs, logsAtom} from './logs'
 
 const connectionDataAtom = atomWithImmer(allConnections())
 
@@ -53,6 +54,9 @@ const switchConnectionAtom = atom(null, (get, set) => {
   set(resultAtom, null)
   set(outputAtom, '')
   set(aiThreadAtom, [])
+  // the logs were the other connection's project, and the panel reads the new
+  // one's the moment it has none
+  set(logsAtom, emptyLogs())
 })
 
 /**

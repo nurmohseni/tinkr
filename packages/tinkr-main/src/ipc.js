@@ -28,6 +28,7 @@ const {providers} = require('./aiProviders')
 const {checkForUpdates, downloadUpdate, installUpdate} = require('./updater')
 const {info: mcpInfo, configureClient} = require('./services/mcp')
 const {filesFor, attachmentsFor} = require('./services/files')
+const {files: logFiles, read: readLog} = require('./services/logs')
 const {getEditorConnection} = require('./processes')
 
 ipcMain.on('selectDirectory', (event, defaultPath) => {
@@ -188,6 +189,22 @@ ipcMain.handle('aiAsk', async (event, connectionId, request) => {
   return await ask(Object.assign({}, request, {
     files: attachmentsFor(projectOf(connection), request.prompt),
   }))
+})
+
+ipcMain.handle('logFiles', async (event, connectionId) => {
+  const connection = getEditorConnection(connectionId)
+
+  // the viewer reads a file on this machine, and a project over ssh keeps its
+  // logs on the other one
+  if (!connection || connection.is_over_ssh) {
+    return {dir: '', files: [], ssh: true}
+  }
+
+  return logFiles(connection)
+})
+
+ipcMain.handle('logRead', async (event, connectionId, name, bytes) => {
+  return readLog(getEditorConnection(connectionId), name, bytes)
 })
 
 ipcMain.handle('aiFiles', async (event, connectionId, typed) => {

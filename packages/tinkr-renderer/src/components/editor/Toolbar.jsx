@@ -30,6 +30,7 @@ const Toolbar = () => {
   const tabs = [
     {index: 1, id: 'editor.output', badge: badge()},
     {index: 0, id: 'editor.terminal', badge: null},
+    {index: 3, id: 'editor.logs', badge: null},
     {index: 2, id: 'editor.ai', badge: null},
   ]
 
