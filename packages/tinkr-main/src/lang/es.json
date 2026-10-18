@@ -102,8 +102,6 @@
     "ai_mention_empty": "Ningún archivo de este proyecto coincide",
     "logs_files": "Archivos de registro",
     "logs_pick": "Elige un archivo de registro en la barra lateral.",
-    "logs_level": "nivel",
-    "logs_level_all": "todos",
     "logs_search": "Buscar en las entradas",
     "logs_follow": "Seguir",
     "logs_follow_description": "volver a leerlo cada {seconds} segundos",
@@ -120,7 +118,16 @@
     "stop_title": "Detener la ejecución en curso",
     "sandbox": "Sandbox",
     "dry_run_sandbox": "Activar el sandbox: la ejecución se revierte, y el correo, los trabajos, las llamadas HTTP, las escrituras de archivos, la caché y el registro se registran en lugar de ocurrir",
-    "dry_run_sandbox_off": "Desactivar el sandbox: la ejecución se conserva"
+    "dry_run_sandbox_off": "Desactivar el sandbox: la ejecución se conserva",
+    "logs_filter": "Filtrar",
+    "logs_filter_levels": "Niveles",
+    "logs_filter_range": "Entre",
+    "logs_filter_from": "desde",
+    "logs_filter_to": "hasta",
+    "logs_filter_help": "Se busca en el archivo, así que el intervalo alcanza más allá de lo leído.",
+    "logs_filter_clear": "Archivo completo",
+    "logs_filter_apply": "Aplicar",
+    "logs_ranged": "en un intervalo"
   },
   "preference": {
     "preferences": "Preferencias",

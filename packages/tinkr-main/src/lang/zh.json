@@ -102,8 +102,6 @@
     "ai_mention_empty": "项目里没有匹配的文件",
     "logs_files": "日志文件",
     "logs_pick": "在侧边栏选择一个日志文件。",
-    "logs_level": "级别",
-    "logs_level_all": "全部",
     "logs_search": "搜索条目",
     "logs_follow": "跟随",
     "logs_follow_description": "每 {seconds} 秒重新读取",
@@ -120,7 +118,16 @@
     "stop_title": "停止正在运行的执行",
     "sandbox": "沙箱",
     "dry_run_sandbox": "开启沙箱：执行会回滚，邮件、任务、HTTP 请求、文件写入、缓存和日志会被记录而不是真正发生",
-    "dry_run_sandbox_off": "关闭沙箱：执行会被保留"
+    "dry_run_sandbox_off": "关闭沙箱：执行会被保留",
+    "logs_filter": "筛选",
+    "logs_filter_levels": "级别",
+    "logs_filter_range": "时间范围",
+    "logs_filter_from": "从",
+    "logs_filter_to": "到",
+    "logs_filter_help": "直接在文件中查找，因此范围可以超出已读取的部分。",
+    "logs_filter_clear": "整个文件",
+    "logs_filter_apply": "应用",
+    "logs_ranged": "在范围内"
   },
   "preference": {
     "preferences": "偏好设置",

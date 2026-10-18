@@ -102,8 +102,6 @@
     "ai_mention_empty": "No file of this project matches that",
     "logs_files": "Log files",
     "logs_pick": "Pick a log file in the sidebar.",
-    "logs_level": "level",
-    "logs_level_all": "all",
     "logs_search": "Search the entries",
     "logs_follow": "Follow",
     "logs_follow_description": "read it again every {seconds} seconds",
@@ -120,7 +118,16 @@
     "stop_title": "Stop the run that is going",
     "sandbox": "Sandbox",
     "dry_run_sandbox": "Turn on the sandbox: the run is rolled back, and mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening",
-    "dry_run_sandbox_off": "Turn off the sandbox: the run is kept"
+    "dry_run_sandbox_off": "Turn off the sandbox: the run is kept",
+    "logs_filter": "Filter",
+    "logs_filter_levels": "Levels",
+    "logs_filter_range": "Between",
+    "logs_filter_from": "from",
+    "logs_filter_to": "to",
+    "logs_filter_help": "Found in the file, so the range reaches past what has been read.",
+    "logs_filter_clear": "Whole file",
+    "logs_filter_apply": "Apply",
+    "logs_ranged": "in a range"
   },
   "preference": {
     "preferences": "Preferences",

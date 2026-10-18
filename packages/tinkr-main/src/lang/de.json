@@ -102,8 +102,6 @@
     "ai_mention_empty": "Keine Datei dieses Projekts passt dazu",
     "logs_files": "Logdateien",
     "logs_pick": "Wähle eine Logdatei in der Seitenleiste.",
-    "logs_level": "Stufe",
-    "logs_level_all": "alle",
     "logs_search": "Die Einträge durchsuchen",
     "logs_follow": "Mitlesen",
     "logs_follow_description": "alle {seconds} Sekunden neu lesen",
@@ -120,7 +118,16 @@
     "stop_title": "Den laufenden Lauf stoppen",
     "sandbox": "Sandbox",
     "dry_run_sandbox": "Sandbox einschalten: der Lauf wird zurückgenommen, und E-Mails, Jobs, HTTP-Aufrufe, Schreibvorgänge, Cache und Log werden aufgezeichnet statt ausgeführt",
-    "dry_run_sandbox_off": "Sandbox ausschalten: der Lauf wird übernommen"
+    "dry_run_sandbox_off": "Sandbox ausschalten: der Lauf wird übernommen",
+    "logs_filter": "Filtern",
+    "logs_filter_levels": "Stufen",
+    "logs_filter_range": "Zwischen",
+    "logs_filter_from": "von",
+    "logs_filter_to": "bis",
+    "logs_filter_help": "Wird in der Datei gesucht, der Zeitraum reicht also über das Gelesene hinaus.",
+    "logs_filter_clear": "Ganze Datei",
+    "logs_filter_apply": "Anwenden",
+    "logs_ranged": "in einem Zeitraum"
   },
   "preference": {
     "preferences": "Einstellungen",
