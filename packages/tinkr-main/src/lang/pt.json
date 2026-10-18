@@ -102,8 +102,6 @@
     "ai_mention_empty": "Nenhum arquivo deste projeto corresponde",
     "logs_files": "Arquivos de log",
     "logs_pick": "Escolhe um arquivo de log na barra lateral.",
-    "logs_level": "nível",
-    "logs_level_all": "todos",
     "logs_search": "Buscar nas entradas",
     "logs_follow": "Acompanhar",
     "logs_follow_description": "ler de novo a cada {seconds} segundos",
@@ -120,7 +118,16 @@
     "stop_title": "Parar a execução em curso",
     "sandbox": "Sandbox",
     "dry_run_sandbox": "Ativar o sandbox: a execução é revertida, e o correio, os trabalhos, os pedidos HTTP, as escritas de ficheiros, a cache e o registo são registados em vez de acontecerem",
-    "dry_run_sandbox_off": "Desativar o sandbox: a execução é mantida"
+    "dry_run_sandbox_off": "Desativar o sandbox: a execução é mantida",
+    "logs_filter": "Filtrar",
+    "logs_filter_levels": "Níveis",
+    "logs_filter_range": "Entre",
+    "logs_filter_from": "de",
+    "logs_filter_to": "até",
+    "logs_filter_help": "É procurado no ficheiro, pelo que o intervalo vai além do que foi lido.",
+    "logs_filter_clear": "Ficheiro inteiro",
+    "logs_filter_apply": "Aplicar",
+    "logs_ranged": "num intervalo"
   },
   "preference": {
     "preferences": "Preferências",

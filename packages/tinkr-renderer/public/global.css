@@ -340,6 +340,104 @@ button.tree-nav__row {
     max-width: 280px;
 }
 
+/* The filter is a panel under the control that raises it, not a dialog: the
+   entries are the answer to the question it asks, so a box that covers them turns
+   every adjustment into a guess. It sits on the raised surface the app floats
+   menus on, and the control that raised it stays marked while a range is on. */
+.logs__filter {
+    position: relative;
+    flex: none;
+}
+
+.logs__filter .is-on {
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+    color: var(--text);
+}
+
+.logsfilter {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 5;
+    width: 288px;
+    padding: var(--s3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+    background: var(--panel-raised);
+    border-radius: var(--r-panel);
+    box-shadow: inset 0 0 0 1px var(--border-strong), var(--shadow-pop);
+}
+
+.logsfilter__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+}
+
+.logsfilter__label {
+    font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
+    color: var(--text-muted);
+}
+
+/* eight levels on two lines rather than one: a level is a word, not a chip, so
+   they read as a list of things that can be left out */
+.logsfilter__levels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px var(--s2);
+}
+
+.logsfilter__level {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.logsfilter__level span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.logsfilter__range {
+    display: grid;
+    gap: var(--s2);
+}
+
+/* a field with its own name beside it, so the two moments stay told apart */
+.logsfilter__field {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s2);
+}
+
+.logsfilter__field-label {
+    font-size: var(--fs-sm);
+    color: var(--text-faint);
+}
+
+.logsfilter__help {
+    margin: 0;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-ui);
+    color: var(--text-faint);
+}
+
+.logsfilter__foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--s2);
+}
+
 /* the follow switch is a label and a switch, as the settings rows have them */
 .logs__follow {
     display: flex;
