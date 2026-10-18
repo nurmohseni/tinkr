@@ -44,8 +44,14 @@ const Form = () => {
   const runDebounced = useCallback(debounce(code => run(code), 500), [])
 
   const runSnippet = async () => {
-    const code = await stringifyPhpForm(fields)
-    runDebounced(code)
+    // the form's values are written into the code the form was read from, so
+    // the snippet travels with them: a form carries no code of its own
+    try {
+      const code = await stringifyPhpForm(fields, snippet.code)
+      runDebounced(code)
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
   const changeFieldValue = (index, value) => {

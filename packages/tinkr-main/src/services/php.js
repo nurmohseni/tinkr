@@ -9,8 +9,15 @@ const parsePhpForm = async (connectionId, code) => {
   return form.parse(connectionId, code)
 }
 
-const stringifyPhpForm = async fields => {
+// the form writes its values into the code it was read from, and a form sent
+// without that code is written into nothing, so the code is kept with it
+const stringifyPhpForm = async (fields, code) => {
   const form = await DynamicPhpForm.instance()
+
+  if (code !== undefined) {
+    form.code = code
+  }
+
   return form.stringify(fields)
 }
 

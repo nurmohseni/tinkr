@@ -1,4 +1,4 @@
-jest.mock('electron', () => ({app: {getLocale: () => 'en'}}))
+jest.mock('electron', () => ({app: {getLocale: () => 'en', getPath: () => '/tmp'}}))
 jest.mock('electron-store', () => class Store {
   get(key, fallback) { return fallback }
 })
