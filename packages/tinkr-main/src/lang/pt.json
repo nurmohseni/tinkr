@@ -265,13 +265,29 @@
     "close_failed": "Não foi possível fechar a transação em {connection}: {error}",
     "not_armed": "Nada foi executado",
     "keep": "Executar de novo e manter",
-    "keep_title": "Execute o mesmo código novamente, desta vez mantendo a transação"
+    "keep_title": "Execute o mesmo código novamente, desta vez mantendo a transação",
+    "broken": "O ensaio NÃO se manteve: {error}",
+    "broken_plain": "O ensaio NÃO se manteve: a sua transação foi fechada antes de a execução terminar, por isso o que mudou pode ter sido guardado",
+    "not_armed_because": "Nada foi executado: {error}",
+    "commit_threw": "A execução lançou uma excepção, por isso nada foi guardado",
+    "unguarded": "{count, plural, one {# instrução} other {# instruções}} em {connection} correram fora do ensaio",
+    "unguardable_title": "O ensaio não pode desfazer isto",
+    "unguardable_content": "A ligação {connection} está marcada como produção, e um ensaio não pode desfazer o que esta execução faz:",
+    "unguardable_run": "Executar mesmo assim"
   },
   "mutation": {
     "title": "Esta execução altera o banco de dados",
     "content": "A conexão {connection} está marcada como production. Esta execução grava no banco de dados:",
     "line": "line",
-    "run": "Executar mesmo assim"
+    "run": "Executar mesmo assim",
+    "unguardable_title": "O ensaio não pode desfazer isto",
+    "unguardable_content": "A ligação {connection} está marcada como produção, e um ensaio não pode desfazer o que esta execução faz:",
+    "unguardable_run": "Executar mesmo assim",
+    "reason_ddl": "DDL, que o MySQL confirma por conta própria",
+    "reason_transaction": "a execução fecha a transação por si própria",
+    "reason_connection": "a execução escreve noutra ligação",
+    "reason_reconnect": "a execução larga a ligação e a transação",
+    "reason_config": "a execução troca a ligação predefinida"
   },
   "statusbar": {
     "run_failed": "A execução falhou · {class}",

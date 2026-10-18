@@ -3,7 +3,10 @@ const path = require('path')
 const flatten = require('flat')
 const {createIntl, createIntlCache} = require('@formatjs/intl')
 
-const {getLocale} = require('./services/config')
+// the stored preference itself, not services/config: that module switches the
+// locale through this one, and requiring each other left one of the two half
+// loaded on boot
+const {config} = require('./database/config')
 
 const cache = createIntlCache()
 
@@ -13,7 +16,7 @@ const cache = createIntlCache()
  * @returns {{messages: any, locale: string}}
  */
 const getIntlConfig = () => {
-  const locale = getLocale()
+  const locale = config.get('locale', 'en')
   const messages = flatten(JSON.parse(
     fs.readFileSync(path.join(__dirname, `lang/${locale}.json`)).toString('utf8'),
   ))

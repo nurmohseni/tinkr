@@ -1,7 +1,7 @@
 import {atom} from 'jotai'
 
 import {runConnection, getConnection, reconnectConnection} from '../utils/api'
-import {mutationScan} from '../utils/mutationScan'
+import {mutationScan, unguardableScan} from '../utils/mutationScan'
 
 const connectionAtom = atom(getConnection())
 const sizesAtom = atom([])
@@ -26,7 +26,9 @@ const dryRunAtom = atom(false)
 
 // the run the pre-flight scan is holding back, with what the scan found in it:
 // the code, the guard the run was being sent under, and the calls that write.
-// Null whenever nothing is waiting to be answered.
+// `unguardable` is set when the run is a dry run and what was found is what its
+// transaction cannot hold, which is a different question. Null whenever nothing
+// is waiting to be answered.
 const mutationGateAtom = atom(null)
 
 /**
@@ -49,11 +51,12 @@ const mutationGateAtom = atom(null)
  *
  * A run that writes, sent to a connection tagged production, is asked about
  * rather than sent: the scan is what the question is built from, and the run
- * waits in mutationGateAtom until it is answered. Nothing is asked when the run
- * cannot lose anything — a dry run is taken back by the guard, a run that only
- * reads changes nothing, and a connection tagged anything else is a connection
- * someone can recover — and the run the question sends is the same run again
- * with the answer already given.
+ * waits in mutationGateAtom until it is answered. A dry run is asked about only
+ * for what its transaction cannot take back — DDL that MySQL commits on its own,
+ * the snippet's own commit or rollback, another connection, a reconnect, the
+ * default connection swapped — since everything else it does is undone. A run
+ * that only reads and a connection tagged anything else ask nothing, and the run
+ * the question sends is the same run again with the answer already given.
  *
  * 执行代码
  */
@@ -63,12 +66,18 @@ const runAtom = atom(null, (get, set, code, options) => {
     : (get(dryRunAtom) ? 'rollback' : null)
 
   const connection = get(connectionAtom) || {}
-  const writes = guard === 'rollback' || (options && options.confirmed) || connection.tag !== 'production'
-    ? []
-    : mutationScan(code)
+  const asked = !(options && options.confirmed) && connection.tag === 'production'
+  const unguardable = asked && guard === 'rollback'
+  let writes = []
+
+  if (unguardable) {
+    writes = unguardableScan(code)
+  } else if (asked) {
+    writes = mutationScan(code)
+  }
 
   if (writes.length) {
-    set(mutationGateAtom, {code, guard, writes})
+    set(mutationGateAtom, unguardable ? {code, guard, writes, unguardable} : {code, guard, writes})
 
     return
   }

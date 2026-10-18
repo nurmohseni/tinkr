@@ -146,12 +146,25 @@ export const compositeText = (intl, value) => {
   return `${intl.formatMessage({id: isList ? 'result.array' : 'result.object'})} · ${size}`
 }
 
+// a text cell a spreadsheet would read as a formula: Excel, LibreOffice and
+// Sheets all evaluate a cell that starts with one of these, so a value from the
+// database could run a formula on whoever opens the file. Such a cell is given a
+// leading apostrophe, which is how a spreadsheet is told the cell is text.
+// Numbers are left alone: -5 is a number, not a formula
+const FORMULA = /^[=+\-@\t\r]/
+
+const neutral = text => (FORMULA.test(text) ? `'${text}` : text)
+
 const csvCell = value => {
   if (value === null || value === undefined) {
     return ''
   }
 
-  return isComposite(value) ? JSON.stringify(value) : String(value)
+  if (isComposite(value)) {
+    return neutral(JSON.stringify(value))
+  }
+
+  return typeof value === 'string' ? neutral(value) : String(value)
 }
 
 const quoted = text => (/[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text)
@@ -166,7 +179,7 @@ const quoted = text => (/[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` 
  * @return {String}
  */
 export const toCsv = (columns, rows) => [
-  columns.map(quoted).join(','),
+  columns.map(name => quoted(neutral(String(name)))).join(','),
   ...rows.map(row => columns.map(name => quoted(csvCell(row[name]))).join(',')),
 ].join('\r\n') + '\r\n'
 

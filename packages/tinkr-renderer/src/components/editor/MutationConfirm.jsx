@@ -22,8 +22,10 @@ import {
  * run, which is the answer that leaves everything as it was, and the run that is
  * allowed through is the run that was held, with the guard it already had. The
  * run decides whether the question is asked at all — a run that only reads, a
- * run the guard takes back, and a connection tagged anything but production ask
- * nothing: see the store's runAtom.
+ * dry run whose statements its transaction can all take back, and a connection
+ * tagged anything but production ask nothing: see the store's runAtom. A dry run
+ * that is asked about is asked a different question, since what it would lose
+ * is what the dry run cannot protect, and each line says why.
  */
 const MutationConfirm = () => {
   const intl = useIntl()
@@ -48,20 +50,26 @@ const MutationConfirm = () => {
           className='modal__header'
           id='mutation-title'
         >
-          {intl.formatMessage({id: 'mutation.title'})}
+          {intl.formatMessage({id: held.unguardable ? 'mutation.unguardable_title' : 'mutation.title'})}
         </header>
 
         <div className='modal__body'>
           <FormattedMessage
-            id='mutation.content'
+            id={held.unguardable ? 'mutation.unguardable_content' : 'mutation.content'}
             values={{connection: connection.name}}
           />
 
           {held.writes.map(one => (
-            <div key={`${one.line}:${one.call}`}>
+            <div key={`${one.line}:${one.reason || ''}:${one.call}`}>
               <strong>{one.call}</strong>
 
               <span>{` ${intl.formatMessage({id: 'mutation.line'})} ${one.line}`}</span>
+
+              {one.reason && (
+                <span className='muted'>
+                  {` — ${intl.formatMessage({id: `mutation.reason_${one.reason}`})}`}
+                </span>
+              )}
             </div>
           ))}
         </div>

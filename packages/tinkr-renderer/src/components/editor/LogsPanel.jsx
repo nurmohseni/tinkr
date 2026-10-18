@@ -87,7 +87,9 @@ const LogsPanel = () => {
   const [level, setLevel] = useAtom(logsLevelAtom)
   const [search, setSearch] = useAtom(logsSearchAtom)
   const [follow, setFollow] = useAtom(logsFollowAtom)
-  const [interval, setInterval] = useAtom(logsIntervalAtom)
+  // not named setInterval: that name is the timer below, and a setter in its
+  // place turned following into a store write that never read anything
+  const [interval, setPollInterval] = useAtom(logsIntervalAtom)
   const listRef = useRef()
   const pinned = useRef(true)
   const landing = useRef(null)
@@ -201,13 +203,17 @@ const LogsPanel = () => {
             title={intl.formatMessage({id: 'editor.logs_follow_description'}, {seconds: interval / 1000})}
           >
             <span className='faint'><FormattedMessage id='editor.logs_follow'/></span>
-            <input
-              type='checkbox'
-              checked={follow}
-              aria-label={intl.formatMessage({id: 'editor.logs_follow'})}
-              onChange={event => setFollow(event.target.checked)}
-            />
-            <span className='switch__track'/>
+            {/* the settings rows' switch, so it reads as on or off the same way
+                and its knob is placed against its own track */}
+            <span className='switch'>
+              <input
+                type='checkbox'
+                checked={follow}
+                aria-label={intl.formatMessage({id: 'editor.logs_follow'})}
+                onChange={event => setFollow(event.target.checked)}
+              />
+              <span className='switch__track'/>
+            </span>
           </label>
 
           <select
@@ -215,7 +221,7 @@ const LogsPanel = () => {
             value={interval}
             disabled={!follow}
             aria-label={intl.formatMessage({id: 'editor.logs_interval'})}
-            onChange={event => setInterval(Number(event.target.value))}
+            onChange={event => setPollInterval(Number(event.target.value))}
           >
             {intervals.map(seconds => (
               <option key={seconds} value={seconds}>{`${seconds / 1000}s`}</option>

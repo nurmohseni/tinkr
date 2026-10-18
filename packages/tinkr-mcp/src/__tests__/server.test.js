@@ -1,9 +1,17 @@
+const fs = require('fs')
+const os = require('os')
 const path = require('path')
 
 const {makeAppDir, removeAppDir, connection} = require('../__fixtures__/app')
 const app = require('../app')
 const target = require('../target')
 const {createServer, render} = require('../server')
+
+// the run tools refuse a directory that is not there, because the session would
+// otherwise boot in the home directory, so the project a run names exists
+const project = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-project-'))
+
+afterAll(() => fs.rmSync(project, {recursive: true, force: true}))
 
 const envelope = (fields = {}) => Object.assign({
   blocks: [{line: 1, value: 3, error: null}],
@@ -32,7 +40,7 @@ describe('the tools', () => {
   test('runs the code in the project the server was started on', async () => {
     const seen = []
     const {server} = opened({
-      at: '/tmp/project',
+      at: project,
       run: async (connection, code, options) => {
         seen.push({connection, code, options})
 
@@ -42,7 +50,7 @@ describe('the tools', () => {
 
     const answer = await server.call('tinkr_run_php', {code: '$orders = 3;'})
 
-    expect(seen[0].connection.path).toBe(path.resolve('/tmp/project'))
+    expect(seen[0].connection.path).toBe(path.resolve(project))
     expect(seen[0].code).toBe('$orders = 3;')
     expect(seen[0].options.timeout).toBe(60000)
     expect(answer.content[0].text).toBe('Line 1: 3')
@@ -85,7 +93,7 @@ describe('the tools', () => {
 
   test('a snippet that threw is an answer, not a tool that failed', async () => {
     const {server} = opened({
-      at: '/tmp/project',
+      at: project,
       run: async () => envelope({
         value: null,
         error: {class: 'RuntimeException', message: 'boom'},
@@ -102,7 +110,7 @@ describe('the tools', () => {
 
   test('a run that never came back is a tool that failed', async () => {
     const {server} = opened({
-      at: '/tmp/project',
+      at: project,
       run: async () => {
         throw new Error('the session did not answer within 60000ms')
       },
@@ -117,7 +125,7 @@ describe('the tools', () => {
   test('waits as long as the caller asks, within reason', async () => {
     const seen = []
     const {server} = opened({
-      at: '/tmp/project',
+      at: project,
       run: async (project, code, options) => {
         seen.push(options.timeout)
 
@@ -135,7 +143,7 @@ describe('the tools', () => {
   test('knows which of the two run tools a connection belongs to', async () => {
     dir = makeAppDir({
       connections: {
-        local: connection({id: 'local', name: 'Local', path: '/tmp/project'}),
+        local: connection({id: 'local', name: 'Local', path: project}),
         production: connection({
           id: 'production',
           name: 'Production',
@@ -168,7 +176,7 @@ describe('the tools', () => {
   test('lists the connections the app lists', async () => {
     dir = makeAppDir({
       connections: {
-        local: connection({id: 'local', name: 'The App', path: '/tmp/project'}),
+        local: connection({id: 'local', name: 'The App', path: project}),
         production: connection({
           id: 'production',
           name: 'Production',
@@ -189,7 +197,7 @@ describe('the tools', () => {
         id: 'local',
         name: 'The App',
         tag: 'local',
-        directory: '/tmp/project',
+        directory: project,
         command: null,
         over_ssh: false,
         ssh: null,
@@ -208,13 +216,13 @@ describe('the tools', () => {
 
   test('reads and keeps the snippets of a connection the app knows', async () => {
     dir = makeAppDir({
-      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      connections: {local: connection({id: 'local', name: 'The App', path: project})},
       snippets: {
         local: {abc: {id: 'abc', code: '$n = 1;', name: 'One', position: {lineNumber: 1, column: 1}}},
       },
     })
 
-    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const {server} = opened({dataDir: dir, at: project})
 
     const listed = await server.call('tinkr_list_snippets', {})
 
@@ -239,7 +247,7 @@ describe('the tools', () => {
 
   test('lists the runs the app kept, newest first, as many as it is asked for', async () => {
     dir = makeAppDir({
-      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      connections: {local: connection({id: 'local', name: 'The App', path: project})},
       history: {
         local: {
           entries: [
@@ -250,7 +258,7 @@ describe('the tools', () => {
       },
     })
 
-    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const {server} = opened({dataDir: dir, at: project})
     const listed = await server.call('tinkr_list_history', {})
 
     expect(listed.structuredContent.runs).toEqual([
@@ -277,10 +285,10 @@ describe('the tools', () => {
 
   test('a connection that has run nothing says so', async () => {
     dir = makeAppDir({
-      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      connections: {local: connection({id: 'local', name: 'The App', path: project})},
     })
 
-    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const {server} = opened({dataDir: dir, at: project})
     const listed = await server.call('tinkr_list_history', {})
 
     expect(listed.content[0].text).toBe('This connection has run nothing yet.')
@@ -289,7 +297,7 @@ describe('the tools', () => {
 
   test('reads one run, with what came back and what was too big to keep', async () => {
     dir = makeAppDir({
-      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      connections: {local: connection({id: 'local', name: 'The App', path: project})},
       history: {
         local: {
           entries: [{
@@ -305,7 +313,7 @@ describe('the tools', () => {
       },
     })
 
-    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const {server} = opened({dataDir: dir, at: project})
     const run = await server.call('tinkr_read_run', {id: 'a1'})
 
     expect(run.isError).toBe(false)
@@ -323,11 +331,11 @@ describe('the tools', () => {
 
   test('a run the app does not keep is not there to read', async () => {
     dir = makeAppDir({
-      connections: {local: connection({id: 'local', name: 'The App', path: '/tmp/project'})},
+      connections: {local: connection({id: 'local', name: 'The App', path: project})},
       history: {local: {entries: [{id: 'a1', code: '1;', at: 1760000000000, outcome: 'returned', value: 1}]}},
     })
 
-    const {server} = opened({dataDir: dir, at: '/tmp/project'})
+    const {server} = opened({dataDir: dir, at: project})
     const missing = await server.call('tinkr_read_run', {id: 'nope'})
 
     expect(missing.isError).toBe(true)
@@ -345,7 +353,7 @@ describe('the tools', () => {
   })
 
   test('asks for the code it is going to run', async () => {
-    const {server} = opened({at: '/tmp/project', run: async () => envelope()})
+    const {server} = opened({at: project, run: async () => envelope()})
 
     const answer = await server.call('tinkr_run_php', {})
 

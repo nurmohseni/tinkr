@@ -1,13 +1,15 @@
-import {useEffect, useRef} from 'react'
+import {useCallback, useEffect, useRef, useState} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
 import Outcome from '../Outcome'
+import PointerMenu from '../PointerMenu'
 import ResultGraph from './ResultGraph'
 import ResultHtml from './ResultHtml'
 import ResultTable from './ResultTable'
 import ResultValue from './ResultValue'
 import {copy, copyText} from '../../utils/clipboard'
+import {guardReport} from '../../utils/guardReport'
 import {
   entriesOf,
   isComposite,
@@ -87,7 +89,7 @@ const onReading = (views, view) => (views.includes(view) ? view : 'organized')
  * else. Everything a reading needs to say about itself is in the strip above
  * it, so this is one surface whichever reading is on.
  */
-const Reading = ({value, view, output}) => {
+const Reading = ({value, view, output = ''}) => {
   switch (view) {
     case 'raw':
       return <pre className='printed'>{output || json(value)}</pre>
@@ -112,52 +114,80 @@ Reading.propTypes = {
   output: PropTypes.string,
 }
 
-Reading.defaultProps = {
-  output: '',
-}
-
 /**
  * What a reading does with the whole of itself, in the strip's own buttons: a
  * table is copied and saved as a csv, and every other reading copies what it
  * shows — the text it read, or the json the tree and the graph are drawn from.
  */
-const ReadingActions = ({value, view, output}) => {
+const ReadingActions = ({value, view, output = ''}) => {
   const intl = useIntl()
+  const [menu, setMenu] = useState(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   if (view === 'table') {
     const {columns, rows} = tableOf(value)
     const csv = toCsv(columns, rows)
 
+    // one button and a menu rather than two buttons: the head is one line, and
+    // at the window's default width two labels pushed past the pane's edge
     return (
-      <>
+      <span className='result-summary__actions'>
         <button
           className='btn btn--ghost btn--sm'
           type='button'
-          onClick={() => copyText(csv)}
+          aria-haspopup='menu'
+          aria-expanded={menu !== null}
+          onClick={event => {
+            const box = event.currentTarget.getBoundingClientRect()
+
+            setMenu({left: box.left, top: box.bottom + 2})
+          }}
         >
-          <FormattedMessage id='result.copy_csv'/>
+          <FormattedMessage id='result.csv'/>
         </button>
 
-        <button
-          className='btn btn--ghost btn--sm'
-          type='button'
-          onClick={() => window.api.saveFile('result.csv', csv)}
-        >
-          <FormattedMessage id='result.save_csv'/>
-        </button>
-      </>
+        {menu && (
+          <PointerMenu at={menu} label={intl.formatMessage({id: 'result.csv'})} onClose={closeMenu}>
+            <button
+              className='autocomplete__item'
+              type='button'
+              role='menuitem'
+              onClick={() => {
+                closeMenu()
+                copyText(csv)
+              }}
+            >
+              <FormattedMessage id='result.copy_csv'/>
+            </button>
+
+            <button
+              className='autocomplete__item'
+              type='button'
+              role='menuitem'
+              onClick={() => {
+                closeMenu()
+                window.api.saveFile('result.csv', csv)
+              }}
+            >
+              <FormattedMessage id='result.save_csv'/>
+            </button>
+          </PointerMenu>
+        )}
+      </span>
     )
   }
 
   return (
-    <button
-      className='btn btn--ghost btn--sm'
-      type='button'
-      title={intl.formatMessage({id: view === 'raw' ? 'result.copy_shown' : 'result.copy_json'})}
-      onClick={() => (view === 'raw' ? copyText(output || json(value)) : copy(value))}
-    >
-      {intl.formatMessage({id: 'result.copy_short'})}
-    </button>
+    <span className='result-summary__actions'>
+      <button
+        className='btn btn--ghost btn--sm'
+        type='button'
+        title={intl.formatMessage({id: view === 'raw' ? 'result.copy_shown' : 'result.copy_json'})}
+        onClick={() => (view === 'raw' ? copyText(output || json(value)) : copy(value))}
+      >
+        {intl.formatMessage({id: 'result.copy_short'})}
+      </button>
+    </span>
   )
 }
 
@@ -165,10 +195,6 @@ ReadingActions.propTypes = {
   value: PropTypes.any,
   view: PropTypes.oneOf(READINGS).isRequired,
   output: PropTypes.string,
-}
-
-ReadingActions.defaultProps = {
-  output: '',
 }
 
 /** The run's exception: the class over its message, as the design's surface. */
@@ -181,14 +207,16 @@ const Failure = ({error}) => {
       <Outcome kind='threw' label animate key={failureKey(error)}/>
       <span className='muted'>{intl.formatMessage({id: 'result.no_value'})}</span>
       <span className='grow'/>
-      <button
-        className='btn btn--ghost btn--sm'
-        type='button'
-        title={intl.formatMessage({id: 'result.copy_message'})}
-        onClick={() => copyText(`${error.class}: ${error.message}`)}
-      >
-        {intl.formatMessage({id: 'result.copy_message'})}
-      </button>
+      <span className='result-summary__actions'>
+        <button
+          className='btn btn--ghost btn--sm'
+          type='button'
+          title={intl.formatMessage({id: 'result.copy_message'})}
+          onClick={() => copyText(`${error.class}: ${error.message}`)}
+        >
+          {intl.formatMessage({id: 'result.copy_short'})}
+        </button>
+      </span>
     </div>
 
     <div className='error-surface' role='alert'>
@@ -224,14 +252,14 @@ const NothingReturned = () => (
  */
 const Block = ({block, view}) => {
   const intl = useIntl()
-  const failed = block.error !== null
+  const failed = Boolean(block.error)
   const reading = readingOf(view, block.value)
 
   return (
     <>
       <div className='result-summary result-summary--head'>
         <span className='block__line'>
-          {intl.formatMessage({id: 'result.line'}, {line: block.line})}
+          {intl.formatMessage({id: 'result.line'}, {line: Number(block.line) || 0})}
         </span>
         <Outcome
           key={failed ? failureKey(block.error) : answerKey('returned', block.value)}
@@ -366,7 +394,7 @@ ViewSwitch.propTypes = {
  * is read raw as the json the tree is drawn from. Either way the readings are
  * alternatives: one replaces the other, and neither is said twice.
  */
-const Returned = ({value, view, onView, output}) => {
+const Returned = ({value, view, onView, output = ''}) => {
   const intl = useIntl()
   const views = readingsOf([value])
   const reading = readingOf(view, value)
@@ -391,10 +419,6 @@ Returned.propTypes = {
   output: PropTypes.string,
   view: PropTypes.oneOf(READINGS).isRequired,
   onView: PropTypes.func.isRequired,
-}
-
-Returned.defaultProps = {
-  output: '',
 }
 
 /**
@@ -448,39 +472,34 @@ Imported.propTypes = {
  * run itself did: the guard is the reason none of it is kept, so a dry run is
  * read starting here.
  *
- * Where the guard took the run back it offers the run again with the transaction
- * kept — the same code, sent as a run of its own, because a run is a session
- * that has answered and gone by the time this is read and there is no transaction
- * left to close. The offer is made only where there is something to keep, and
- * what it runs is the pane's to say, the way the reading is: this strip only
- * knows it is a run that can be asked for again.
+ * The sentence is chosen by guardReport from the outcome the guard reported,
+ * never assumed: a transaction that did not hold is an error that says what it
+ * may have left behind, and the connections the run reached outside it are
+ * listed under it, since nothing on them was ever going to be taken back.
  *
- * A guard that could not arm itself ran nothing at all, and the failure under
- * this line is the guard's own; what the line says is what the guard did, not
- * what the run did. A run with no guard is not sent a transaction and reads
- * without this line.
+ * Where the guard took back a run that wrote and did not fail, it offers the run
+ * again with the transaction kept — the same code, sent as a run of its own,
+ * because a run is a session that has answered and gone by the time this is
+ * read and there is no transaction left to close. The button's title says the
+ * code runs a second time.
  */
-const Guard = ({transaction, onKeep}) => {
+const Guard = ({transaction, run, onKeep = () => {}}) => {
   const intl = useIntl()
+  const report = guardReport(transaction, run)
 
-  if (!transaction) {
+  if (!report) {
     return null
   }
 
-  const {armed, connection, statements, outcome, error} = transaction
-
   return (
-    <div className='result-summary result-summary--wrap'>
-      <span className='guard__note'>
-        {outcome === 'committed' &&
-          intl.formatMessage({id: 'guard.committed'}, {count: statements, connection})}
-        {outcome === 'rolledBack' &&
-          intl.formatMessage({id: 'guard.rolled_back'}, {count: statements, connection})}
-        {outcome === 'failed' && armed &&
-          intl.formatMessage({id: 'guard.close_failed'}, {connection, error})}
-        {outcome === 'failed' && !armed && intl.formatMessage({id: 'guard.not_armed'})}
-      </span>
-      {outcome === 'rolledBack' && statements > 0 && (
+    <div className={`result-summary result-summary--wrap guard guard--${report.tone}`} role={report.tone === 'error' ? 'alert' : undefined}>
+      <span className='guard__note'>{intl.formatMessage({id: report.id}, report.values)}</span>
+      {report.unguarded.map(({connection, count}) => (
+        <span key={connection} className='guard__note guard__unguarded'>
+          {intl.formatMessage({id: report.unguardedId}, {count, connection})}
+        </span>
+      ))}
+      {report.keep && (
         <button
           className='btn btn--ghost btn--sm'
           type='button'
@@ -496,6 +515,7 @@ const Guard = ({transaction, onKeep}) => {
 
 Guard.propTypes = {
   onKeep: PropTypes.func,
+  run: PropTypes.object,
   transaction: PropTypes.shape({
     mode: PropTypes.string,
     armed: PropTypes.bool,
@@ -503,14 +523,11 @@ Guard.propTypes = {
     statements: PropTypes.number,
     outcome: PropTypes.string,
     error: PropTypes.string,
+    unguarded: PropTypes.object,
   }),
 }
 
-Guard.defaultProps = {
-  onKeep: () => {},
-}
-
-const Result = ({result, view, onView, onKeep, allStatements}) => {
+const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {}, allStatements = false}) => {
   const intl = useIntl()
   const {value, error, output, imported, blocks, transaction} = result
 
@@ -521,7 +538,7 @@ const Result = ({result, view, onView, onKeep, allStatements}) => {
 
     return (
       <>
-        <Guard transaction={transaction} onKeep={onKeep}/>
+        <Guard transaction={transaction} run={result} onKeep={onKeep}/>
 
         <Imported imported={imported}/>
 
@@ -538,18 +555,27 @@ const Result = ({result, view, onView, onKeep, allStatements}) => {
           <ViewSwitch views={views} view={onReading(views, view)} onChange={onView}/>
         </div>
 
-        {blocks.map(block => (
-          <Block key={block.line} block={block} view={view}/>
+        {blocks.map((block, index) => (
+          // several statements can share a line, so the line alone is not a key
+          <Block key={`${index}:${block.line}`} block={block} view={view}/>
         ))}
+
+        {/* a run that ended outside every statement — exit, a fatal error, a
+            session that died — has its failure on the run, not on a block */}
+        {error && !blocks.some(block => block.error) && <Failure error={error}/>}
       </>
     )
   }
 
   return (
     <>
-      <Guard transaction={transaction} onKeep={onKeep}/>
+      <Guard transaction={transaction} run={result} onKeep={onKeep}/>
 
       <Imported imported={imported}/>
+
+      {/* what a run that failed printed first is kept: `exit()` and `dd()` end
+          the run after they have printed what they were for */}
+      {error && output && <Printed output={output}/>}
 
       {error && <Failure error={error}/>}
 
@@ -587,13 +613,6 @@ Result.propTypes = {
     imported: PropTypes.object,
     transaction: PropTypes.object,
   }).isRequired,
-}
-
-Result.defaultProps = {
-  view: 'organized',
-  onView: () => {},
-  onKeep: () => {},
-  allStatements: false,
 }
 
 export default Result

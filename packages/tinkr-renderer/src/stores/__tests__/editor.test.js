@@ -132,4 +132,42 @@ describe('the question a run that writes is asked', () => {
     expect(store.get(mutationGateAtom)).toBe(null)
     expect(sent()).toEqual([['$order->delete();', 'rollback']])
   })
+
+  test('asks about a dry run that holds what its transaction cannot take back', () => {
+    const code = "DB::table('t')->insert(['a' => 1]);\nDB::statement('create table t2 (id int)');"
+
+    store.set(connectionAtom, {name: 'orders', tag: 'production'})
+    store.set(dryRunAtom, true)
+    store.set(runAtom, code)
+
+    expect(store.get(mutationGateAtom)).toEqual({
+      code,
+      guard: 'rollback',
+      writes: [{line: 2, call: 'create table', reason: 'ddl'}],
+      unguardable: true,
+    })
+    expect(sent()).toEqual([])
+
+    // answered, it goes as the dry run it was, without being asked again
+    store.set(confirmMutationsAtom)
+
+    expect(sent()).toEqual([[code, 'rollback']])
+  })
+
+  test('asks about a dry run that writes to another connection', () => {
+    store.set(connectionAtom, {name: 'orders', tag: 'production'})
+    store.set(dryRunAtom, true)
+    store.set(runAtom, "DB::connection('sqlite')->table('s')->insert(['a' => 1]);")
+
+    expect(store.get(mutationGateAtom).writes).toEqual([{line: 1, call: 'connection', reason: 'connection'}])
+  })
+
+  test('asks nothing about a dry run with DDL off production', () => {
+    store.set(connectionAtom, {name: 'orders', tag: 'local'})
+    store.set(dryRunAtom, true)
+    store.set(runAtom, 'DB::commit();')
+
+    expect(store.get(mutationGateAtom)).toBe(null)
+    expect(sent()).toEqual([['DB::commit();', 'rollback']])
+  })
 })

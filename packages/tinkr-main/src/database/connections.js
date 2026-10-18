@@ -1,8 +1,8 @@
-const Store = require('electron-store')
+const {openStore} = require('./store')
 
 const {quickConnection} = require('../constants')
 
-const connections = new Store({
+const connections = openStore({
   name: 'app/connections',
   defaults: {
     [quickConnection.id]: quickConnection,

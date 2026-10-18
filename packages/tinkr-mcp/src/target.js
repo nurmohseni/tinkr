@@ -32,15 +32,50 @@ const sameDirectory = (one, other) => {
 }
 
 /**
+ * A name as it was written, short enough to say back: a name is echoed in an
+ * error, and a megabyte of one is a megabyte the client is answered with.
+ *
+ * @param {any} wanted
+ * @return {String}
+ */
+const said = wanted => {
+  const text = String(wanted)
+
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text
+}
+
+/**
+ * The connection an id or a name points at.
+ *
+ * An id is the app's own and points at one connection. A name is compared
+ * without case, because that is how people write them, and two connections
+ * whose names differ only in case are both what it points at: picking one of
+ * them would run code in a place nobody chose, so it is refused and the ids are
+ * named instead.
+ *
  * @param {String} dir the app's data directory
  * @param {String} wanted an id or a name, as it was written
  * @return {Object|null}
  */
 const findConnection = (dir, wanted) => {
-  const name = String(wanted).toLowerCase()
+  const all = app.connections(dir)
+  const byId = all.find(connection => connection.id === wanted)
 
-  return app.connections(dir).find(connection =>
-    connection.id === wanted || String(connection.name || '').toLowerCase() === name) || null
+  if (byId) {
+    return byId
+  }
+
+  const name = String(wanted).toLowerCase()
+  const named = all.filter(connection => String(connection.name || '').toLowerCase() === name)
+
+  if (named.length > 1) {
+    throw new Error(
+      `More than one connection in Tinkr is called "${said(wanted)}": ` +
+      `${named.map(one => `${one.id} (${one.name})`).join(', ')}. Name the one to use by its id.`,
+    )
+  }
+
+  return named[0] || null
 }
 
 /**
@@ -63,15 +98,17 @@ const directoryConnection = (at, command) => ({
  * The connection a run of the app's own, and the command it is started with.
  *
  * A command named on the command line is the one that runs, whichever
- * connection it is: someone who writes one asked for it, and a connection that
- * names its own command is only the fallback.
+ * connection the server was started on: someone who writes one asked for it.
+ * Otherwise it is the connection's own command, and when the connection names
+ * none, the app's own preference, which is what the app would start it with.
  *
  * @param {Object} connection
  * @param {String} [command]
+ * @param {String|null} [dir] the app's data directory, for its preference
  * @return {Object}
  */
-const withCommand = (connection, command) => Object.assign({}, connection, {
-  command: command || connection.command || defaultCommand,
+const withCommand = (connection, command, dir) => Object.assign({}, connection, {
+  command: command || connection.command || (dir && app.command(dir)) || defaultCommand,
 })
 
 /**
@@ -97,10 +134,10 @@ const resolve = (options = {}) => {
     if (!found) {
       const known = app.connections(dir).map(one => `${one.id} (${one.name})`).join(', ') || 'none'
 
-      throw new Error(`There is no connection "${connection}" in Tinkr. Known connections: ${known}.`)
+      throw new Error(`There is no connection "${said(connection)}" in Tinkr. Known connections: ${known}.`)
     }
 
-    return {connection: withCommand(found, command), dataDir: dir, saved: true}
+    return {connection: withCommand(found, command, dir), dataDir: dir, saved: true}
   }
 
   const project = path.resolve(at || process.cwd())
@@ -109,7 +146,7 @@ const resolve = (options = {}) => {
     : null
 
   if (saved) {
-    return {connection: withCommand(saved, command), dataDir: dir, saved: true}
+    return {connection: withCommand(saved, command, dir), dataDir: dir, saved: true}
   }
 
   const fallback = command || (dir && app.command(dir)) || defaultCommand
@@ -119,6 +156,7 @@ const resolve = (options = {}) => {
 
 module.exports = {
   defaultCommand,
+  said,
   sameDirectory,
   findConnection,
   resolve,
