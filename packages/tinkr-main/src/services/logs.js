@@ -35,6 +35,12 @@ const maxBytes = 2 * 1024 * 1024
 // the header of an entry: `[when] environment.LEVEL: what it says`
 const header = /^\[([^\]]+)\]\s+([^.\s]+)\.([A-Z]+):\s?([\s\S]*)$/
 
+// monolog's json formatter writes one object per line and no header at all:
+// `{"message":"…","context":{…},"level":400,"level_name":"ERROR","channel":"local","datetime":"…"}`.
+// Read as ordinary lines it is one headerless entry whose details are the rest
+// of the file, so its level can never be filtered on
+const jsonLine = /^\s*\{.*"level_name"\s*:.*\}\s*$/
+
 // the levels monolog knows, which is what a filter offers
 const levels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency']
 
@@ -183,6 +189,14 @@ const parse = lines => {
   const entries = []
 
   for (const line of lines) {
+    const asJson = jsonEntry(line)
+
+    if (asJson) {
+      entries.push(asJson)
+
+      continue
+    }
+
     const found = header.exec(line)
 
     if (!found) {
@@ -214,6 +228,54 @@ const parse = lines => {
   }
 
   return entries
+}
+
+/**
+ * One line of monolog's json formatter, as an entry.
+ *
+ * The fields are the formatter's own: `message`, `context` and `extra` are what
+ * the call wrote, `level_name` is the level as a word, and `datetime` is when.
+ * Everything but the message and the level is the entry's details, shown as the
+ * json it arrived as — that is what it was.
+ *
+ * A line that looks like json and does not parse is not one: it falls through to
+ * the ordinary reading, where it is a line of whatever entry it follows.
+ *
+ * @param {String} line
+ * @return {Object|null}
+ */
+const jsonEntry = line => {
+  if (!jsonLine.test(line)) {
+    return null
+  }
+
+  let value
+
+  try {
+    value = JSON.parse(line)
+  } catch (e) {
+    return null
+  }
+
+  if (!value || typeof value !== 'object' || typeof value.level_name !== 'string') {
+    return null
+  }
+
+  const context = Object.assign({}, value)
+  const message = typeof value.message === 'string' ? value.message : ''
+
+  delete context.message
+  delete context.level_name
+  delete context.datetime
+  delete context.channel
+
+  return {
+    at: typeof value.datetime === 'string' ? value.datetime : null,
+    environment: typeof value.channel === 'string' ? value.channel : null,
+    level: value.level_name.toLowerCase(),
+    message,
+    details: Object.keys(context).length ? JSON.stringify(context, null, 2) : '',
+  }
 }
 
 /**
