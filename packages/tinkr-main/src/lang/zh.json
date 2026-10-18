@@ -29,7 +29,8 @@
     "tag_testing": "测试",
     "tag_development": "开发",
     "tag_staging": "预发布",
-    "tag_production": "生产"
+    "tag_production": "生产",
+    "kind_production": "生产环境"
   },
   "editor": {
     "ai": "AI",

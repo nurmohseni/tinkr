@@ -29,7 +29,8 @@
     "tag_testing": "Test",
     "tag_development": "Entwicklung",
     "tag_staging": "Staging",
-    "tag_production": "Produktion"
+    "tag_production": "Produktion",
+    "kind_production": "Produktion"
   },
   "editor": {
     "ai": "KI",
