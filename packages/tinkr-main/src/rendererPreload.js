@@ -76,6 +76,18 @@ contextBridge.exposeInMainWorld('api', {
   stopConnection: () => ipcRenderer.send('stopConnection', connectionId()),
   closeConnection: () => ipcRenderer.send('closeConnection', connectionId()),
 
+  // the frame is the app's own on windows and linux, so the controls are asked
+  // for here: the window a message came from is the one they act on
+  windowControl: control => ipcRenderer.send('windowControl', control),
+  windowState: () => ipcRenderer.invoke('windowState'),
+  onWindowState: cb => {
+    const listener = (event, state) => cb(state)
+
+    ipcRenderer.on('windowState', listener)
+
+    return {dispose: () => ipcRenderer.off('windowState', listener)}
+  },
+
   aiProviders: () => ipcRenderer.sendSync('aiProviders'),
   aiComplete: code => invoke('aiComplete', code),
   aiAsk: request => invoke('aiAsk', connectionId(), request),

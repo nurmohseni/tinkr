@@ -323,5 +323,11 @@
     "restart": "Restart and install",
     "failed_title": "The download did not finish",
     "failed_content": "{message}"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
   }
 }

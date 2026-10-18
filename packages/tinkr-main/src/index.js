@@ -52,7 +52,11 @@ app.on('activate', async () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
-  Menu.setApplicationMenu(menu)
+  // a menu bar on windows and linux is a strip above the app's own titlebar
+  // that says the same things twice — and the window is frameless there, so it
+  // would be the only frame left. macOS keeps its menu: it is the application's
+  // own menu there, in the system menu bar, not in the window
+  Menu.setApplicationMenu(is.macos ? menu : null)
 
   if (is.macos) {
     app.dock.setMenu(dockMenu)

@@ -323,5 +323,11 @@
     "restart": "重启并安装",
     "failed_title": "下载没有完成",
     "failed_content": "{message}"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "close": "关闭"
   }
 }

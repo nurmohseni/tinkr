@@ -11,6 +11,7 @@ const {
   killPtys,
 } = require('./processes')
 const {getEntryUrl, getPreloadEntryUrl} = require('./utils/entryUrl')
+const {frameOf} = require('./utils/frame')
 const {devIcon} = require('./utils/devIcon')
 const {appName} = require('./constants')
 
@@ -23,6 +24,10 @@ const createEditorWindow = async connection => {
     minWidth: 800,
     minHeight: 800,
     title: `${appName} - ${name}`,
+    // the window draws its own titlebar: the platform's frame would be a second
+    // one, and on windows a menu bar a third. The design's titlebar is already
+    // the drag region, so the frame is only the shadow and the resize edges
+    ...frameOf(),
     ...devIcon(),
     webPreferences: {
       preload: getPreloadEntryUrl(),
