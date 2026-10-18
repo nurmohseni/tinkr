@@ -1,99 +1,106 @@
 <p align="center">
-  <img alt="Tinkr" src="./assets/icon.png" width="100" style="max-width:100%;"/>
+  <img alt="Tinkr" src="./assets/icon.png" width="96">
 </p>
+
 <h1 align="center">Tinkr</h1>
 
 <p align="center">
-  A new way to run code. Whether you're <a href="//github.com/laravel/tinker">Laravel</a> artisan or not.
-</p>
-<p align="center">
-  Run a snippet against a project on this machine or over ssh, and read what came
-  back as the value it is, not as the text it printed.
+  <strong>Run the code. Read the answer.</strong>
 </p>
 
 <p align="center">
-<img width="100%" alt="a run's output, and the value it returned" src="./assets/screenshot.png">
+  A desktop runner for <a href="https://github.com/laravel/tinker">Laravel Tinker</a> and plain PHP.<br>
+  Run a snippet in any project, on this machine or over SSH, and get back the <em>value</em> it returned,<br>
+  not a wall of text it printed.
 </p>
 
 <p align="center">
-<img width="100%" alt="the same window in the light palette" src="./assets/light.png">
+  <a href="https://github.com/nurmohseni/tinkr/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/nurmohseni/tinkr?style=flat-square&label=release&color=4c7a6a"></a>
+  <a href="https://github.com/nurmohseni/tinkr/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/nurmohseni/tinkr/total?style=flat-square&color=4c7a6a"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4c7a6a?style=flat-square">
+  <a href="https://modelcontextprotocol.io"><img alt="MCP server" src="https://img.shields.io/badge/MCP-server%20included-4c7a6a?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/nurmohseni/tinkr?style=flat-square&color=4c7a6a"></a>
 </p>
 
 <p align="center">
-<img width="100%" alt="the ai panel proposing a snippet" src="./assets/ai.png">
+  <a href="#install">Install</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#mcp-server">MCP server</a> ·
+  <a href="#development">Development</a> ·
+  <a href="./CONTRIBUTING.md">Contributing</a>
 </p>
 
-### Download links
-Installers are published to the Releases page of the repository that builds the app.
+<p align="center">
+  <img width="100%" alt="A run's output in Tinkr, and the value it returned" src="./assets/screenshot.png">
+</p>
 
-### Features
+## Why Tinkr
 
-- [x] **Connections**: Quick connect to your app either locally, in production or in docker container etc;
-- [x] **Snippets**: Manage the code snippets you have ran;
-- [x] **History**: the runs of a connection — the code that ran, when, and what came back — kept across restarts, and a click puts a run's code back in the editor;
-- [x] **Editor**: Run your terminal code via editor;
-- [x] **Output**: Focus on the results you really care that terminal return;
-- [x] **AI completions**: complete the snippet from whatever provider you point it at: OpenAI, Claude, Ollama, OpenCode Zen or Go, OpenRouter, or your own endpoint;
-- [x] **AI panel**: ask about the code in front of you, with the answer the last run gave going along and the project files you name with `@`, and take the code an answer proposes;
-- [x] **Suggestions**: the project's class names while you type, and the public methods of a class after a `::`, read from the project itself — on this machine or over ssh;
-- [x] **Log viewer**: the project's own log files — `storage/logs`, or wherever you say, on this machine or over ssh — listed in the sidebar and read in the editor pane, filtered by level and by term, each entry with the stack trace or the context it came with, and followed while the application keeps writing to it;
-- [x] **Readings**: the value a run answers with arrives as data and is read the way it wants to be read — the tree of any structure, the table of a list of records, the graph of anything with something under it, the frame for markup, and the raw text every run printed; a table is copied or saved as csv;
-- [x] **Queries**: the statements the run sent to the database, each with its bindings, the time it took and the connection it went to;
-- [x] **Dry run**: a run inside a transaction you can keep or take back, so what it wrote can be looked at before it is committed, and a run over a connection tagged production asks before it is allowed to write;
-- [x] **Fresh session**: every run boots a new Tinker session, so the code you just changed on disk is the code that runs;
-- [x] **Snippet Form**: Switch the editor to the form, so that you can modify your variable value via form, like an admin panel;
-- [x] **Dark and light**: one palette in two readings — a celadon floor, the desk the panes sit on, and the wells the code and the values live in — for the whole app, both terminals, the editor and the settings window;
-- [x] **MCP server**: your AI tools run code in the same connections the app runs it in, over the [Model Context Protocol](https://modelcontextprotocol.io);
+`php artisan tinker` is the fastest way to ask your app a question, and the worst way to read the answer. Tinkr keeps the question and fixes the answer:
 
-## Tech Stack
+- **Values, not text.** A collection comes back as a table, a model as a tree, HTML as a rendered frame.
+- **See what it cost.** Every query the run sent, with its bindings and timing.
+- **Touch production without fear.** Run a write inside a transaction, look at what changed, then keep it or roll it back.
+- **Always fresh.** Each run boots a new Tinker session, so the code on disk is the code that runs.
 
-* [Electron](https://www.electronjs.org/)
-* [Yarn Workspaces](https://classic.yarnpkg.com/lang/en/docs/workspaces/) (Monorepo)
+## Install
 
-### Renderer
+Grab the installer for your platform from the [latest release](https://github.com/nurmohseni/tinkr/releases/latest).
 
-* [React](https://reactjs.org/)
-* [jotai](https://github.com/pmndrs/jotai) (State manage)
-* [Immer](https://immerjs.github.io/immer/)
-* [Monaco Editor](https://microsoft.github.io/monaco-editor/)
-* [Xterm.js](https://xtermjs.org/)
-* [wouter](https://github.com/molefrog/wouter)
-* [Evergreen](https://evergreen.segment.com/) (the spinner before the locale lands, and the theme bridge)
-* [React Hook Form](https://react-hook-form.com/)
-* [nanoid](https://zelark.github.io/nano-id-cc/)
-* [React Intl](https://formatjs.io/docs/react-intl/)
-* [Vite](https://vitejs.dev/) (build the renderer process code)
+| Platform | Package |
+| --- | --- |
+| macOS (Apple silicon) | `.dmg` · `.zip` |
+| Windows | `Tinkr.Setup.<version>.exe` |
+| Linux | `.AppImage` · `.deb` · `.rpm` · `.tar.gz` |
 
-The interface is drawn from one system: [`design.md`](./design.md) holds the type, the palette,
-the spacing, the motion and the component voice, and `packages/tinkr-renderer/public/tinkr.css`
-carries the tokens every screen reads — the editor, both terminals and the settings window
-included. The three faces are Switzer and Sentient (Fontshare, fetched at build time) and
-Commit Mono (OFL).
+You need `php` on the machine (or server) where your project lives. That's it.
 
-### Main
+## Features
 
-* [node-pty](https://github.com/microsoft/node-pty)
-* [electron-store](https://github.com/sindresorhus/electron-store)
-* [ncc](https://github.com/vercel/ncc) (build the main process code)
+### Run
+
+| | |
+| --- | --- |
+| **Connections** | Local projects, Docker containers, or any server over SSH. Tag one as production and Tinkr asks before it writes. |
+| **Editor** | Monaco, with class names and `::` method suggestions read straight from your project, local or remote. |
+| **Snippet forms** | Turn a snippet's variables into a form and run it like a tiny admin panel. |
+| **Snippets & history** | Save the code you reuse. Every run is kept across restarts; one click puts it back in the editor. |
+
+### Read
+
+| | |
+| --- | --- |
+| **Readings** | The returned value as a tree, a table, a graph, or rendered markup, next to the raw output. Copy any table or save it as CSV. |
+| **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
+| **Dry run** | Run inside a transaction you can keep or take back. |
+| **Log viewer** | Your app's logs (`storage/logs` or anywhere), filtered by level and term, with stack traces, followed live. |
+
+### Ask
+
+| | |
+| --- | --- |
+| **AI completions** | Complete snippets with OpenAI, Claude, Ollama, OpenRouter, OpenCode Zen/Go, or your own endpoint. |
+| **AI panel** | Ask about the code in front of you. The last result goes along, `@` pulls in project files, and proposed code drops into the editor. |
+| **MCP server** | Let Claude Code, Cursor, VS Code and friends run code through the same connections you use. |
+
+<table>
+  <tr>
+    <td width="50%"><img alt="Tinkr in the light palette" src="./assets/light.png"></td>
+    <td width="50%"><img alt="The AI panel proposing a snippet" src="./assets/ai.png"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Dark and light, one palette across the whole app</sub></td>
+    <td align="center"><sub>The AI panel, with your last result as context</sub></td>
+  </tr>
+</table>
 
 ## MCP server
 
-Tinkr comes with a [Model Context Protocol](https://modelcontextprotocol.io) server, so the AI tool
-you already work in can run code the way you do: in a project on this machine or over one of your
-ssh connections, in that project's own Tinker session, and with the value the run returned as data
-rather than as the text it printed.
+Tinkr ships a [Model Context Protocol](https://modelcontextprotocol.io) server, so the AI tool you already work in can run PHP the way you do: in your project's own Tinker session, locally or over SSH, with the returned value as data.
 
-Every call boots a session of its own and closes it when the run answers — the same rule the app's
-Run follows — so the code on disk is the code that runs.
+**The easy way:** open **Settings → MCP**. Tinkr lists the clients it knows (Claude Code, Claude Desktop, Cursor, Windsurf/Devin Desktop, VS Code), writes the config for the one you pick, and gives you the JSON for anything else.
 
-The app is also what configures a client, from **Settings → MCP**: it lists the clients it knows —
-Claude Code, Claude Desktop, Cursor, Windsurf/Devin Desktop, VS Code — with the file each one would
-be written to, writes the entry for the one you configure, marks the ones that already point at
-Tinkr, and hands the same entry over as json for any other client. Which connection a client's calls
-run in is a preference on that screen; with none chosen, a call runs in the project the client is
-working in.
-
-A client starts it, and the directory it is started in is the project code runs in:
+**By hand:**
 
 ```json
 {
@@ -106,56 +113,73 @@ A client starts it, and the directory it is started in is the project code runs 
 }
 ```
 
-The same thing from a terminal, which is also how to see what a tool answers on its own:
+The directory the client starts it in is the project code runs in. No API token, no open window needed.
+
+<details>
+<summary><strong>Tools</strong></summary>
+
+| Tool | What it does |
+| --- | --- |
+| `tinkr_run_php` | Run PHP in a local project: what every statement returned, and what the code printed |
+| `tinkr_run_php_over_ssh` | The same, on a server, through one of Tinkr's SSH connections |
+| `tinkr_list_history` | The runs the app kept for a connection: the code, when it ran, how it ended |
+| `tinkr_read_run` | One kept run in full: what it returned, printed and threw |
+| `tinkr_list_connections` | The connections saved in the app, with the command each session starts with |
+| `tinkr_list_snippets` | The snippets saved for a connection |
+| `tinkr_save_snippet` | Keep code as a snippet of a connection |
+
+History is the app's own: the last fifty runs of a connection. A client's own runs are not written to it, because the app owns that file while it runs.
+
+</details>
+
+<details>
+<summary><strong>Options</strong></summary>
+
+| Option | What it is |
+| --- | --- |
+| `--connection <id\|name>` | Run in a connection the app knows, by id or name |
+| `--path <directory>` | The project to run in (default: where the client started it) |
+| `--command <command>` | What the session starts with (default: the connection's own, or `php artisan tinker`) |
+| `--data-dir <directory>` | Where the app keeps its connections and snippets, if not the default |
+| `--timeout <ms>` | How long a run may take before it is given up (default: `60000`) |
+
+Try it from a terminal to see what a tool answers:
 
 ```sh
 yarn mcp --path /path/to/your/project
 ```
 
-When Tinkr has a connection for that directory, the server runs in that connection, so the snippets
-it reads and keeps are the app's own. When it does not, the directory is a connection of its own and
-the app's connections are still reachable by name.
+When Tinkr has a connection for that directory, the server uses it, so snippets and history are shared with the app. A packaged app carries its own copy of the server outside the asar, where plain `node` can read it.
 
-### Tools
+</details>
 
-| Tool | What it does |
+## Development
+
+```sh
+git clone https://github.com/nurmohseni/tinkr.git
+cd tinkr
+yarn
+yarn start
+```
+
+`yarn start` fetches the interface fonts (Switzer and Sentient from Fontshare, not redistributable) and starts the main and renderer processes. Offline, it falls back to system fonts. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the rest.
+
+<details>
+<summary><strong>Tech stack</strong></summary>
+
+A Yarn workspaces monorepo on [Electron](https://www.electronjs.org/).
+
+| Layer | Built with |
 | --- | --- |
-| `tinkr_run_php` | Run PHP in a project on this machine: what every statement returned, and what the code printed |
-| `tinkr_run_php_over_ssh` | The same, on a server, through one of Tinkr's ssh connections |
-| `tinkr_list_history` | The runs the app kept for a connection: the code, when it ran, and how it ended |
-| `tinkr_read_run` | One kept run in full: what it returned, what it printed, what it threw |
-| `tinkr_list_connections` | The connections saved in the app, with the command each session is started with |
-| `tinkr_list_snippets` | The snippets saved for a connection |
-| `tinkr_save_snippet` | Keep code as a snippet of a connection |
+| Renderer | [React](https://react.dev/), [Vite](https://vitejs.dev/), [jotai](https://github.com/pmndrs/jotai), [Immer](https://immerjs.github.io/immer/), [Monaco Editor](https://microsoft.github.io/monaco-editor/), [xterm.js](https://xtermjs.org/), [wouter](https://github.com/molefrog/wouter), [React Hook Form](https://react-hook-form.com/), [React Intl](https://formatjs.io/docs/react-intl/) |
+| Main | [node-pty](https://github.com/microsoft/node-pty), [electron-store](https://github.com/sindresorhus/electron-store), [ncc](https://github.com/vercel/ncc) |
+| Design | One system in [`design.md`](./design.md); tokens in `packages/tinkr-renderer/public/tinkr.css`. Type: Switzer, Sentient, Commit Mono |
 
-The history a client reads is the app's own: the last fifty runs of a connection,
-each with the code that ran and as much of the answer as the entry keeps — a run
-whose value or printed output was too big to hold says which part it is missing.
-A client's own runs are not written to it, because the app holds that list while
-it runs and two writers of one file lose each other's work.
+</details>
 
-### Options
+## Contributing
 
-| Option | What it is |
-| --- | --- |
-| `--connection <id\|name>` | run in a connection the app knows, by id or by name |
-| `--path <directory>` | the project to run in (default: where the client started it) |
-| `--command <command>` | what the session is started with (default: the connection's own, or the app's preference, `php artisan tinker`) |
-| `--data-dir <directory>` | where the app keeps its connections and snippets, when it is not where the server looks |
-| `--timeout <ms>` | how long a run may take before it is given up on (default: 60000) |
-
-The server needs no API token and no running window: it boots the session itself, in the project,
-with `node` and the project's own `php`. A packaged app carries its own copy of it beside the main
-process — outside the asar, where a plain `node` can read it — and a checkout runs the same server
-from `packages/tinkr-mcp`.
-
-## Contributing to Tinkr
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md)
-
-## Ask for help
-
-If the troubleshooting guides did not resolve the issue, please file an issue on the repository that builds the app.
+Bug reports, ideas and pull requests are welcome. Start with [CONTRIBUTING.md](./CONTRIBUTING.md), or [open an issue](https://github.com/nurmohseni/tinkr/issues).
 
 ## License
 
