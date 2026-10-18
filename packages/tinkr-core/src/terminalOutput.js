@@ -12,22 +12,66 @@ const ansi = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?
  * the backspace deletes the space that was written with it, so the stream has
  * to be read the way the terminal shows it.
  *
+ * A value can be tens of megabytes, and an array of one character per byte is
+ * both slow and, past about 120 million entries, more than node will allocate.
+ * So the string is walked in pieces: each piece is kept as it is until it holds
+ * a backspace, and a piece that deletes its way back past its own start deletes
+ * into what has already been kept, which is the only case that has to reach
+ * back. That keeps the common case — no backspace at all — one string and no
+ * array.
+ *
  * @param {String} value
  * @return {String}
  */
 const backspaces = value => {
-  const chars = []
+  if (value.indexOf('\b') === -1) {
+    return value
+  }
 
-  for (const char of value) {
-    if (char === '\b') {
-      chars.pop()
+  const pieces = []
+  const size = 1 << 16
+
+  for (let at = 0; at < value.length; at += size) {
+    let piece = value.slice(at, at + size)
+    const at8 = piece.indexOf('\b')
+
+    if (at8 === -1) {
+      pieces.push(piece)
       continue
     }
 
-    chars.push(char)
+    // this piece deletes: it is walked as characters, and a backspace at its
+    // start reaches back into the pieces before it
+    const chars = []
+
+    for (const char of piece) {
+      if (char === '\b') {
+        if (chars.length) {
+          chars.pop()
+        } else if (pieces.length) {
+          // the pieces before it are whole strings, and what is deleted is the
+          // last character of them, which may be two code units wide
+          const last = pieces.pop()
+          const kept = [...last]
+
+          kept.pop()
+          pieces.push(kept.join(''))
+        }
+
+        continue
+      }
+
+      chars.push(char)
+    }
+
+    piece = chars.join('')
+
+    if (piece) {
+      pieces.push(piece)
+    }
   }
 
-  return chars.join('')
+  return pieces.join('')
 }
 
 /**
