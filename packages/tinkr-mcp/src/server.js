@@ -3,6 +3,7 @@ const fs = require('fs')
 const {runCode} = require('tinkr-core')
 
 const app = require('./app')
+const {topics, documentation} = require('./documentation')
 const target = require('./target')
 
 /**
@@ -91,6 +92,47 @@ const renderTransaction = (transaction, guard) => {
 }
 
 /**
+ * What the sandbox caught, as lines of text.
+ *
+ * A sandboxed dry run is the case this is for: the transaction says nothing is
+ * kept, and this says nothing was sent, pushed or written either. A channel that
+ * could not be swapped is said plainly, because a run that only looked sealed is
+ * worse than one that was not.
+ *
+ * @param {Object|undefined} sandbox the envelope's report
+ * @return {Array<String>}
+ */
+const renderSandbox = sandbox => {
+  if (!isRecord(sandbox)) {
+    return []
+  }
+
+  const channels = isRecord(sandbox.channels) ? sandbox.channels : {}
+  const counted = Object.entries(channels).filter(([, count]) => Number(count) > 0)
+  const lines = ['']
+
+  if (!counted.length) {
+    lines.push('Sandbox: the run sent nothing, wrote nothing and logged nothing.')
+  } else {
+    lines.push(`Sandbox: ${counted.map(([name, count]) => `${count} ${name}`).join(', ')}.`)
+  }
+
+  for (const line of (Array.isArray(sandbox.sent) ? sandbox.sent : [])) {
+    lines.push(`  would have mailed: ${line}`)
+  }
+
+  for (const line of (Array.isArray(sandbox.requested) ? sandbox.requested : [])) {
+    lines.push(`  would have requested: ${line}`)
+  }
+
+  for (const reason of (Array.isArray(sandbox.not_sandboxed) ? sandbox.not_sandboxed : [])) {
+    lines.push(`  NOT sandboxed: ${reason}`)
+  }
+
+  return lines
+}
+
+/**
  * What the run answers with, as text: every statement that answered something,
  * then what the run printed.
  *
@@ -131,6 +173,7 @@ const render = (result, guard = null) => {
   }
 
   lines.push(...renderTransaction(result.transaction, guard))
+  lines.push(...renderSandbox(result.sandbox))
 
   if (result.output) {
     lines.push('', 'printed:', result.output.replace(/\s+$/, ''))
@@ -407,11 +450,13 @@ const guardOf = args => {
     return null
   }
 
-  if (args.guard !== 'rollback') {
-    throw new Error('`guard` can only be "rollback": a dry run, whose database changes are taken back.')
+  if (args.guard !== 'rollback' && args.guard !== 'sandbox') {
+    throw new Error('`guard` can only be "rollback" (a dry run, whose database changes are ' +
+      'taken back) or "sandbox" (the same, with mail, jobs, HTTP calls, file writes, the cache ' +
+      'and the log recorded instead of happening).')
   }
 
-  return 'rollback'
+  return args.guard
 }
 
 /**
@@ -474,12 +519,18 @@ const productionRule = 'A connection tagged production is refused unless this se
 
 const guardInput = {
   type: 'string',
-  enum: ['rollback'],
+  enum: ['rollback', 'sandbox'],
   description: '"rollback" runs the code as a dry run: inside a database transaction that is ' +
     'rolled back at the end, and the answer reports it (`transaction`). Only the database ' +
-    'connection the run starts on is inside it; statements sent to other connections, DDL that ' +
-    'commits by itself on MySQL, files, mail, queues and http calls are not taken back, and the ' +
-    'report says when the transaction was broken. Use it to probe what code would change.',
+    'connection the run starts on is inside it; statements sent to other connections and DDL ' +
+    'that commits by itself on MySQL are not taken back, and the report says when the ' +
+    'transaction was broken. "sandbox" is the same transaction with the side-effect drivers ' +
+    'swapped for recorders first: mail goes to the array transport, jobs and the bus to their ' +
+    'fakes, the HTTP client answers only what it was given, every disk is faked under ' +
+    'storage/framework, the cache is an array store and logging records instead of writing. The ' +
+    'answer then carries `sandbox`: a count per channel with the first twenty mails and ' +
+    'requests named, and any channel it could not swap. A transaction holds the database and ' +
+    'nothing else, so use "sandbox" when the code might send, queue, call or write something.',
 }
 
 const timeoutInput = {
@@ -540,6 +591,28 @@ const runOutput = {
 }
 
 const TOOLS = [
+  {
+    name: 'tinkr_documentation',
+    title: 'How Tinkr works, and how to use these tools',
+    description: 'Read what Tinkr is: how a run works, what the two guards (a dry run, and a ' +
+      'sandboxed one that also holds mail, jobs, HTTP calls, file writes, the cache and the log) ' +
+      'do and when to use which, what a connection is and what the production tag changes, every ' +
+      'tool this server exposes, and how to read the answer. Read this before running code you ' +
+      'did not write, and before running anything on a production connection.',
+    annotations: {readOnlyHint: true, destructiveHint: false, openWorldHint: false},
+    inputSchema: {
+      type: 'object',
+      properties: {
+        topic: {
+          type: 'string',
+          enum: [...topics.map(one => one.name), 'all'],
+          description: 'Which part to read: ' + topics.map(one => `"${one.name}" (${one.summary})`).join(', ') +
+            ', or "all" for every one of them. The overview when it is not given.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
   {
     name: 'tinkr_run_php',
     title: 'Run PHP in a project',
@@ -999,6 +1072,16 @@ const createServer = ({
         return {
           content: [{type: 'text', text: renderRun(entry)}],
           structuredContent: bounded,
+          isError: false,
+        }
+      }
+
+      case 'tinkr_documentation': {
+        const answer = documentation(args.topic)
+
+        return {
+          content: [{type: 'text', text: answer.text}],
+          structuredContent: {topic: answer.topic, title: answer.title, text: truncate(answer.text)},
           isError: false,
         }
       }

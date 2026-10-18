@@ -103,6 +103,8 @@ describe('the mcp conversation', () => {
     const {result} = await client.take()
 
     expect(result.tools.map(tool => tool.name)).toEqual([
+      // what to read first
+      'tinkr_documentation',
       'tinkr_run_php',
       'tinkr_run_php_over_ssh',
       'tinkr_list_history',
