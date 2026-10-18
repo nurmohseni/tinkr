@@ -265,13 +265,29 @@
     "close_failed": "No se pudo cerrar la transacción en {connection}: {error}",
     "not_armed": "No se ejecutó nada",
     "keep": "Ejecutar de nuevo y conservar",
-    "keep_title": "Ejecuta el mismo código otra vez, esta vez conservando la transacción"
+    "keep_title": "Ejecuta el mismo código otra vez, esta vez conservando la transacción",
+    "broken": "La prueba NO se mantuvo: {error}",
+    "broken_plain": "La prueba NO se mantuvo: su transacción se cerró antes de que terminara la ejecución, así que lo que cambió puede haberse conservado",
+    "not_armed_because": "No se ejecutó nada: {error}",
+    "commit_threw": "La ejecución lanzó una excepción, así que no se conservó nada",
+    "unguarded": "{count, plural, one {# sentencia} other {# sentencias}} en {connection} se ejecutaron fuera de la prueba",
+    "unguardable_title": "La prueba no puede deshacer esto",
+    "unguardable_content": "La conexión {connection} está marcada como producción, y una prueba no puede deshacer lo que hace esta ejecución:",
+    "unguardable_run": "Ejecutar de todos modos"
   },
   "mutation": {
     "title": "Esta ejecución modifica la base de datos",
     "content": "La conexión {connection} está marcada como production. Esta ejecución escribe en la base de datos:",
     "line": "line",
-    "run": "Ejecutar de todos modos"
+    "run": "Ejecutar de todos modos",
+    "unguardable_title": "La prueba no puede deshacer esto",
+    "unguardable_content": "La conexión {connection} está marcada como producción, y una prueba no puede deshacer lo que hace esta ejecución:",
+    "unguardable_run": "Ejecutar de todos modos",
+    "reason_ddl": "DDL, que MySQL confirma por su cuenta",
+    "reason_transaction": "la ejecución cierra la transacción por sí misma",
+    "reason_connection": "la ejecución escribe en otra conexión",
+    "reason_reconnect": "la ejecución suelta la conexión y su transacción",
+    "reason_config": "la ejecución cambia la conexión predeterminada"
   },
   "statusbar": {
     "run_failed": "La ejecución falló · {class}",

@@ -112,13 +112,13 @@ const ResultGraph = ({value}) => {
             tabIndex={node.children ? 0 : undefined}
             aria-expanded={node.children ? node.open : undefined}
             onClick={node.children ? () => toggle(node) : undefined}
-            onKeyDown={node.children && (event => {
+            onKeyDown={node.children ? (event => {
               if (event.key === 'Enter' || event.key === ' ') {
                 // space would scroll the pane out from under the graph
                 event.preventDefault()
                 toggle(node)
               }
-            })}
+            }) : undefined}
             onMouseEnter={() => setHighlight(node.id)}
           >
             {node.text.full && <title>{node.text.full}</title>}

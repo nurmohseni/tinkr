@@ -48,7 +48,7 @@ CopyValueButton.propTypes = {
   value: PropTypes.any,
 }
 
-/** A composite node, in the design's `array · 5 items` shape. */
+/** A composite node, in the design's `array · 5 items` shape: the count once. */
 const TypeLabel = ({value}) => {
   const intl = useIntl()
   const isList = Array.isArray(value)
@@ -57,7 +57,6 @@ const TypeLabel = ({value}) => {
     <>
       <span className='t-class'>{intl.formatMessage({id: isList ? 'result.array' : 'result.object'})}</span>
       <span className='tree__sep'>·</span>
-      <span className='t-number'>{entriesOf(value).length}</span>
       <span className='muted'>
         {intl.formatMessage({id: isList ? 'result.items' : 'result.keys'}, {count: entriesOf(value).length})}
       </span>
@@ -70,11 +69,53 @@ TypeLabel.propTypes = {
   value: PropTypes.oneOfType([PropTypes.object, PropTypes.array]).isRequired,
 }
 
-const Value = ({value}) => (
-  isComposite(value)
-    ? <TypeLabel value={value}/>
-    : <span className={scalarClass(value)}>{scalarText(value)}</span>
-)
+// how much of a string the tree draws before it asks. A row is one line of text,
+// and a string of megabytes laid out as one line is wider than the browser will
+// paint, so the pane came up blank; past this it is cut, and the rest is one
+// click away, wrapped so it paints at any length
+export const LONG_STRING = 2000
+
+const LongString = ({value}) => {
+  const intl = useIntl()
+  const [whole, setWhole] = useState(false)
+  const text = scalarText(value)
+
+  return (
+    <span className={`${scalarClass(value)} tree__long`}>
+      {whole ? text : `${text.slice(0, LONG_STRING)}…`}
+      {!whole && (
+        <button
+          className='btn btn--ghost btn--sm tree__more'
+          type='button'
+          onClick={event => {
+            // the row may be a disclosure, and this must not fold it
+            event.preventDefault()
+            event.stopPropagation()
+            setWhole(true)
+          }}
+        >
+          {intl.formatMessage({id: 'result.show_all'}, {count: value.length})}
+        </button>
+      )}
+    </span>
+  )
+}
+
+LongString.propTypes = {
+  value: PropTypes.string.isRequired,
+}
+
+const Value = ({value}) => {
+  if (isComposite(value)) {
+    return <TypeLabel value={value}/>
+  }
+
+  if (typeof value === 'string' && value.length > LONG_STRING) {
+    return <LongString value={value}/>
+  }
+
+  return <span className={scalarClass(value)}>{scalarText(value)}</span>
+}
 
 Value.propTypes = {
   value: PropTypes.any,
@@ -100,7 +141,7 @@ KeyPrefix.propTypes = {
  * One node of the tree: a `<details>` when there is something under it, a row
  * when there is not. The root is the only node open on arrival.
  */
-const ResultValue = ({value, depth, prefix}) => {
+const ResultValue = ({value, depth, prefix = null}) => {
   const [open, setOpen] = useState(depth === 0)
   const entries = isComposite(value) ? entriesOf(value) : []
   const row = (
@@ -136,10 +177,6 @@ ResultValue.propTypes = {
   value: PropTypes.any,
   depth: PropTypes.number.isRequired,
   prefix: PropTypes.node,
-}
-
-ResultValue.defaultProps = {
-  prefix: null,
 }
 
 export default ResultValue

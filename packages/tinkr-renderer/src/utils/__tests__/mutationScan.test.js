@@ -1,4 +1,4 @@
-import {mutationScan} from '../mutationScan'
+import {mutationScan, unguardableScan} from '../mutationScan'
 
 describe('the mutation scan', () => {
   it('finds a call that writes on a chain', () => {
@@ -62,5 +62,54 @@ describe('the mutation scan', () => {
     const code = "Artisan::call('db:seed');\n\\$x = 1;\nUser::destroy(3);"
 
     expect(mutationScan(code).map(one => one.line)).toEqual([1, 3])
+  })
+})
+
+describe('what a dry run cannot hold', () => {
+  const reasons = code => unguardableScan(code).map(one => [one.line, one.reason, one.call])
+
+  it('finds DDL, which MySQL commits on its own', () => {
+    expect(reasons("DB::table('t')->insert(['a' => 1]);\nDB::statement('create table t2 (id int)');"))
+      .toEqual([[2, 'ddl', 'create table']])
+    expect(reasons("Schema::create('t', fn ($t) => $t->id());")).toEqual([[1, 'ddl', 'Schema::create']])
+    expect(reasons("DB::table('t')->truncate();")).toEqual([[1, 'ddl', 'truncate']])
+    expect(reasons("DB::unprepared('ALTER TABLE t ADD c int');")).toEqual([[1, 'ddl', 'ALTER TABLE']])
+    expect(reasons("DB::statement('rename table a to b');\nDB::statement('drop index i on t');"))
+      .toEqual([[1, 'ddl', 'rename table'], [2, 'ddl', 'drop index']])
+    expect(reasons("Artisan::call('migrate:fresh');")).toEqual([[1, 'ddl', 'migrate:fresh']])
+  })
+
+  it('finds the snippet closing or opening the transaction itself', () => {
+    expect(reasons('DB::commit();\nDB::rollBack();\nDB::beginTransaction();')).toEqual([
+      [1, 'transaction', 'commit'],
+      [2, 'transaction', 'rollBack'],
+      [3, 'transaction', 'beginTransaction'],
+    ])
+    expect(reasons("DB::unprepared('COMMIT');")).toEqual([[1, 'transaction', 'COMMIT']])
+    expect(reasons("DB::getPdo()->exec('start transaction');")).toEqual([[1, 'transaction', 'start transaction']])
+  })
+
+  it('finds another connection, which was never inside the dry run', () => {
+    expect(reasons("DB::connection('sqlite')->table('s')->insert(['a' => 1]);"))
+      .toEqual([[1, 'connection', 'connection']])
+    expect(reasons("User::on('replica')->first();")).toEqual([[1, 'connection', 'on']])
+    expect(reasons('$user->setConnection($name);')).toEqual([[1, 'connection', 'setConnection']])
+  })
+
+  it('leaves the default connection and a join condition alone', () => {
+    expect(reasons("DB::connection()->table('t')->insert(['a' => 1]);")).toEqual([])
+    expect(reasons("DB::table('a')->join('b', fn ($j) => $j->on('a.id', '=', 'b.a_id'))->get();")).toEqual([])
+    expect(reasons("$user->update(['name' => 'n']);\nDB::table('t')->delete();")).toEqual([])
+  })
+
+  it('finds a reconnect, a purge and the default connection swapped', () => {
+    expect(reasons("DB::reconnect();\nDB::purge('mysql');")).toEqual([
+      [1, 'reconnect', 'reconnect'],
+      [2, 'reconnect', 'purge'],
+    ])
+    expect(reasons("config(['database.default' => 'sqlite']);"))
+      .toEqual([[1, 'config', 'database.default']])
+    expect(reasons("Config::set('database.default', 'sqlite');"))
+      .toEqual([[1, 'config', 'database.default']])
   })
 })

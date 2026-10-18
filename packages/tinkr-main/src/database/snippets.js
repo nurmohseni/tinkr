@@ -1,4 +1,4 @@
-const Store = require('electron-store')
+const {openStore} = require('./store')
 
 const data = {}
 
@@ -7,7 +7,7 @@ const snippets = id => {
     return data[id]
   }
 
-  const store = new Store({
+  const store = openStore({
     name: `app/snippets/${id}`,
   })
 

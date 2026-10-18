@@ -265,13 +265,29 @@
     "close_failed": "无法关闭 {connection} 上的事务：{error}",
     "not_armed": "未执行任何内容",
     "keep": "重新运行并保留",
-    "keep_title": "再次运行相同的代码，这次保留事务"
+    "keep_title": "再次运行相同的代码，这次保留事务",
+    "broken": "演练没有保住：{error}",
+    "broken_plain": "演练没有保住：事务在运行结束前已关闭，所做的更改可能已被保留",
+    "not_armed_because": "没有执行任何内容：{error}",
+    "commit_threw": "运行抛出异常，因此没有保留任何内容",
+    "unguarded": "{connection} 上有 {count} 条语句在演练之外执行",
+    "unguardable_title": "演练无法撤回此操作",
+    "unguardable_content": "连接 {connection} 被标记为生产环境，演练无法撤回本次运行的更改：",
+    "unguardable_run": "仍然运行"
   },
   "mutation": {
     "title": "这次运行会修改数据库",
     "content": "连接 {connection} 标记为 production。这次运行会写入数据库：",
     "line": "line",
-    "run": "仍然运行"
+    "run": "仍然运行",
+    "unguardable_title": "演练无法撤回此操作",
+    "unguardable_content": "连接 {connection} 被标记为生产环境，演练无法撤回本次运行的更改：",
+    "unguardable_run": "仍然运行",
+    "reason_ddl": "DDL，MySQL 会自动提交",
+    "reason_transaction": "运行本身会关闭事务",
+    "reason_connection": "运行会写入另一个连接",
+    "reason_reconnect": "运行会断开连接及其事务",
+    "reason_config": "运行会切换默认连接"
   },
   "statusbar": {
     "run_failed": "运行失败 · {class}",

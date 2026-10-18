@@ -17,6 +17,16 @@ const limit = 50
 const kept = 8 * 1024
 
 /**
+ * How much of the code that ran is kept with it.
+ *
+ * The code is what the history opens again, so it is kept far more generously
+ * than the answer — but not without end: a snippet of megabytes, fifty times
+ * over, is a file that costs every run a second to rewrite. Code past this is
+ * cut, and `cut` says so.
+ */
+const keptCode = 64 * 1024
+
+/**
  * @param {any} value
  * @return {Number}
  */
@@ -118,21 +128,28 @@ const clearHistory = connectionId => {
  * @return {Array<Object>} the list, newest first, as the sidebar draws it
  */
 const appendHistory = (connectionId, code, result) => {
+  const text = String(code === undefined || code === null ? '' : code)
   const entry = Object.assign({
     id: randomBytes(8).toString('hex'),
-    code,
+    code: text.length <= keptCode ? text : text.slice(0, keptCode),
     at: Date.now(),
     outcome: outcomeOf(result),
   }, answerOf(result))
 
-  const entries = [entry, ...allHistory(connectionId)].slice(0, limit)
+  if (text.length > keptCode) {
+    entry.cut = ['code', ...(entry.cut || [])]
+  }
 
-  history(connectionId).set('entries', entries)
+  const store = history(connectionId)
+  const entries = [entry, ...store.get('entries', [])].slice(0, limit)
+
+  store.set('entries', entries)
 
   return entries
 }
 
 module.exports = {
+  keptCode,
   outcomeOf,
   answerOf,
   allHistory,

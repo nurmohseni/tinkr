@@ -265,13 +265,29 @@
     "close_failed": "Die Transaktion auf {connection} konnte nicht abgeschlossen werden: {error}",
     "not_armed": "Es wurde nichts ausgeführt",
     "keep": "Erneut ausführen und behalten",
-    "keep_title": "Führt denselben Code erneut aus, diesmal wird die Transaktion behalten"
+    "keep_title": "Führt denselben Code erneut aus, diesmal wird die Transaktion behalten",
+    "broken": "Der Probelauf hat NICHT gehalten: {error}",
+    "broken_plain": "Der Probelauf hat NICHT gehalten: seine Transaktion war vor dem Ende des Laufs geschlossen, Änderungen können übernommen worden sein",
+    "not_armed_because": "Nichts wurde ausgeführt: {error}",
+    "commit_threw": "Der Lauf hat eine Ausnahme geworfen, es wurde nichts übernommen",
+    "unguarded": "{count, plural, one {# Anweisung} other {# Anweisungen}} auf {connection} lief außerhalb des Probelaufs",
+    "unguardable_title": "Der Probelauf kann das nicht zurücknehmen",
+    "unguardable_content": "Die Verbindung {connection} ist als Produktion markiert, und ein Probelauf kann nicht rückgängig machen, was dieser Lauf tut:",
+    "unguardable_run": "Trotzdem ausführen"
   },
   "mutation": {
     "title": "Dieser Lauf verändert die Datenbank",
     "content": "Die Verbindung {connection} ist als production markiert. Dieser Lauf schreibt in die Datenbank:",
     "line": "line",
-    "run": "Trotzdem ausführen"
+    "run": "Trotzdem ausführen",
+    "unguardable_title": "Der Probelauf kann das nicht zurücknehmen",
+    "unguardable_content": "Die Verbindung {connection} ist als Produktion markiert, und ein Probelauf kann nicht rückgängig machen, was dieser Lauf tut:",
+    "unguardable_run": "Trotzdem ausführen",
+    "reason_ddl": "DDL, die MySQL von selbst festschreibt",
+    "reason_transaction": "der Lauf schließt die Transaktion selbst",
+    "reason_connection": "der Lauf schreibt auf eine andere Verbindung",
+    "reason_reconnect": "der Lauf verwirft die Verbindung samt Transaktion",
+    "reason_config": "der Lauf tauscht die Standardverbindung"
   },
   "statusbar": {
     "run_failed": "Ausführung fehlgeschlagen · {class}",

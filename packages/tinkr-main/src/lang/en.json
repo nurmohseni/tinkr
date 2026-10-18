@@ -265,13 +265,29 @@
     "close_failed": "The transaction on {connection} could not be closed: {error}",
     "not_armed": "Nothing was run",
     "keep": "Run again and keep",
-    "keep_title": "Run the same code again, this time keeping the transaction"
+    "keep_title": "Run the same code again, this time keeping the transaction",
+    "broken": "The dry run did NOT hold: {error}",
+    "broken_plain": "The dry run did NOT hold: its transaction was closed before the run ended, so what it changed may have been kept",
+    "not_armed_because": "Nothing was run: {error}",
+    "commit_threw": "The run threw, so nothing was kept",
+    "unguarded": "{count, plural, one {# statement} other {# statements}} on {connection} ran outside the dry run",
+    "unguardable_title": "The dry run cannot take this back",
+    "unguardable_content": "The connection {connection} is tagged production, and a dry run cannot undo what this run does:",
+    "unguardable_run": "Run anyway"
   },
   "mutation": {
     "title": "This run changes the database",
     "content": "The connection {connection} is tagged production. This run writes to it:",
     "line": "line",
-    "run": "Run anyway"
+    "run": "Run anyway",
+    "unguardable_title": "The dry run cannot take this back",
+    "unguardable_content": "The connection {connection} is tagged production, and a dry run cannot undo what this run does:",
+    "unguardable_run": "Run anyway",
+    "reason_ddl": "DDL, which MySQL commits on its own",
+    "reason_transaction": "it closes the transaction itself",
+    "reason_connection": "it writes to another connection",
+    "reason_reconnect": "it drops the connection and its transaction",
+    "reason_config": "it swaps the default connection"
   },
   "statusbar": {
     "run_failed": "Run failed · {class}",

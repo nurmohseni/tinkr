@@ -1,5 +1,5 @@
 const {app} = require('electron')
-const Store = require('electron-store')
+const {openStore} = require('./store')
 
 const {allLocales} = require('../utils/allLocales')
 
@@ -66,7 +66,7 @@ const defaults = {
   log_dir: 'storage/logs',
 }
 
-const config = new Store({
+const config = openStore({
   name: 'app/config',
   defaults,
 })

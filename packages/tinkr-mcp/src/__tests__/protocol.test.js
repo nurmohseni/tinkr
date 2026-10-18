@@ -1,3 +1,6 @@
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 const {PassThrough} = require('stream')
 
 const {serve, latest} = require('../protocol')
@@ -8,9 +11,14 @@ const target = require('../target')
 // conversation rather than the code that runs in a project
 const envelope = {blocks: [{line: 1, value: 3, error: null}], value: 3, error: null, output: ''}
 
+// the run tools refuse a directory that is not there, so the project exists
+const project = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-project-'))
+
+afterAll(() => fs.rmSync(project, {recursive: true, force: true}))
+
 const open = ({run = async () => envelope, onEnd} = {}) => {
   const server = createServer({
-    target: target.resolve({at: '/tmp/project', dataDir: '/nowhere'}),
+    target: target.resolve({at: project, dataDir: '/nowhere'}),
     version: '1.2.3',
     timeout: 60000,
     run,

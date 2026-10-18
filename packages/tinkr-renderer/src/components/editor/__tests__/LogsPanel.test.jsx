@@ -1,4 +1,6 @@
 import React from 'react'
+import {act} from 'react-dom/test-utils'
+import {createRoot} from 'react-dom/client'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {IntlProvider} from 'react-intl'
 import {Provider, createStore} from 'jotai'
@@ -9,11 +11,14 @@ import flatten from 'flat'
 global.React = React
 
 // the panel is drawn from the store the window has open, and reads nothing else
-// itself, but the store's module reads window.api as it loads
-window.api = {}
+// itself, but the store's module takes the bridge's calls as it loads: the read
+// is the one call following is about, so it is the one that answers
+const logRead = jest.fn(() => Promise.resolve({size: 10, read: 10, from: 0, entries: []}))
+
+window.api = {logRead}
 
 const english = require('../../../../../tinkr-main/src/lang/en.json')
-const {logsAtom} = require('../../../stores/logs')
+const {logsAtom, logsFollowAtom} = require('../../../stores/logs')
 const LogsPanel = require('../LogsPanel').default
 
 // the words this window adds, which the message files are given separately
@@ -82,5 +87,59 @@ describe('the log viewer', () => {
 
     expect(button(markup, 'Older')).toContain('disabled')
     expect(button(markup, 'Newer')).toContain('disabled')
+  })
+})
+
+describe('following a log', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+    logRead.mockClear()
+  })
+
+  afterEach(() => jest.useRealTimers())
+
+  test('reads the file again on its own while the switch is on', () => {
+    const store = createStore()
+    const host = document.createElement('div')
+
+    store.set(logsAtom, {
+      dir: '/app/storage/logs', files: [], file: 'laravel.log', entries: [],
+      size: 10, read: 10, from: 0, loading: false, error: '',
+    })
+    store.set(logsFollowAtom, true)
+
+    const root = createRoot(host)
+
+    act(() => {
+      root.render(
+        <IntlProvider locale='en' messages={Object.assign({}, added, flatten(english))}>
+          <Provider store={store}>
+            <LogsPanel/>
+          </Provider>
+        </IntlProvider>,
+      )
+    })
+
+    expect(logRead).not.toHaveBeenCalled()
+
+    act(() => {
+      jest.advanceTimersByTime(4100)
+    })
+
+    // the default is every two seconds: twice in a little over four
+    expect(logRead).toHaveBeenCalledTimes(2)
+    expect(logRead).toHaveBeenCalledWith('laravel.log', undefined)
+
+    // and turning it off stops it
+    act(() => {
+      store.set(logsFollowAtom, false)
+    })
+    act(() => {
+      jest.advanceTimersByTime(6000)
+    })
+
+    expect(logRead).toHaveBeenCalledTimes(2)
+
+    act(() => root.unmount())
   })
 })

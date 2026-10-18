@@ -652,6 +652,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .tree__copy:hover { background: var(--hover); color: var(--text); }
+/* a long string wraps inside its row instead of being one line wider than the
+   browser paints; the row grows to hold it */
+.tree__long { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
+.tree__more { margin-left: var(--s1); vertical-align: baseline; }
 /* a statement's line, in the strip of the statement it belongs to */
 .block__line {
   font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint);
@@ -1123,6 +1127,19 @@ details:not([open]) > summary .tree__caret::before {
    number, so a head that grew a second line would hide the column titles under
    itself and shrink the frame. A pane too narrow for the row scrolls it */
 .result-summary--head { top: 0; z-index: 4; white-space: nowrap; }
+/* a head's actions stay at the pane's right edge while a row too wide for the
+   pane scrolls under them, so they are never the part scrolled out of sight */
+.result-summary__actions {
+  position: sticky; right: 0; z-index: 1;
+  display: inline-flex; align-items: center; gap: var(--s1); flex: none;
+  margin-right: calc(-1 * var(--s3)); padding: 0 var(--s3) 0 var(--s2);
+  background: var(--panel-inset);
+}
+/* a guarded run's report: a transaction that did not hold is an error, and the
+   connections outside it a warning, each on a line of its own */
+.guard--error { background: linear-gradient(var(--error-soft), var(--error-soft)), var(--panel-inset); }
+.guard--error > .guard__note:first-child { color: var(--error); font-weight: var(--fw-medium); }
+.guard__unguarded { flex-basis: 100%; color: var(--warning); }
 /* a report with an action in it: what it says and what it offers wrap onto two
    rows where a row cannot hold both, and the action keeps its whole label */
 .result-summary--wrap { flex-wrap: wrap; row-gap: var(--s1); padding-block: var(--s1); }

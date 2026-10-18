@@ -2,6 +2,8 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
+const {readJson, updateJson} = require('./files')
+
 /**
  * The app's own files, read by a process that is not the app.
  *
@@ -38,33 +40,32 @@ const snippetsFile = (dir, connectionId) => path.join(dir, 'app', 'snippets', `$
 const historyFile = (dir, connectionId) => path.join(dir, 'app', 'history', `${connectionId}.json`)
 
 /**
- * Read a json file, or nothing when it is not there or unreadable.
+ * @param {any} value
+ * @return {Boolean} whether it is an object with fields, the only thing an entry
+ * of the app's files can be
+ */
+const isRecord = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+/**
+ * Read one of the app's json files, or nothing when it is not there.
  *
  * A file the app has never written is a normal state — a preference nobody
- * touched, a connection with no snippets — and it reads as nothing rather than
- * as a failure.
+ * touched, a connection with no snippets — and it reads as nothing. A file that
+ * is there and cannot be read is an error that names it: read as nothing, it
+ * would list as empty, and a snippet saved on top of it would delete everything
+ * it held.
  *
  * @param {String} file
  * @return {Object|null}
  */
 const read = file => {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (e) {
-    return null
-  }
-}
+  const value = readJson(file)
 
-/**
- * The app writes its json with tabs, and a file rewritten by hand here has to
- * stay a file the app can read back.
- *
- * @param {String} file
- * @param {Object} value
- */
-const write = (file, value) => {
-  fs.mkdirSync(path.dirname(file), {recursive: true})
-  fs.writeFileSync(file, JSON.stringify(value, null, '\t'))
+  if (value !== null && !isRecord(value)) {
+    throw new Error(`${file} does not hold a JSON object, so it was left as it is.`)
+  }
+
+  return value
 }
 
 /**
@@ -97,7 +98,7 @@ const connections = dir => {
 
   delete stored.quick_connection
 
-  return Object.values(stored)
+  return Object.values(stored).filter(isRecord)
 }
 
 /**
@@ -113,7 +114,7 @@ const command = dir => (read(configFile(dir)) || {}).command_default || 'php art
  * @param {String} connectionId
  * @return {Array<Object>}
  */
-const snippets = (dir, connectionId) => Object.values(read(snippetsFile(dir, connectionId)) || {})
+const snippets = (dir, connectionId) => Object.values(read(snippetsFile(dir, connectionId)) || {}).filter(isRecord)
 
 /**
  * The runs a connection has kept, newest first, as the app's own sidebar lists
@@ -127,7 +128,15 @@ const snippets = (dir, connectionId) => Object.values(read(snippetsFile(dir, con
  * @param {String} connectionId
  * @return {Array<Object>}
  */
-const history = (dir, connectionId) => (read(historyFile(dir, connectionId)) || {}).entries || []
+const history = (dir, connectionId) => {
+  const {entries} = read(historyFile(dir, connectionId)) || {}
+
+  // an entry is whatever the file holds: an older app's, or one edited by hand,
+  // may be missing a field, and one odd entry must not hide the others
+  return Array.isArray(entries)
+    ? entries.filter(isRecord)
+    : []
+}
 
 /**
  * Keep a snippet of a connection, the way the app's own Save does.
@@ -142,15 +151,18 @@ const history = (dir, connectionId) => (read(historyFile(dir, connectionId)) || 
  * @return {Object} the snippet, as it was stored
  */
 const saveSnippet = (dir, connectionId, name, code) => {
-  const file = snippetsFile(dir, connectionId)
   // the id the app makes for a snippet: nanoid's own alphabet, 21 of it
   const id = require('crypto').randomBytes(16).toString('base64url').slice(0, 21)
   const snippet = {id, code, name, position: {lineNumber: 1, column: 1}}
 
-  const stored = Object.assign({}, read(file))
-
-  stored[id] = snippet
-  write(file, stored)
+  // the app and every other MCP server write this file too: the change is made
+  // under the lock they all take, on top of what the file holds right then, and
+  // written whole (see files.updateJson)
+  updateJson(
+    snippetsFile(dir, connectionId),
+    stored => Object.assign(stored, {[id]: snippet}),
+    stored => Boolean(stored[id]),
+  )
 
   return snippet
 }

@@ -336,12 +336,6 @@ button.tree-nav__row {
     cursor: pointer;
 }
 
-.logs__follow input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
 .logs__body {
     flex: 1 1 auto;
     min-height: 0;
