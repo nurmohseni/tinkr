@@ -10,10 +10,31 @@ const {importsFor} = require('./classIndex')
 const {parseSSHCommand} = require('./parseSSHCommand')
 
 /**
- * Time the quit request gets to reach the session before its shell is killed.
- * See Session#kill.
+ * The keys a kill sends before it gives up on the session, and how long each is
+ * given before the next.
+ *
+ * A kill only signals the pty's shell, and the php doing the work is not that
+ * shell: it is a `lerd php` or `podman exec` or `docker exec` or `ssh` away, in
+ * another process tree. A run still going when the session is killed — a
+ * timeout, a run that was replaced, a window closing — kept going in that other
+ * tree: an infinite loop burned a core for as long as the container lived, and a
+ * guarded `sleep(60)` held its transaction open and committed it later, unseen.
+ *
+ * The terminal is what reaches it. `\u0003` is ETX, which the terminal's line
+ * discipline turns into SIGINT for the process in the foreground — the php — and
+ * psysh forwards it to the forked child actually evaluating the snippet. It is
+ * sent twice: the first one lands while the loop still owns the terminal often
+ * enough that one is not enough, and the two are spaced far enough apart that
+ * psysh is back at its prompt for the second. `exit();` then leaves a session
+ * that is at its prompt, and the signal ends the shell either way.
+ *
+ * @type {Array<{keys: String, wait: Number}>}
  */
-const killDelay = 100
+const killSteps = [
+  {keys: '\u0003', wait: 400},
+  {keys: '\u0003', wait: 400},
+  {keys: 'exit();\r', wait: 150},
+]
 
 /**
  * How long a session is given to answer the command it was started with before
@@ -269,13 +290,18 @@ class Session {
   }
 
   /**
-   * End the session.
+   * End the session, and stop what it is running.
    *
-   * A kill only signals the shell, and the session's own process outlives it
-   * when the command runs through docker or ssh (`php artisan tinker` keeps
-   * running inside the container). Ask the session to quit as well: `exit()`
-   * is php, so a plain shell in the foreground only reports a syntax error.
-   * The write is asynchronous, so the kill waits for it to land.
+   * A kill only signals the shell, and the php doing the work is not that shell
+   * when the command runs through docker, podman or ssh: it keeps running inside
+   * the container, on a run whose answer nobody is waiting for any more. So the
+   * interrupt goes in first — see `killSteps` — and the signal is what ends the
+   * session either way.
+   *
+   * The writes are asynchronous, so each one is given its moment before the next:
+   * the interrupt has to reach php while it is still the foreground process, and
+   * `exit();` is readline input that only means anything once the interrupt has
+   * put psysh back at its prompt.
    */
   kill() {
     const pty = this.pty
@@ -286,8 +312,40 @@ class Session {
 
     this.pty = null
 
-    pty.write('exit();\r')
-    setTimeout(() => pty.kill(), killDelay)
+    // the interrupt has to reach php while it is still the foreground process,
+    // and `exit();` only means anything once the interrupt has put psysh back at
+    // its prompt — so the keys are sent on a timer long enough for each to be
+    // taken, and the signal comes last, whether or not they were
+    let wait = 0
+    const keys = []
+
+    for (const step of killSteps) {
+      keys.push(step.keys)
+      wait += step.wait
+    }
+
+    keys.forEach((chars, index) => {
+      let at = 0
+
+      for (let before = 0; before < index; before++) {
+        at += killSteps[before].wait
+      }
+
+      setTimeout(() => {
+        try {
+          pty.write(chars)
+        } catch (e) {
+          // a session that has already gone is what a kill is for
+        }
+      }, at)
+    })
+
+    setTimeout(() => {
+      try {
+        pty.kill()
+      } catch (e) {
+      }
+    }, wait)
   }
 }
 
@@ -327,7 +385,12 @@ const runOutput = filter => stripSessionNotes(filter.printed).replace(/\r\n/g, '
  *   under (see runResult.guardArm), and a run without a guard is not sent one
  */
 const runCode = (connection, code, options = {}) => {
-  const {timeout = 30000, command = null, guard = null} = options
+  const {timeout = 30000, guard = null} = options
+  // what the session starts with: what the caller asked for, and otherwise what
+  // the connection was saved with. A run with neither would be written into a
+  // bare shell, which answers nothing and ends in a timeout that says nothing
+  // about why
+  const command = options.command || connection.command || null
   const session = new Session(connection, options)
   // a session over ssh runs in the remote project, whose composer files are not
   // on this machine to read
@@ -405,5 +468,5 @@ module.exports = {
   runCode,
   runOutput,
   withoutPager,
-  killDelay,
+  killSteps,
 }
