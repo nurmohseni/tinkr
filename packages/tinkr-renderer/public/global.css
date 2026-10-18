@@ -84,20 +84,25 @@ button.tree-nav__row {
     color: var(--text);
 }
 
-/* the content column: the desk, one scrolling column of section groups */
+/* the content column: the desk, one scrolling column of section groups.
+   The desk itself does not scroll: it is the frame the lip belongs to, and the
+   column inside it is what scrolls. A ring drawn on a scrolling box is laid out
+   in the scrolled content, so it travels up with the page and its bottom edge
+   cuts across the middle of the pane as a stray line. */
 .settings {
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     margin: 0 var(--desk-gap) var(--desk-gap) 0;
     background: var(--panel);
     border-radius: var(--r-panel);
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
 }
 
-/* the desk's own lip, drawn inside it so nothing outside has to know its radius */
+/* the desk's own lip, drawn inside the frame so nothing outside has to know its
+   radius — and now on a box that does not scroll, so it stays where it is */
 .settings::after {
     content: "";
     position: absolute;
@@ -108,10 +113,20 @@ button.tree-nav__row {
     pointer-events: none;
 }
 
+/* the column: what actually scrolls, inside the frame the lip belongs to */
 .settings__inner {
     max-width: 640px;
     margin: 0 auto;
     padding: 28px 32px 40px;
+    box-sizing: content-box;
+}
+
+.settings__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
 }
 
 .sgroup + .sgroup {
