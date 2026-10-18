@@ -386,3 +386,62 @@ describe('the transaction guard', () => {
     expect(counted).toBeLessThan(run.code.indexOf('if(count($tinkr_queries)>=100'))
   })
 })
+
+describe('the sandbox', () => {
+  test('is a dry run with the side-effect drivers swapped for recorders', () => {
+    const run = wrapRun('Mail::raw("hi", fn ($m) => $m->to("a@b.c"));', {}, 'sandbox')
+
+    // the transaction is the dry run's, because the database is the one thing a
+    // transaction does hold
+    expect(run.code).toContain("$tinkr_tx_mode='rollback';")
+    expect(run.code).toContain('$tinkr_db->beginTransaction();')
+    // and the drivers that a transaction cannot hold are swapped before the
+    // first statement runs
+    expect(run.code).toContain("app('config')->set('mail.default','array');")
+    expect(run.code).toContain("app('mail.manager')->forgetMailers();")
+    expect(run.code).toContain('Illuminate\\Support\\Facades\\Queue::fake();')
+    expect(run.code).toContain('Illuminate\\Support\\Facades\\Http::preventStrayRequests();')
+    expect(run.code).toContain('Illuminate\\Support\\Facades\\Storage::fake($tinkr_disk);')
+    expect(run.code).toContain("app('config')->set('cache.default','array');")
+    expect(run.code).toContain('Illuminate\\Support\\Facades\\Notification::fake();')
+    expect(run.code.indexOf('$tinkr_effects=[];'))
+      .toBeLessThan(run.code.indexOf('foreach($tinkr_stmts as $tinkr_one)'))
+  })
+
+  test('reports what it caught, and counts it at the end', () => {
+    const run = wrapRun('1;', {}, 'sandbox')
+    const encode = run.code.slice(run.code.indexOf('json_encode(['))
+
+    // the counts are read after the run, because the fakes fill their records
+    // while it runs
+    expect(encode).toContain("'sandbox'=>$tinkr_report")
+    // the counting is written twice — once for the normal path, once for a run
+    // that leaves through exit() — and both copies follow the statements
+    expect(run.code.lastIndexOf('$tinkr_report=[')).toBeGreaterThan(run.code.indexOf('foreach($tinkr_stmts as $tinkr_one)'))
+    expect(run.code).toContain("$tinkr_report['channels']['mail']=count($tinkr_effects['mail']);")
+    expect(run.code).toContain("$tinkr_pair[0]->method().' '.$tinkr_pair[0]->url()")
+    // a channel that could not be swapped is named rather than left to look
+    // sandboxed
+    expect(run.code).toContain("$tinkr_sandbox[]='mail could not be sandboxed: '")
+    expect(encode).toContain("'not_sandboxed'=>array_values($tinkr_sandbox)")
+  })
+
+  test('is not sent for a run that was not asked to be one', () => {
+    expect(wrapRun('1;').code).not.toContain('$tinkr_sandbox')
+    expect(wrapRun('1;', {}, 'rollback').code).not.toContain('$tinkr_sandbox')
+    expect(wrapRun('1;', {}, 'commit').code).not.toContain("'sandbox'=>$tinkr_report")
+  })
+
+  test('a sandboxed run still closes its transaction and reports it', () => {
+    const run = wrapRun('1;', {}, 'sandbox')
+
+    // both reports travel, because both are what the run did
+    expect(run.code).toContain("'transaction'=>$tinkr_transaction")
+    expect(run.code).toContain("'sandbox'=>$tinkr_report")
+    // the close comes before the counting: the transaction is taken back first
+    const normalPrint = run.code.indexOf('$tinkr_sent=true;')
+
+    expect(run.code.lastIndexOf('$tinkr_db->rollBack()', normalPrint))
+      .toBeLessThan(run.code.lastIndexOf('$tinkr_report=[', normalPrint))
+  })
+})

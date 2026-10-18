@@ -1,6 +1,7 @@
 const {randomBytes} = require('crypto')
 
 const {stripRendering} = require('./terminalOutput')
+const sandbox = require('./sandbox')
 
 /**
  * The marker the run prints as the first thing it does.
@@ -259,6 +260,43 @@ const guardArm = mode => `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=n
   "$tinkr_error=['class'=>'RuntimeException','message'=>'the transaction guard could not be armed: '.$tinkr_tx_error];}"
 
 /**
+ * The php that keeps a run's side effects out of the world.
+ *
+ * A transaction holds the database. It holds nothing else: `Mail::send`,
+ * `dispatch`, `Http::post`, `Storage::put`, `Cache::put` and `Log::info` all
+ * happen while the transaction is open and all of them are still there when it
+ * is taken back. A dry run that says "rolled back" and sends a customer an email
+ * is not a dry run, so a sandboxed one swaps those drivers for recorders first.
+ *
+ * Each swap is the framework's own test double rather than a pretend one: mail
+ * goes to the `array` transport (every message is recorded, none leaves), jobs
+ * and the bus to their fakes (a job is pushed nowhere and the fake keeps it),
+ * the HTTP client to a fake that answers through a stub set and refuses
+ * anything it was not given, every disk to a fake root under
+ * `storage/framework`, the cache to an array store, logging to a handler that
+ * keeps its records, and notifications to their fake.
+ *
+ * What was caught is counted on the way out (see `sandboxFinish`) rather than
+ * described here: this runs in the session, and the envelope has to stay small.
+ * A channel that could not be swapped is named in the report instead of being
+ * left to look sandboxed — a project with no booted Laravel, a framework without
+ * one of the fakes.
+ *
+ * The swaps are made once, before the first statement, and they last as long as
+ * the session does. A session belongs to one run (see runCode), so nothing of a
+ * sandbox outlives the run it was made for.
+ *
+ * It is written in one line, like the rest of the wrapper.
+ *
+ * @param {String} mode `sandbox`, or nothing at all
+ * @return {String} one line, or nothing when the run is not sandboxed
+ */
+// the sandbox's two blocks, kept in a file of their own: they are php written
+// over several lines, and reading them there is the point (see sandbox.js)
+const sandboxArm = mode => (mode === 'sandbox' ? sandbox.arm : '')
+const sandboxFinish = sandbox.finish
+
+/**
  * What one value is worth in the envelope.
  *
  * `json_encode` fails on some values rather than describing them: invalid
@@ -464,7 +502,10 @@ const wrapRun = (source, imports = {}, guard = null) => {
   const start = createStartMarker()
   const encoded = Buffer.from(code, 'utf8').toString('base64')
   const entries = Object.entries(imports)
-  const mode = guard === 'commit' ? 'commit' : (guard === 'rollback' ? 'rollback' : null)
+  // `sandbox` is a dry run with the side-effect drivers swapped for recorders:
+  // the transaction is the same one, so it is a rollback plus the fakes
+  const sandbox = guard === 'sandbox'
+  const mode = guard === 'commit' ? 'commit' : (guard === 'rollback' || sandbox ? 'rollback' : null)
   const keys = [
     '[',
     // what every statement answered, with the line of the statement that did
@@ -477,12 +518,17 @@ const wrapRun = (source, imports = {}, guard = null) => {
     // what the run's own names resolved to, when the project resolved any
     entries.length ? ",'imported'=>(object)$tinkr_imported" : '',
     mode ? ",'transaction'=>$tinkr_transaction" : '',
+    // what the sandbox caught, when there was one: the counts and the first few
+    // of each, so an answer says what the run would have done
+    sandbox ? ",'sandbox'=>$tinkr_report" : '',
     ']',
   ].join('')
   // a guarded run that leaves through exit() never reaches its own close, so the
   // close is part of the shutdown path too: it runs only when the transaction is
-  // still the one the guard opened, which `$tinkr_transaction` says
-  const {print, shutdown} = printer(keys, mode ? guardFinish : '')
+  // still the one the guard opened, which `$tinkr_transaction` says. A sandboxed
+  // run reports what it caught on both paths for the same reason
+  const closing = [mode ? guardFinish : '', sandbox ? sandboxFinish : ''].join('')
+  const {print, shutdown} = printer(keys, closing)
   const split = 4
 
   return {
@@ -507,12 +553,17 @@ const wrapRun = (source, imports = {}, guard = null) => {
       // the queries are collected from before the first statement runs, and the
       // listener stays for as long as the session does
       QUERY_BLOCK,
+      // the side effects are swapped for recorders before anything runs: the
+      // mailer, the queues, the http client, the disks, the cache and the log
+      sandboxArm(guard),
       ...SPLIT_BLOCKS,
       // the transaction is open before the first statement of the run, and it is
       // closed after the last one, whether that last one returned or threw
       mode ? guardArm(mode) : '',
       ...EVAL_BLOCKS,
-      mode ? guardFinish : '',
+      // the close and the sandbox's report, in that order: the transaction is
+      // closed first, then what the run caught is counted
+      closing,
       print,
     ].join(''),
   }
