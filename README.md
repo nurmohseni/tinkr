@@ -130,6 +130,10 @@ The directory the client starts it in is the project code runs in. No API token,
 
 History is the app's own: the last fifty runs of a connection. A client's own runs are not written to it, because the app owns that file while it runs.
 
+`tinkr_run_php` and `tinkr_run_php_over_ssh` take an optional `guard: "rollback"`, which runs the code inside a transaction that is taken back at the end and reports what that transaction did — the safe way for an agent to look at production without changing it.
+
+A connection tagged **production** is refused unless the server was started on that connection (`--connection`) or with `--allow-production`. A run there is a write nobody is watching.
+
 </details>
 
 <details>
@@ -142,6 +146,7 @@ History is the app's own: the last fifty runs of a connection. A client's own ru
 | `--command <command>` | What the session starts with (default: the connection's own, or `php artisan tinker`) |
 | `--data-dir <directory>` | Where the app keeps its connections and snippets, if not the default |
 | `--timeout <ms>` | How long a run may take before it is given up (default: `60000`) |
+| `--allow-production` | Run code on connections tagged production. Without it, a production connection is refused unless the server was started on that one connection with `--connection` |
 
 Try it from a terminal to see what a tool answers:
 
