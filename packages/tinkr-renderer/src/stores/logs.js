@@ -20,11 +20,14 @@ import {logFiles, logRead} from '../utils/api'
 // where the service's own default would have been clamped by the file.
 const defaultBytes = 128 * 1024
 
-/** Whether the window holds the end of the file, the only place following means anything. */
-const atEnd = logs => logs.from + logs.read >= logs.size
+/**
+ * Whether the window holds the end of what it was read inside — the range, or the
+ * whole file — which is the only place following means anything.
+ */
+const atEnd = logs => logs.from + logs.read >= (logs.range ? logs.range.to : logs.size)
 
-/** Whether the window holds the start of it, so there is nothing older to read. */
-const atStart = logs => logs.from === 0
+/** Whether it holds the start of that, so there is nothing older to read. */
+const atStart = logs => logs.from === (logs.range ? logs.range.from : 0)
 
 const emptyLogs = () => ({
   dir: '',
@@ -34,6 +37,9 @@ const emptyLogs = () => ({
   size: 0,
   read: 0,
   from: 0,
+  // the range the window was read inside, which is where paging stops: with no
+  // range it is the whole file
+  range: {from: 0, to: 0},
   loading: false,
   error: '',
 })
@@ -42,9 +48,29 @@ const logsAtom = atom(emptyLogs())
 
 /** What the entries are filtered by, and how closely the file is followed. */
 const logsLevelAtom = atom('all')
+
+/**
+ * The levels worth reading, as the filter's own set: empty means every level,
+ * which is what a filter never touched means, so an empty set and a full one are
+ * the same thing said two ways and are kept as one.
+ */
+const logsLevelsAtom = atom([])
+
+/** Whether a level survives the filter's set. */
+const passesLevel = (levels, level) => levels.length === 0 || levels.includes(level)
 const logsSearchAtom = atom('')
 const logsFollowAtom = atom(false)
 const logsIntervalAtom = atom(2000)
+
+// The moment the reader is filtering from and to, as the file stamps them:
+// `2026-08-27 11:10:52`. Empty is open-ended, which is what a filter that was
+// never set is. The range is applied by the service, not by the panel: it is
+// found in the file, so it reaches entries no window in memory holds.
+const logsSinceAtom = atom('')
+const logsUntilAtom = atom('')
+
+/** Whether a range is narrowing what is shown. */
+const logsRangedAtom = atom(get => get(logsSinceAtom) !== '' || get(logsUntilAtom) !== '')
 
 /**
  * Read a window of the open file.
@@ -61,10 +87,19 @@ const readLogAtom = atom(null, async (get, set, options) => {
 
   set(logsAtom, current => Object.assign({}, current, {loading: true}))
 
-  try {
-    const answer = await logRead(file, options)
+  // the range is part of every read, not a filter applied to what came back:
+  // a page step inside a range stays inside it
+  const since = get(logsSinceAtom)
+  const until = get(logsUntilAtom)
 
-    set(logsAtom, current => Object.assign({}, current, answer, {error: '', loading: false}))
+  try {
+    const answer = await logRead(file, Object.assign({}, options, {since, until}))
+
+    // a window that names no range was read inside the whole file, which is what
+    // paging then stops at
+    const range = answer.range || {from: 0, to: answer.size}
+
+    set(logsAtom, current => Object.assign({}, current, answer, {range, error: '', loading: false}))
 
     // following watches the end of the file, so a window that has left it is not
     // one being followed any more — the switch says so rather than the reader
@@ -111,6 +146,30 @@ const selectLogAtom = atom(null, async (get, set, name) => {
 })
 
 /**
+ * Narrow what is shown to a range of moments, and read the end of it.
+ *
+ * The range is what the service is asked for, so this is one read like any
+ * other: the window that comes back lands at the end of the range, and the paging
+ * steps stop at its edges rather than at the file's.
+ *
+ * @param {Object} range `since` and `until`, either of which may be empty
+ */
+const setLogRangeAtom = atom(null, async (get, set, {since, until}) => {
+  set(logsSinceAtom, since || '')
+  set(logsUntilAtom, until || '')
+
+  await set(readLogAtom)
+})
+
+/** Show the whole file again, and stop following a range. */
+const clearLogRangeAtom = atom(null, async (get, set) => {
+  set(logsSinceAtom, '')
+  set(logsUntilAtom, '')
+
+  await set(readLogAtom)
+})
+
+/**
  * Read what the connection has, and open the newest of it unless one is open.
  */
 const loadLogsAtom = atom(null, async (get, set) => {
@@ -138,9 +197,16 @@ export {
   emptyLogs,
   logsAtom,
   logsLevelAtom,
+  logsLevelsAtom,
+  passesLevel,
   logsSearchAtom,
   logsFollowAtom,
   logsIntervalAtom,
+  logsSinceAtom,
+  logsUntilAtom,
+  logsRangedAtom,
+  setLogRangeAtom,
+  clearLogRangeAtom,
   readLogAtom,
   olderLogAtom,
   newerLogAtom,

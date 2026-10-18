@@ -126,9 +126,10 @@ describe('following a log', () => {
       jest.advanceTimersByTime(4100)
     })
 
-    // the default is every two seconds: twice in a little over four
+    // the default is every two seconds: twice in a little over four. Every read
+    // carries the range, which is empty until one is set
     expect(logRead).toHaveBeenCalledTimes(2)
-    expect(logRead).toHaveBeenCalledWith('laravel.log', undefined)
+    expect(logRead).toHaveBeenCalledWith('laravel.log', {since: '', until: ''})
 
     // and turning it off stops it
     act(() => {

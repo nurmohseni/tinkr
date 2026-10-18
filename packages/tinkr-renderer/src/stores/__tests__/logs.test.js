@@ -50,6 +50,58 @@ describe('logs store', () => {
     expect(logs.atStart(state)).toBe(false)
   })
 
+  test('a range is found in the file, and paging stops at its edges rather than the file\'s', async () => {
+    // the service finds the range and answers with where it sits, which is the
+    // whole of what the store needs: the window it returned ends at the range's
+    // own end, and paging then stops at the range's own start
+    const from = 0
+    const to = 2 * logs.defaultBytes
+
+    api.logRead.mockImplementation((name, options = {}) => {
+      const bytes = options.bytes || logs.defaultBytes
+      const end = options.before == null ? to : Math.min(options.before, to)
+      const start = Math.max(end - bytes, from)
+
+      return {file: name, size: size(logs), read: end - start, from: start, range: {from, to}, entries: []}
+    })
+
+    await store.set(logs.loadLogsAtom)
+
+    const state = store.get(logs.logsAtom)
+
+    // it opened on the end of the range, not the end of the file
+    expect(state.from).toBe(to - logs.defaultBytes)
+    expect(logs.atEnd(state)).toBe(true)
+    expect(logs.atStart(state)).toBe(false)
+
+    // stepping back reaches the range's own start and stops there
+    await store.set(logs.olderLogAtom)
+
+    expect(store.get(logs.logsAtom).from).toBe(from)
+    expect(logs.atStart(store.get(logs.logsAtom))).toBe(true)
+    expect(logs.atEnd(store.get(logs.logsAtom))).toBe(false)
+
+    await store.set(logs.olderLogAtom)
+
+    expect(store.get(logs.logsAtom).from).toBe(from)
+    // the step back asked for the window before the one in view, which starts
+    // where the range's second window does
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: logs.defaultBytes, since: '', until: ''})
+  })
+
+  test('setting a range asks the service for it, and clearing it asks for the whole file again', async () => {
+    await store.set(logs.loadLogsAtom)
+    await store.set(logs.setLogRangeAtom, {since: '2026-08-27 06:00:00', until: '2026-08-27 08:30:00'})
+
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {since: '2026-08-27 06:00:00', until: '2026-08-27 08:30:00'})
+    expect(store.get(logs.logsRangedAtom)).toBe(true)
+
+    await store.set(logs.clearLogRangeAtom)
+
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {since: '', until: ''})
+    expect(store.get(logs.logsRangedAtom)).toBe(false)
+  })
+
   test('a step back reads the window before this one, and a step forward reads it again', async () => {
     await store.set(logs.loadLogsAtom)
     await store.set(logs.olderLogAtom)
@@ -58,7 +110,8 @@ describe('logs store', () => {
 
     expect(back.from).toBe(logs.defaultBytes)
     expect(back.read).toBe(logs.defaultBytes)
-    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: 2 * logs.defaultBytes})
+    // every read carries the range, which is empty until one is set
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: 2 * logs.defaultBytes, since: '', until: ''})
     expect(logs.atEnd(back)).toBe(false)
     expect(logs.atStart(back)).toBe(false)
 
@@ -80,7 +133,8 @@ describe('logs store', () => {
     await store.set(logs.newerLogAtom)
 
     expect(store.get(logs.logsAtom).from).toBe(logs.defaultBytes)
-    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: 2 * logs.defaultBytes})
+    // every read carries the range, which is empty until one is set
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: 2 * logs.defaultBytes, since: '', until: ''})
 
     await store.set(logs.newerLogAtom)
 
