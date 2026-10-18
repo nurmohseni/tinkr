@@ -497,7 +497,10 @@ const windowPhp = (file, wanted, ends, since, until) => [
   '$h=fopen($f,\'r\');$off=0;$seen=-1;$stop=-1;',
   'while(($line=fgets($h))!==false){',
   '$at=$off;$off+=strlen($line);$stamp=null;',
-  'if(isset($line[0])&&$line[0]===\'[\'){$stamp=substr($line,1,19);}',
+  // a header, not merely a line that starts with a bracket: `[stacktrace]` is
+  // the continuation of the entry above it, and read as a header its `stacktrace]`
+  // is a stamp that sorts after any range and ends the scan where it began
+  'if(preg_match(\'/^\\[([^\\]]{19})\\] /\',$line,$m)){$stamp=$m[1];}',
   // php's preg_match takes the pattern as a string, not as a bare /regex/ literal
   'elseif(preg_match(\'/"datetime"\\s*:\\s*"([^"]+)"/\',$line,$m)){',
   '$stamp=substr(str_replace(\'T\',\' \',$m[1]),0,19);}',
@@ -625,4 +628,6 @@ module.exports = {
   files,
   parse,
   read,
+  stampOf,
+  windowPhp,
 }

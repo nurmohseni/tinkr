@@ -6,7 +6,7 @@ const path = require('path')
 const {EventEmitter} = require('events')
 const {spawn} = require('child_process')
 
-const {files, parse, read, dirOf} = require('../services/logs')
+const {files, parse, read, dirOf, stampOf} = require('../services/logs')
 
 const line = (at, environment, level, rest) => `[${at}] ${environment}.${level}: ${rest}`
 
@@ -314,6 +314,30 @@ describe('a range of moments in a log', () => {
     const answer = await read(local(), 'laravel.log', {bytes: 4096, since: '2026-08-28 00:00:00'})
 
     expect(answer.entries).toEqual([])
+  })
+
+  test('is not fooled by a continuation line that starts with a bracket', async () => {
+    // laravel writes the stack trace under an entry, and a frame line can begin
+    // with a bracket. Read as a header, `[stacktrace]` is a stamp of
+    // `stacktrace]` that sorts after every range and ends the scan at once, so
+    // the range answers with nothing at all.
+    write([
+      line('2026-08-27 10:00:00', 'production', 'ERROR', 'first'),
+      '[stacktrace]',
+      '#0 /app/a.php(1): go()',
+      line('2026-08-27 11:00:00', 'production', 'INFO', 'second'),
+      line('2026-08-27 12:00:00', 'production', 'INFO', 'third'),
+    ].join('\n'))
+
+    const answer = await read(local(), 'laravel.log', {bytes: 4096, since: '2026-08-27 11:00:00'})
+
+    expect(answer.entries[0].message).toBe('second')
+    expect(answer.entries.map(one => one.at)).toEqual(['2026-08-27 11:00:00', '2026-08-27 12:00:00'])
+  })
+
+  test('stamps a header only, so a bracketed detail is not read as a moment', () => {
+    expect(stampOf('[stacktrace]')).toBe(null)
+    expect(stampOf('[2026-08-27 11:10:52] production.INFO: hi')).toBe('2026-08-27 11:10:52')
   })
 
   test('is read from the json formatter\'s own stamp too', async () => {
