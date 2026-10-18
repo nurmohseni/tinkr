@@ -7,6 +7,66 @@ const {phpVersionOf} = require('../utils/phpVersion')
 const detectTimeout = 5000
 
 /**
+ * The php a connection's session runs, from the command it starts with.
+ *
+ * `php artisan tinker` is `php`, `php83 artisan tinker` is `php83`, and
+ * `php -d memory_limit=1G artisan tinker` is `php -d memory_limit=1G` — the
+ * binary and the flags between it and the program it runs. A command that is a
+ * container or a wrapper is asked the same way: `docker exec app php artisan
+ * tinker` answers the php inside it.
+ *
+ * @param {Record<String, any>} connection
+ * @return {String}
+ */
+const phpBinaryOf = connection => {
+  const command = String(connection.command || '').trim()
+
+  if (!command) {
+    return 'php'
+  }
+
+  // a shell command is split into words, so the answer is the words up to the
+  // program the php runs — `artisan`, `-a`, a file, or nothing
+  const words = command.split(/\s+/)
+  const at = words.findIndex(word => /(^|\/)php(\d+(\.\d+)?)?$/.test(word))
+
+  if (at === -1) {
+    // a command that names no php at all — `docker exec app tail -f x` — is one
+    // whose php is not knowable from it, and the plain question is the best
+    // answer there is
+    return 'php'
+  }
+
+  // php's flags come in two shapes: `-d` and the value after it, and `-dvalue`.
+  // The value of the first shape is a word of its own and belongs to the flag,
+  // which is why a plain "stop at the first word that is not a flag" loses
+  // `memory_limit=1G` from `php -d memory_limit=1G artisan tinker`
+  const takesValue = new Set(['-d', '-c', '-z', '-f', '-r', '-S', '-t', '-l', '-e'])
+  const kept = []
+  let wantsValue = false
+
+  for (let index = at + 1; index < words.length; index++) {
+    const word = words[index]
+
+    if (wantsValue) {
+      kept.push(word)
+      wantsValue = false
+      continue
+    }
+
+    if (word.startsWith('-')) {
+      kept.push(word)
+      wantsValue = takesValue.has(word)
+      continue
+    }
+
+    break
+  }
+
+  return [words[at], ...kept].join(' ')
+}
+
+/**
  * Ask a connection's own shell what php it has, and tell its window.
  *
  * The question is put to the shell the session runs in — the same machine, the
@@ -47,10 +107,12 @@ const detectPhpVersion = (connection, win) => {
     win.webContents.send('phpVersion', {version})
   }
 
-  // the shell has to be up before its output can be listened to: a pty that was
-  // never connected has nothing to subscribe to. Nothing is missed by the order,
-  // since a shell cannot write before this tick is over.
-  pty.connect('php -v')
+  // the question is put to the php the connection's own command runs, not to
+  // whatever `php` is on the path: a connection that starts `php83 artisan
+  // tinker` or `docker exec app php artisan tinker` runs that php, and a
+  // connection whose ssh never came up used to answer with this machine's php.
+  // The binary is the first word of the command, and it keeps its own flags
+  pty.connect(`${phpBinaryOf(connection)} -v`)
 
   const onData = pty.onData(data => {
     output += data
@@ -68,4 +130,5 @@ const detectPhpVersion = (connection, win) => {
 
 module.exports = {
   detectPhpVersion,
+  phpBinaryOf,
 }

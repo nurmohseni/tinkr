@@ -101,16 +101,26 @@ const indexCode = () => 'error_reporting(0);' +
   'if($tinkr_relative){$tinkr_psr4[$tinkr_prefix]=$tinkr_relative;}}}' +
   '$tinkr_files=[];' +
   'foreach($tinkr_psr4 as $tinkr_dirs){foreach($tinkr_dirs as $tinkr_dir){' +
-  "if(strpos($tinkr_dir,'vendor/')===0){continue;}" +
-  "$tinkr_path=$tinkr_root.'/'.$tinkr_dir;" +
-  'if(!is_dir($tinkr_path)||!is_readable($tinkr_path)){continue;}' +
+  // the directory a psr-4 prefix names is written relative to the file it comes
+  // from, so it reads `vendor/composer/../../app` — a project's own directory.
+  // It is resolved before anything decides what is under `vendor/`, or a
+  // project's every file would be read as one under it and dropped
+  "$tinkr_path=realpath($tinkr_root.'/'.$tinkr_dir);" +
+  'if($tinkr_path===false||!is_dir($tinkr_path)||!is_readable($tinkr_path)){continue;}' +
+  "if(strpos(str_replace('\\\\','/',$tinkr_path),str_replace('\\\\','/',$tinkr_root).'/vendor/')===0){continue;}" +
   'try{' +
   'foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator(' +
   '$tinkr_path,FilesystemIterator::SKIP_DOTS)) as $tinkr_file){' +
   `if(count($tinkr_files)>=${maxPaths}){break 3;}` +
+  // a link can point anywhere, and a `.php` name is not a promise about what is
+  // behind it: a link to /etc/passwd offered as a class would let an `@` mention
+  // send that file's contents to the AI provider. What resolves inside the
+  // project is a file of the project; what resolves outside it is not one, and
+  // is left out — the local walk skips links for the same reason
   "if(!$tinkr_file->isFile()||$tinkr_file->getExtension()!=='php'){continue;}" +
-  "$tinkr_relative=substr(str_replace('\\\\','/',$tinkr_file->getPathname()),strlen($tinkr_root)+1);" +
-  "if(strpos($tinkr_relative,'vendor/')===0){continue;}" +
+  'if($tinkr_file->isLink()){$tinkr_real=realpath($tinkr_file->getPathname());' +
+  "if($tinkr_real===false||strpos(str_replace('\\\\','/',$tinkr_real),str_replace('\\\\','/',$tinkr_root).'/')!==0){continue;}}" +
+  "$tinkr_relative=substr(str_replace('\\\\','/',$tinkr_file->getPathname()),strlen(str_replace('\\\\','/',$tinkr_root))+1);" +
   '$tinkr_files[]=$tinkr_relative;}' +
   '}catch(\\Throwable $tinkr_unreadable){}}}' +
   "echo json_encode(['classmap'=>$tinkr_classmap,'psr4'=>$tinkr_psr4,'files'=>$tinkr_files]);"
