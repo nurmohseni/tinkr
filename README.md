@@ -61,7 +61,7 @@ You need `php` on the machine (or server) where your project lives. That's it.
 
 | | |
 | --- | --- |
-| **Connections** | Local projects, Docker containers, or any server over SSH. Tag one as production and Tinkr asks before it writes. |
+| **Connections** | Local projects, or any server over SSH. Tag one as production and Tinkr asks before it writes. A project inside a container works through the connection's own command (`docker exec app php artisan tinker`). |
 | **Editor** | Monaco, with class names and `::` method suggestions read straight from your project, local or remote. |
 | **Snippet forms** | Turn a snippet's variables into a form and run it like a tiny admin panel. |
 | **Snippets & history** | Save the code you reuse. Every run is kept across restarts; one click puts it back in the editor. |
