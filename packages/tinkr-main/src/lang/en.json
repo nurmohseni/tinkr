@@ -87,8 +87,6 @@
     "edited_since_run": "Edited since the last run",
     "output_views": "Output views",
     "pane": "Editor",
-    "switch_to_tinker": "Switch to tinker",
-    "switch_to_logs": "Switch to the log viewer",
     "history_clear": "Clear history",
     "history_clear_title": "Forget this connection's runs?",
     "history_clear_content": "The code that ran, when, and what came back will be forgotten. Nothing else changes, and it cannot be brought back.",
@@ -127,7 +125,7 @@
     "logs_filter_help": "Found in the file, so the range reaches past what has been read.",
     "logs_filter_clear": "Whole file",
     "logs_filter_apply": "Apply",
-    "logs_ranged": "in a range"
+    "logs_title": "Logs"
   },
   "preference": {
     "preferences": "Preferences",

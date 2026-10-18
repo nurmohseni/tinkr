@@ -87,8 +87,6 @@
     "edited_since_run": "Seit dem letzten Lauf geändert",
     "output_views": "Ausgabeansichten",
     "pane": "Editor",
-    "switch_to_tinker": "Zu Tinker wechseln",
-    "switch_to_logs": "Zu den Logs wechseln",
     "history_clear": "Verlauf löschen",
     "history_clear_title": "Die Läufe dieser Verbindung vergessen?",
     "history_clear_content": "Der ausgeführte Code, wann er lief und was zurückkam, wird vergessen. Sonst ändert sich nichts, und zurückholen lässt es sich nicht.",
@@ -127,7 +125,7 @@
     "logs_filter_help": "Wird in der Datei gesucht, der Zeitraum reicht also über das Gelesene hinaus.",
     "logs_filter_clear": "Ganze Datei",
     "logs_filter_apply": "Anwenden",
-    "logs_ranged": "in einem Zeitraum"
+    "logs_title": "Protokolle"
   },
   "preference": {
     "preferences": "Einstellungen",

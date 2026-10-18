@@ -87,8 +87,6 @@
     "edited_since_run": "Editado desde la última ejecución",
     "output_views": "Vistas de la salida",
     "pane": "Editor",
-    "switch_to_tinker": "Cambiar a tinker",
-    "switch_to_logs": "Cambiar a los registros",
     "history_clear": "Borrar el historial",
     "history_clear_title": "¿Olvidar las ejecuciones de esta conexión?",
     "history_clear_content": "Se olvidará el código que se ejecutó, cuándo y qué devolvió. Nada más cambia, y no se puede recuperar.",
@@ -127,7 +125,7 @@
     "logs_filter_help": "Se busca en el archivo, así que el intervalo alcanza más allá de lo leído.",
     "logs_filter_clear": "Archivo completo",
     "logs_filter_apply": "Aplicar",
-    "logs_ranged": "en un intervalo"
+    "logs_title": "Registros"
   },
   "preference": {
     "preferences": "Preferencias",

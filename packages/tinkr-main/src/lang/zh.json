@@ -87,8 +87,6 @@
     "edited_since_run": "自上次运行后已修改",
     "output_views": "输出视图",
     "pane": "编辑器",
-    "switch_to_tinker": "切换到 Tinker",
-    "switch_to_logs": "切换到日志",
     "history_clear": "清空运行记录",
     "history_clear_title": "忘记这个连接的运行记录？",
     "history_clear_content": "运行过的代码、时间和返回结果都会被忘记。除此之外不会改变，也无法找回。",
@@ -127,7 +125,7 @@
     "logs_filter_help": "直接在文件中查找，因此范围可以超出已读取的部分。",
     "logs_filter_clear": "整个文件",
     "logs_filter_apply": "应用",
-    "logs_ranged": "在范围内"
+    "logs_title": "日志"
   },
   "preference": {
     "preferences": "偏好设置",
