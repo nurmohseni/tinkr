@@ -1,18 +1,21 @@
-import {useEffect, useRef} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {useAtom, useAtomValue, useSetAtom} from 'jotai'
 import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
+import LogsFilter from './LogsFilter'
 import {
   atEnd,
   atStart,
   logsAtom,
   logsFollowAtom,
   logsIntervalAtom,
-  logsLevelAtom,
+  logsLevelsAtom,
+  logsRangedAtom,
   logsSearchAtom,
   newerLogAtom,
   olderLogAtom,
+  passesLevel,
   readLogAtom,
 } from '../../stores/logs'
 
@@ -84,7 +87,9 @@ const LogsPanel = () => {
   const read = useSetAtom(readLogAtom)
   const older = useSetAtom(olderLogAtom)
   const newer = useSetAtom(newerLogAtom)
-  const [level, setLevel] = useAtom(logsLevelAtom)
+  const levels = useAtomValue(logsLevelsAtom)
+  const ranged = useAtomValue(logsRangedAtom)
+  const [filtering, setFiltering] = useState(false)
   const [search, setSearch] = useAtom(logsSearchAtom)
   const [follow, setFollow] = useAtom(logsFollowAtom)
   // not named setInterval: that name is the timer below, and a setter in its
@@ -124,7 +129,7 @@ const LogsPanel = () => {
     }
 
     landing.current = null
-  }, [logs.entries, level, search])
+  }, [logs.entries, levels, search])
 
   const handleScroll = () => {
     const list = listRef.current
@@ -136,7 +141,7 @@ const LogsPanel = () => {
 
   const term = search.trim().toLowerCase()
   const shown = logs.entries.filter(entry => {
-    if (level !== 'all' && entry.level !== level) {
+    if (entry.level !== null && !passesLevel(levels, entry.level)) {
       return false
     }
 
@@ -151,17 +156,19 @@ const LogsPanel = () => {
     <div className='logs'>
       <div className='logs__bar'>
         <div className='logs__row'>
-          <select
-            className='select'
-            value={level}
-            aria-label={intl.formatMessage({id: 'editor.logs_level'})}
-            onChange={event => setLevel(event.target.value)}
-          >
-            <option value='all'>{intl.formatMessage({id: 'editor.logs_level_all'})}</option>
-            {['error', 'warning', 'info', 'debug'].map(one => (
-              <option key={one} value={one}>{one}</option>
-            ))}
-          </select>
+          <div className='logs__filter'>
+            <button
+              className={ranged ? 'btn btn--secondary btn--sm is-on' : 'btn btn--secondary btn--sm'}
+              type='button'
+              aria-expanded={filtering}
+              aria-label={intl.formatMessage({id: 'editor.logs_filter'})}
+              onClick={() => setFiltering(open => !open)}
+            >
+              <FormattedMessage id='editor.logs_filter'/>
+            </button>
+
+            {filtering && <LogsFilter onClose={() => setFiltering(false)}/>}
+          </div>
 
           <input
             className='input'
