@@ -15,6 +15,7 @@ const {
   getConnection,
   inputConnection,
   runConnection,
+  stopConnection,
   closeConnection,
   connectConnection,
   reconnectConnection,
@@ -103,6 +104,10 @@ ipcMain.on('reconnectConnection', async (event, connection) => {
 
 ipcMain.on('inputConnection', (event, id, code) => {
   inputConnection(id, code)
+})
+
+ipcMain.on('stopConnection', (event, id) => {
+  stopConnection(id)
 })
 
 ipcMain.on('runConnection', (event, id, code, guard) => {

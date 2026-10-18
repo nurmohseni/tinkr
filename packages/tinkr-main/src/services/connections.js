@@ -211,6 +211,25 @@ const runConnection = (id, code, guard = null) => {
 }
 
 /**
+ * Stop what a connection is running.
+ *
+ * A run is a session of its own, and a session's kill is what reaches the php
+ * inside it (see tinkr-core's Session#kill): the interrupt goes in, then the
+ * quit, then the signal. So stopping a run is ending the session it is in, and
+ * the next run boots its own — which is what a run does anyway.
+ *
+ * @param {String} id
+ */
+const stopConnection = id => {
+  const pty = getPtyProcess(id)
+
+  if (pty) {
+    pty.kill()
+    setPtyProcess(id, null)
+  }
+}
+
+/**
  * @param {String} id
  */
 const closeConnection = async id => {
@@ -232,6 +251,7 @@ module.exports = {
   getConnection,
   inputConnection,
   runConnection,
+  stopConnection,
   closeConnection,
   connectConnection,
   reconnectConnection,

@@ -5,19 +5,20 @@ import {Provider, createStore} from 'jotai'
 import flatten from 'flat'
 
 import DryRunButton from '../DryRunButton'
-import {dryRunAtom} from '../../../stores/editor'
+import {dryRunAtom, sandboxAtom} from '../../../stores/editor'
 import english from '../../../../../tinkr-main/src/lang/en.json'
 
 // the vite build uses the automatic jsx runtime, so the component has no React
 // in scope; the transform jest runs here is the classic one
 global.React = React
 
-// the switch reads and writes the atom the run reads, so a test renders it
+// the switch reads and writes the atoms the run reads, so a test renders it
 // inside a store it can set itself
-const render = dryRun => {
+const render = (dryRun, sandbox = true) => {
   const store = createStore()
 
   store.set(dryRunAtom, dryRun)
+  store.set(sandboxAtom, sandbox)
 
   return renderToStaticMarkup(
     <IntlProvider locale='en' messages={flatten(english)}>
@@ -34,16 +35,27 @@ describe('the dry run switch', () => {
     expect(render(true)).toContain('<rect x="2.6" y="3.2"')
     // what the transaction holds, against what is not held at all
     expect(render(true)).toContain('<circle')
-    expect(render(true)).not.toContain('<path')
+    expect(render(true)).not.toContain('M3.4 12.6')
 
     expect(render(false)).toContain('<rect x="2.6" y="3.2"')
-    expect(render(false)).toContain('<path')
+    expect(render(false)).toContain('M3.4 12.6')
     expect(render(false)).not.toContain('<circle')
   })
 
+  test('shows a sealed world when the sandbox is on, and the plain one when it is not', () => {
+    // the shackle is the difference: a run whose world is sealed says so, and
+    // one that is only inside a transaction does not
+    expect(render(true, true)).toContain('M5.4 6.2V5a2.6')
+    expect(render(true, false)).not.toContain('M5.4 6.2V5a2.6')
+    expect(render(true, false)).toContain('<circle')
+  })
+
   test('says which way the next click takes it', () => {
+    // the first click turns the dry run on, and after that the click is about
+    // the sandbox — which is the part a dry run does not have by itself
     expect(render(false)).toContain('Turn on dry run')
-    expect(render(true)).toContain('Turn off dry run')
+    expect(render(true, true)).toContain('Turn off the sandbox')
+    expect(render(true, false)).toContain('Turn on the sandbox')
   })
 
   test('is a switch, and says which way it is set', () => {

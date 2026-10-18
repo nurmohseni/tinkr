@@ -11,7 +11,7 @@ import PathField from './PathField'
  */
 const BasicForm = () => {
   const intl = useIntl()
-  const {register} = useFormContext()
+  const {register, watch} = useFormContext()
 
   return (
     <>
@@ -33,9 +33,13 @@ const BasicForm = () => {
 
       <PathField/>
 
+      {/* a container's command is built from what it runs in, so the field only
+          shows for a connection that is not one: a command typed here for a
+          container would be replaced the moment a container field changed */}
       <Field
         label={intl.formatMessage({id: 'connections.command'})}
         htmlFor='connection-command'
+        hidden={Boolean(watch('container_engine'))}
       >
         <input
           className='input'

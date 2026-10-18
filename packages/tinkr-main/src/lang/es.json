@@ -30,7 +30,12 @@
     "tag_development": "desarrollo",
     "tag_staging": "preproducción",
     "tag_production": "producción",
-    "kind_production": "producción"
+    "kind_production": "producción",
+    "kind_container": "contenedor",
+    "container_engine": "Motor",
+    "container_name": "Contenedor",
+    "container_placeholder": "laravel.test",
+    "container_command": "Comando dentro"
   },
   "editor": {
     "ai": "IA",
@@ -110,7 +115,12 @@
     "logs_newer": "Más reciente",
     "logs_read_of": "se han leído los últimos {read} KB de {size} KB",
     "logs_read_of_before": "{read} KB leídos, {back} KB antes del final de {size} KB",
-    "logs_reading": "Leyendo los archivos de registro…"
+    "logs_reading": "Leyendo los archivos de registro…",
+    "stop": "Detener",
+    "stop_title": "Detener la ejecución en curso",
+    "sandbox": "Sandbox",
+    "dry_run_sandbox": "Activar el sandbox: la ejecución se revierte, y el correo, los trabajos, las llamadas HTTP, las escrituras de archivos, la caché y el registro se registran en lugar de ocurrir",
+    "dry_run_sandbox_off": "Desactivar el sandbox: la ejecución se conserva"
   },
   "preference": {
     "preferences": "Preferencias",
@@ -274,7 +284,10 @@
     "unguarded": "{count, plural, one {# sentencia} other {# sentencias}} en {connection} se ejecutaron fuera de la prueba",
     "unguardable_title": "La prueba no puede deshacer esto",
     "unguardable_content": "La conexión {connection} está marcada como producción, y una prueba no puede deshacer lo que hace esta ejecución:",
-    "unguardable_run": "Ejecutar de todos modos"
+    "unguardable_run": "Ejecutar de todos modos",
+    "sandbox_report": "En el sandbox: {summary}",
+    "sandbox_nothing": "En el sandbox: la ejecución no envió nada, no escribió nada y no registró nada",
+    "sandbox_not": "Fuera del sandbox: {reason}"
   },
   "mutation": {
     "title": "Esta ejecución modifica la base de datos",

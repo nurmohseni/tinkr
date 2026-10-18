@@ -83,7 +83,9 @@ const ConnectionSwitcher = () => {
               {intl.formatMessage({
                 id: item.tag === 'production'
                   ? 'connections.kind_production'
-                  : (item.is_over_ssh ? 'connections.kind_ssh' : 'connections.kind_local'),
+                  : (item.is_over_ssh
+                    ? 'connections.kind_ssh'
+                    : (item.container_engine ? 'connections.kind_container' : 'connections.kind_local')),
               })}
             </span>
           </button>

@@ -30,7 +30,12 @@
     "tag_development": "Entwicklung",
     "tag_staging": "Staging",
     "tag_production": "Produktion",
-    "kind_production": "Produktion"
+    "kind_production": "Produktion",
+    "kind_container": "Container",
+    "container_engine": "Engine",
+    "container_name": "Container",
+    "container_placeholder": "laravel.test",
+    "container_command": "Befehl darin"
   },
   "editor": {
     "ai": "KI",
@@ -110,7 +115,12 @@
     "logs_newer": "Neuer",
     "logs_read_of": "die letzten {read} KB von {size} KB gelesen",
     "logs_read_of_before": "{read} KB gelesen, {back} KB vor dem Ende von {size} KB",
-    "logs_reading": "Logdateien werden gelesen …"
+    "logs_reading": "Logdateien werden gelesen …",
+    "stop": "Stoppen",
+    "stop_title": "Den laufenden Lauf stoppen",
+    "sandbox": "Sandbox",
+    "dry_run_sandbox": "Sandbox einschalten: der Lauf wird zurückgenommen, und E-Mails, Jobs, HTTP-Aufrufe, Schreibvorgänge, Cache und Log werden aufgezeichnet statt ausgeführt",
+    "dry_run_sandbox_off": "Sandbox ausschalten: der Lauf wird übernommen"
   },
   "preference": {
     "preferences": "Einstellungen",
@@ -274,7 +284,10 @@
     "unguarded": "{count, plural, one {# Anweisung} other {# Anweisungen}} auf {connection} lief außerhalb des Probelaufs",
     "unguardable_title": "Der Probelauf kann das nicht zurücknehmen",
     "unguardable_content": "Die Verbindung {connection} ist als Produktion markiert, und ein Probelauf kann nicht rückgängig machen, was dieser Lauf tut:",
-    "unguardable_run": "Trotzdem ausführen"
+    "unguardable_run": "Trotzdem ausführen",
+    "sandbox_report": "In der Sandbox: {summary}",
+    "sandbox_nothing": "In der Sandbox: der Lauf hat nichts gesendet, nichts geschrieben und nichts protokolliert",
+    "sandbox_not": "Nicht in der Sandbox: {reason}"
   },
   "mutation": {
     "title": "Dieser Lauf verändert die Datenbank",

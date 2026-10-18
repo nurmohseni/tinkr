@@ -20,6 +20,49 @@
  * @return {Object|null}  `{id, values, tone, unguarded: [{connection, count}],
  *                        unguardedId, keep}`, or null for an unguarded run
  */
+/**
+ * What the sandbox caught, as one sentence and the lines under it.
+ *
+ * A sandboxed dry run is the case this exists for: the transaction says nothing
+ * is kept, and this says nothing was sent, pushed or written either. What a run
+ * caught is a count per channel with the first few named, so the sentence stays
+ * one line and the pane can list the rest.
+ *
+ * A channel that could not be swapped is the report's own warning: a dry run that
+ * only looked sealed is worse than one that says it was not.
+ *
+ * @param {Object} sandbox  the envelope's `sandbox`
+ * @return {Object|null}  `{id, values, tone, sent, requested, notSandboxed}`
+ */
+export const sandboxReport = sandbox => {
+  if (!sandbox) {
+    return null
+  }
+
+  const channels = sandbox.channels || {}
+  const sent = Array.isArray(sandbox.sent) ? sandbox.sent : []
+  const requested = Array.isArray(sandbox.requested) ? sandbox.requested : []
+  const notSandboxed = Array.isArray(sandbox.not_sandboxed) ? sandbox.not_sandboxed : []
+  const counted = Object.entries(channels)
+    .filter(([, count]) => Number(count) > 0)
+    .map(([name, count]) => ({name, count}))
+
+  const summary = counted.length
+    ? counted.map(({name, count}) => `${count} ${name}`).join(', ')
+    : ''
+
+  return {
+    id: counted.length ? 'guard.sandbox_report' : 'guard.sandbox_nothing',
+    values: {summary},
+    // a run that could not seal a channel is a warning, and one that sealed
+    // everything is the quiet success the dry run reports
+    tone: notSandboxed.length ? 'error' : 'ok',
+    sent,
+    requested,
+    notSandboxed,
+  }
+}
+
 export const guardReport = (transaction, {error = null, queries = null, queriesTotal = 0} = {}) => {
   if (!transaction) {
     return null

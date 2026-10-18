@@ -30,7 +30,12 @@
     "tag_development": "开发",
     "tag_staging": "预发布",
     "tag_production": "生产",
-    "kind_production": "生产环境"
+    "kind_production": "生产环境",
+    "kind_container": "容器",
+    "container_engine": "引擎",
+    "container_name": "容器",
+    "container_placeholder": "laravel.test",
+    "container_command": "容器内命令"
   },
   "editor": {
     "ai": "AI",
@@ -110,7 +115,12 @@
     "logs_newer": "更新",
     "logs_read_of": "已读取最后 {read} KB，共 {size} KB",
     "logs_read_of_before": "读取 {read} KB，距文件末尾 {size} KB 中的 {back} KB",
-    "logs_reading": "正在读取日志文件……"
+    "logs_reading": "正在读取日志文件……",
+    "stop": "停止",
+    "stop_title": "停止正在运行的执行",
+    "sandbox": "沙箱",
+    "dry_run_sandbox": "开启沙箱：执行会回滚，邮件、任务、HTTP 请求、文件写入、缓存和日志会被记录而不是真正发生",
+    "dry_run_sandbox_off": "关闭沙箱：执行会被保留"
   },
   "preference": {
     "preferences": "偏好设置",
@@ -274,7 +284,10 @@
     "unguarded": "{connection} 上有 {count} 条语句在演练之外执行",
     "unguardable_title": "演练无法撤回此操作",
     "unguardable_content": "连接 {connection} 被标记为生产环境，演练无法撤回本次运行的更改：",
-    "unguardable_run": "仍然运行"
+    "unguardable_run": "仍然运行",
+    "sandbox_report": "沙箱内：{summary}",
+    "sandbox_nothing": "沙箱内：执行没有发送、写入或记录任何内容",
+    "sandbox_not": "沙箱外：{reason}"
   },
   "mutation": {
     "title": "这次运行会修改数据库",

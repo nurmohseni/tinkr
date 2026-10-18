@@ -1,6 +1,6 @@
 import {atom} from 'jotai'
 
-import {runConnection, getConnection, reconnectConnection} from '../utils/api'
+import {runConnection, stopConnection, getConnection, reconnectConnection} from '../utils/api'
 import {mutationScan, unguardableScan} from '../utils/mutationScan'
 
 const connectionAtom = atom(getConnection())
@@ -23,6 +23,19 @@ const runCodeAtom = atom('')
 // is a switch the user keeps set, and it is read when the run is sent rather
 // than stored with it, so turning it on changes the next run and not the last.
 const dryRunAtom = atom(false)
+
+// what a dry run does with the world outside the database. A dry run takes the
+// transaction back, and a sandboxed one also swaps the mailer, the queues, the
+// http client, the disks, the cache and the log for recorders — so a run that
+// "changed nothing" cannot have sent an email or called an API either. It is a
+// separate switch because it changes what the code sees while it runs, and a
+// run that inspects the mailer is not the run that would happen
+const sandboxAtom = atom(true)
+
+// whether a run is going: set when one is sent and cleared when its answer
+// arrives, or when it is stopped. The Run button reads it to become the stop
+// the run needs, and a run that is going is the only one a stop can end
+const runningAtom = atom(false)
 
 // the run the pre-flight scan is holding back, with what the scan found in it:
 // the code, the guard the run was being sent under, and the calls that write.
@@ -61,13 +74,15 @@ const mutationGateAtom = atom(null)
  * 执行代码
  */
 const runAtom = atom(null, (get, set, code, options) => {
+  // what the run is guarded with: a dry run is a rollback, and a sandboxed dry
+  // run is the same transaction with the side-effect drivers swapped
   const guard = options && options.guard !== undefined
     ? options.guard
-    : (get(dryRunAtom) ? 'rollback' : null)
+    : (get(dryRunAtom) ? (get(sandboxAtom) ? 'sandbox' : 'rollback') : null)
 
   const connection = get(connectionAtom) || {}
   const asked = !(options && options.confirmed) && connection.tag === 'production'
-  const unguardable = asked && guard === 'rollback'
+  const unguardable = asked && (guard === 'rollback' || guard === 'sandbox')
   let writes = []
 
   if (unguardable) {
@@ -90,6 +105,7 @@ const runAtom = atom(null, (get, set, code, options) => {
   set(outputAtom, '')
   set(resultAtom, null)
   set(runCodeAtom, code)
+  set(runningAtom, true)
 
   // the code is sent as it is: the main process base64 encodes it before the
   // session evals it, so newlines need no escaping, and rewriting them broke
@@ -122,6 +138,31 @@ const confirmMutationsAtom = atom(null, (get, set) => {
 // question, since the run it was about is the run that did not happen
 const dismissMutationsAtom = atom(null, (get, set) => {
   set(mutationGateAtom, null)
+})
+
+/**
+ * Stop the run that is going.
+ *
+ * The stop ends the session the run is in, which is what reaches the php doing
+ * the work — a run is a session of its own, and the next run boots its own, so
+ * a stopped run costs nothing but the answer it will not give. What is in the
+ * pane stays as it was: the run did not answer, and pretending it did would be
+ * worse than an empty pane.
+ */
+const stopRunAtom = atom(null, (get, set) => {
+  if (!get(runningAtom)) {
+    return
+  }
+
+  set(runningAtom, false)
+  stopConnection()
+})
+
+/**
+ * The run's answer arrived, by whatever path: nothing is going any more.
+ */
+const settledRunAtom = atom(null, (get, set) => {
+  set(runningAtom, false)
 })
 
 // 重新连接
@@ -158,6 +199,10 @@ export {
   applyCodeAtom,
   runCodeAtom,
   dryRunAtom,
+  sandboxAtom,
+  runningAtom,
+  stopRunAtom,
+  settledRunAtom,
   mutationGateAtom,
   runAtom,
   confirmMutationsAtom,
