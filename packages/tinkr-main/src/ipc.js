@@ -32,7 +32,8 @@ const {checkForUpdates, downloadUpdate, installUpdate} = require('./updater')
 const {info: mcpInfo, configureClient} = require('./services/mcp')
 const {filesFor, attachmentsFor} = require('./services/project')
 const {files: logFiles, read: readLog} = require('./services/logs')
-const {getEditorConnection} = require('./processes')
+const {getEditorConnection, getEditorConnectionId} = require('./processes')
+const {createLogsWindow} = require('./createLogsWindow')
 
 ipcMain.on('selectDirectory', (event, defaultPath) => {
   event.returnValue = selectDirectory(defaultPath)
@@ -182,6 +183,22 @@ ipcMain.on('quickConnect', async event => {
 
 ipcMain.on('openPreference', () => {
   createPreferenceWindow()
+})
+
+/**
+ * Open the log viewer for the connection of the window that asked.
+ *
+ * The window that asks is an editor window: the logs window itself has no logs
+ * button, so a press can only come from there. Its connection is read off the
+ * window rather than sent with the message, because a window that has switched
+ * connection is a fact about the window and not about the message.
+ */
+ipcMain.on('openLogs', event => {
+  const connection = getEditorConnection(getEditorConnectionId(windowOf(event)))
+
+  if (connection) {
+    createLogsWindow(connection)
+  }
 })
 
 ipcMain.on('mcpInfo', event => {
