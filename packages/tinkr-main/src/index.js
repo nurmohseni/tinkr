@@ -18,7 +18,18 @@ debug({
   isEnabled: is.development,
   devToolsMode: 'undocked',
 })
-contextMenu()
+// The app draws its own right-click menus — connection rows, tabs, snippets,
+// result rows, the code editor — so electron's generic one is not what should
+// open on every other pixel. It offered "Select All" and "Inspect Element" over
+// panes that have neither, and on windows and linux the menu bar is gone too,
+// so it was the last piece of default chrome.
+//
+// What is kept is the one case it earns: a text field, where cut, copy and paste
+// are what a right-click is for. Outside an editable field the menu is not shown
+// at all; the app's own handlers call preventDefault and draw theirs.
+contextMenu({
+  shouldShowMenu: (event, props) => Boolean(props.isEditable),
+})
 
 if (!is.development) {
   setInterval(checkForUpdates, 1000 * 60 * 60 * 4)
