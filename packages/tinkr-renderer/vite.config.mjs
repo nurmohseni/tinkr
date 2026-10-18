@@ -26,6 +26,7 @@ export default defineConfig({
       input: {
         editor: resolve(import.meta.dirname, 'editor.html'),
         preference: resolve(import.meta.dirname, 'preference.html'),
+        logs: resolve(import.meta.dirname, 'logs.html'),
       },
     },
   },

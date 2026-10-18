@@ -17,6 +17,7 @@ export const connectConnection = api.connectConnection
 export const reconnectConnection = api.reconnectConnection
 export const quickConnect = api.quickConnect
 export const openPreference = api.openPreference
+export const openLogs = api.openLogs
 export const logFiles = api.logFiles
 export const logRead = api.logRead
 export const mcpInfo = api.mcpInfo

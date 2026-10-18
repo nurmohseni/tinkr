@@ -4,7 +4,6 @@ import {useIntl} from 'react-intl'
 import ConnectionSwitcher from './ConnectionSwitcher'
 import SnippetList from './SnippetList'
 import HistoryList from './HistoryList'
-import LogFileList from './LogFileList'
 import appVersion from '../../utils/appVersion'
 
 const isMac = () => /Mac/i.test(navigator.platform || navigator.userAgent)
@@ -84,7 +83,6 @@ const Sidebar = () => {
 
         <HistoryList/>
 
-        <LogFileList/>
       </div>
 
       <div className='sidebar__section' style={{paddingBottom: 'var(--s2)'}}>

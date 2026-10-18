@@ -4,6 +4,7 @@ import {useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 
 import SettingButton from './editor/SettingButton'
+import LogsButton from './editor/LogsButton'
 import appVersion from '../utils/appVersion'
 import {
   windowStateAtom,
@@ -26,7 +27,7 @@ import {
  * is worse than either. Elsewhere they are the app's own, because that is where
  * they can be styled like everything else.
  */
-const Titlebar = ({children, settings = true}) => {
+const Titlebar = ({children, settings = true, logs = true}) => {
   const intl = useIntl()
   const {controls, maximized} = useAtomValue(windowStateAtom)
   const follow = useSetAtom(followWindowStateAtom)
@@ -66,7 +67,9 @@ const Titlebar = ({children, settings = true}) => {
 
       <div className='titlebar__side titlebar__side--end'>
         {/* the settings window wears this titlebar too, and a settings button in
-            it would open settings from settings */}
+            it would open settings from settings. The logs button is the same:
+            the logs window is not a place to open the log viewer from */}
+        {logs && <LogsButton/>}
         {settings && <SettingButton/>}
 
         {controls && (
@@ -125,6 +128,8 @@ Titlebar.propTypes = {
   children: PropTypes.node,
   // whether the row offers settings: the settings window does not
   settings: PropTypes.bool,
+  // whether the row offers the log viewer: the logs window does not
+  logs: PropTypes.bool,
 }
 
 export default Titlebar
