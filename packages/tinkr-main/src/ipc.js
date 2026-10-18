@@ -221,8 +221,8 @@ ipcMain.handle('parsePhpForm', async (event, connectionId, code) => {
   return await parsePhpForm(connectionId, code)
 })
 
-ipcMain.handle('stringifyPhpForm', async (event, fields) => {
-  return await stringifyPhpForm(fields)
+ipcMain.handle('stringifyPhpForm', async (event, fields, code) => {
+  return await stringifyPhpForm(fields, code)
 })
 
 ipcMain.handle('phpCompletions', async (event, connectionId, request) => {

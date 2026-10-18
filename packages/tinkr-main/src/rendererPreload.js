@@ -12,6 +12,21 @@ ipcRenderer.on('setConnection', (event, id) => {
 
 const connectionId = () => currentConnectionId
 
+// what electron puts in front of the message of an error a handler threw, which
+// is about the plumbing and not about what went wrong
+const remotePrefix = /^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/
+
+/**
+ * Ask the main process, and fail with its own words when it fails.
+ *
+ * @param {String} channel
+ * @param {...any} args
+ * @return {Promise<any>}
+ */
+const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args).catch(error => {
+  throw new Error(String((error && error.message) || error).replace(remotePrefix, ''))
+})
+
 contextBridge.exposeInMainWorld('api', {
   selectDirectory: defaultPath => ipcRenderer.sendSync('selectDirectory', defaultPath),
   selectFile: defaultPath => ipcRenderer.sendSync('selectFile', defaultPath),
@@ -49,24 +64,24 @@ contextBridge.exposeInMainWorld('api', {
   reconnectConnection: connection => ipcRenderer.send('reconnectConnection', connection),
   quickConnect: () => ipcRenderer.send('quickConnect'),
   openPreference: () => ipcRenderer.send('openPreference'),
-  logFiles: () => ipcRenderer.invoke('logFiles', connectionId()),
-  logRead: (name, options) => ipcRenderer.invoke('logRead', connectionId(), name, options),
+  logFiles: () => invoke('logFiles', connectionId()),
+  logRead: (name, options) => invoke('logRead', connectionId(), name, options),
   mcpInfo: () => ipcRenderer.sendSync('mcpInfo'),
-  configureMcp: id => ipcRenderer.invoke('configureMcp', id),
+  configureMcp: id => invoke('configureMcp', id),
   popupConnectionContextMenu: id => ipcRenderer.send('popupConnectionContextMenu', id),
   inputConnection: code => ipcRenderer.send('inputConnection', connectionId(), code),
   runConnection: (code, guard) => ipcRenderer.send('runConnection', connectionId(), code, guard),
   closeConnection: () => ipcRenderer.send('closeConnection', connectionId()),
 
   aiProviders: () => ipcRenderer.sendSync('aiProviders'),
-  aiComplete: code => ipcRenderer.invoke('aiComplete', code),
-  aiAsk: request => ipcRenderer.invoke('aiAsk', connectionId(), request),
-  aiFiles: typed => ipcRenderer.invoke('aiFiles', connectionId(), typed),
-  aiCheck: () => ipcRenderer.invoke('aiCheck'),
+  aiComplete: code => invoke('aiComplete', code),
+  aiAsk: request => invoke('aiAsk', connectionId(), request),
+  aiFiles: typed => invoke('aiFiles', connectionId(), typed),
+  aiCheck: () => invoke('aiCheck'),
 
-  parsePhpForm: code => ipcRenderer.invoke('parsePhpForm', connectionId(), code),
-  stringifyPhpForm: fields => ipcRenderer.invoke('stringifyPhpForm', fields),
-  phpCompletions: request => ipcRenderer.invoke('phpCompletions', connectionId(), request),
+  parsePhpForm: code => invoke('parsePhpForm', connectionId(), code),
+  stringifyPhpForm: (fields, code) => invoke('stringifyPhpForm', fields, code),
+  phpCompletions: request => invoke('phpCompletions', connectionId(), request),
 
   onSetIntlConfig: cb => {
     const listener = (event, arg) => cb(arg)
@@ -97,6 +112,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('runOutput', listener)
     return {
       dispose: () => ipcRenderer.off('runOutput', listener),
+    }
+  },
+
+  onSessionState: cb => {
+    const listener = (event, arg) => cb(arg)
+    ipcRenderer.on('sessionState', listener)
+    return {
+      dispose: () => ipcRenderer.off('sessionState', listener),
     }
   },
 

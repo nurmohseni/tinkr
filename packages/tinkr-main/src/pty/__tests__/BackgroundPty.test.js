@@ -4,7 +4,7 @@ jest.mock('crypto', () => ({
 jest.mock('node-pty', () => ({}))
 jest.mock('default-shell', () => '/bin/bash')
 jest.mock('os-locale', () => ({sync: () => 'en-US'}))
-jest.mock('electron', () => ({app: {getLocale: () => 'en'}}))
+jest.mock('electron', () => ({app: {getLocale: () => 'en', getPath: () => '/tmp'}}))
 jest.mock('electron-store', () => class Store {})
 
 const {BackgroundPty} = require('../BackgroundPty')
