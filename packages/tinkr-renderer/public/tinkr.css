@@ -800,7 +800,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .titlebar button, .titlebar input, .titlebar .brand { -webkit-app-region: no-drag; }
 .titlebar__side { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .titlebar__side--end { justify-content: flex-end; }
-.titlebar__controls { display: flex; align-items: center; gap: 2px; }
+/* the controls sit at the window's own edge: the strip's trailing padding is
+   what puts them there, and the gap before them keeps the settings affordance
+   from looking like a fourth control */
+.titlebar__controls { display: flex; align-items: center; gap: 2px; margin-left: var(--s2); }
 .titlebar__center {
   display: flex; align-items: center; justify-content: center;
   gap: 6px; min-width: 0; font-size: var(--fs-sm); color: var(--text-muted);
@@ -817,8 +820,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-size: var(--fs-lg); font-weight: var(--fw-strong);
   letter-spacing: -0.01em; color: var(--text);
 }
-/* the platform supplies the frame, so the design's control row only appears
-   when a caller draws one */
+/* the window is frameless on windows and linux, so these are the window's own
+   controls: the same row the platform would draw, in the app's own colours.
+   macOS keeps its traffic lights and draws none of this */
 .winctl {
   width: 40px; height: var(--titlebar-h);
   display: inline-flex; align-items: center; justify-content: center;

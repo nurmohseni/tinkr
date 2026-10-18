@@ -323,5 +323,11 @@
     "restart": "Neu starten und installieren",
     "failed_title": "Der Download ist nicht durchgelaufen",
     "failed_content": "{message}"
+  },
+  "window": {
+    "minimize": "Minimieren",
+    "maximize": "Maximieren",
+    "restore": "Wiederherstellen",
+    "close": "Schließen"
   }
 }

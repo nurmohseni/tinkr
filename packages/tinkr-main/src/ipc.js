@@ -1,4 +1,4 @@
-const {ipcMain} = require('electron')
+const {app, BrowserWindow, ipcMain} = require('electron')
 
 const {selectDirectory, selectFile} = require('./utils/selectFileOrDirectory')
 const {saveFile} = require('./utils/saveFile')
@@ -24,6 +24,7 @@ const {setLocale, getLocale, allConfig, setConfig} = require('./services/config'
 const {createSnippet, allSnippets, updateSnippet, deleteSnippet} = require('./services/snippets')
 const {allHistory, clearHistory} = require('./services/history')
 const {parsePhpForm, stringifyPhpForm} = require('./services/php')
+const {drawsControls} = require('./utils/frame')
 const {phpCompletions} = require('./completion')
 const {complete, ask, check} = require('./services/ai')
 const {providers} = require('./aiProviders')
@@ -116,6 +117,55 @@ ipcMain.on('runConnection', (event, id, code, guard) => {
 
 ipcMain.on('closeConnection', async (event, id) => {
   await closeConnection(id)
+})
+
+/**
+ * The window controls of a frameless window.
+ *
+ * The frame is the app's own on Windows and Linux (see utils/frame), so
+ * minimize, maximize and close are asked for from the page: the window a
+ * message came from is the one it acts on, which is what makes the same
+ * controls work in the editor and the settings window without either saying
+ * which it is.
+ */
+const windowOf = event => BrowserWindow.fromWebContents(event.sender)
+
+ipcMain.on('windowControl', (event, control) => {
+  const win = windowOf(event)
+
+  if (!win) {
+    return
+  }
+
+  if (control === 'minimize') {
+    win.minimize()
+  } else if (control === 'maximize') {
+    // a window that is maximized restores, which is what the one button does
+    win.isMaximized() ? win.unmaximize() : win.maximize()
+  } else if (control === 'close') {
+    win.close()
+  }
+})
+
+// the titlebar draws the maximize button differently while the window is
+// maximized, so it is told when that changes and what the state already is when
+// it asks
+const tellWindowState = win => {
+  if (win && win.webContents && !win.webContents.isDestroyed()) {
+    win.webContents.send('windowState', {maximized: win.isMaximized()})
+  }
+}
+
+ipcMain.handle('windowState', event => ({
+  maximized: Boolean(windowOf(event) && windowOf(event).isMaximized()),
+  controls: drawsControls(),
+}))
+
+// every window of the app gets the listener, once each
+app.on('browser-window-created', (event, win) => {
+  for (const name of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) {
+    win.on(name, () => tellWindowState(win))
+  }
 })
 
 ipcMain.on('quickConnect', async event => {
