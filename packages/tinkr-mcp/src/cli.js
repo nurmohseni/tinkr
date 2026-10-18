@@ -26,6 +26,9 @@ Options:
                           the app looks for them
   --timeout <ms>          how long a run may take before it is given up on
                           (default: 60000)
+  --allow-production      run code on connections tagged production. Without it
+                          a production connection is refused unless this server
+                          was started on that one connection
   -h, --help              this
   -v, --version           the version
 `
@@ -66,6 +69,12 @@ const parseArguments = argv => {
       }
 
       options.timeout = value
+
+      continue
+    }
+
+    if (argument === '--allow-production') {
+      options.allowProduction = true
 
       continue
     }
@@ -127,6 +136,12 @@ const main = () => {
     target: resolved,
     version,
     timeout: options.timeout || 60000,
+    allowProduction: Boolean(options.allowProduction),
+    // a server started on one connection by name is pinned to it: that is the
+    // choice someone made for this server, and it is what lets a production
+    // connection through without the flag
+    pinned: Boolean(options.connection),
+    command: options.command || null,
   })
 
   // the client's stderr is the log: what the server is running in is the first
