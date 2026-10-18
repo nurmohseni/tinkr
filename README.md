@@ -74,7 +74,7 @@ You need `php` on the machine (or server) where your project lives. That's it.
 | **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
 | **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. |
 | **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. |
-| **Log viewer** | Your app's logs (`storage/logs` or anywhere), filtered by level and term, with stack traces, followed live. |
+| **Log viewer** | Your app's logs (`storage/logs` or anywhere), filtered by level and term, with stack traces, followed live. A filter narrows by any of monolog's eight levels and by a span of time — and the span is found in the file itself, so it reaches entries no loaded window holds. |
 
 ### Ask
 
