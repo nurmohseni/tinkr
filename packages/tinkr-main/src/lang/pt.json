@@ -30,7 +30,12 @@
     "tag_development": "desenvolvimento",
     "tag_staging": "homologação",
     "tag_production": "produção",
-    "kind_production": "produção"
+    "kind_production": "produção",
+    "kind_container": "contentor",
+    "container_engine": "Motor",
+    "container_name": "Contentor",
+    "container_placeholder": "laravel.test",
+    "container_command": "Comando dentro"
   },
   "editor": {
     "ai": "IA",
@@ -110,7 +115,12 @@
     "logs_newer": "Mais recente",
     "logs_read_of": "lidos os últimos {read} KB de {size} KB",
     "logs_read_of_before": "{read} KB lidos, {back} KB antes do fim de {size} KB",
-    "logs_reading": "Lendo os arquivos de log…"
+    "logs_reading": "Lendo os arquivos de log…",
+    "stop": "Parar",
+    "stop_title": "Parar a execução em curso",
+    "sandbox": "Sandbox",
+    "dry_run_sandbox": "Ativar o sandbox: a execução é revertida, e o correio, os trabalhos, os pedidos HTTP, as escritas de ficheiros, a cache e o registo são registados em vez de acontecerem",
+    "dry_run_sandbox_off": "Desativar o sandbox: a execução é mantida"
   },
   "preference": {
     "preferences": "Preferências",
@@ -274,7 +284,10 @@
     "unguarded": "{count, plural, one {# instrução} other {# instruções}} em {connection} correram fora do ensaio",
     "unguardable_title": "O ensaio não pode desfazer isto",
     "unguardable_content": "A ligação {connection} está marcada como produção, e um ensaio não pode desfazer o que esta execução faz:",
-    "unguardable_run": "Executar mesmo assim"
+    "unguardable_run": "Executar mesmo assim",
+    "sandbox_report": "No sandbox: {summary}",
+    "sandbox_nothing": "No sandbox: a execução não enviou nada, não escreveu nada e não registou nada",
+    "sandbox_not": "Fora do sandbox: {reason}"
   },
   "mutation": {
     "title": "Esta execução altera o banco de dados",

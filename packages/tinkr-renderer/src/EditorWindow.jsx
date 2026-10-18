@@ -19,7 +19,7 @@ import DeleteSnippetConfirm from './components/editor/DeleteSnippetConfirm'
 import ConnectionPage from './components/ConnectionPage'
 import DeleteConnectionConfirm from './components/connections/DeleteConnectionConfirm'
 import useSplit from './hooks/useSplit'
-import {sizesAtom, resultAtom, connectionAtom} from './stores/editor'
+import {sizesAtom, resultAtom, connectionAtom, settledRunAtom} from './stores/editor'
 import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
 import {switchConnectionAtom} from './stores/connections'
@@ -67,6 +67,7 @@ const EditorWindow = () => {
   const setUpdateDownloaded = useSetAtom(updateDownloadedAtom)
   const setUpdateFailed = useSetAtom(updateFailedAtom)
   const setPhpVersion = useSetAtom(phpVersionAnsweredAtom)
+  const setSettled = useSetAtom(settledRunAtom)
   const updates = {
     updateAvailable: setUpdateAvailable,
     updateNotAvailable: setUpdateNotAvailable,
@@ -78,7 +79,12 @@ const EditorWindow = () => {
   const side = config.editor_layout !== 'stacked'
 
   useEffect(() => {
-    const onResult = onRunResult(setResult)
+    // the answer is the end of the run, whichever way it came: the stop it may
+    // have been given is done with
+    const onResult = onRunResult(result => {
+      setResult(result)
+      setSettled()
+    })
     const onHistory = onHistoryConnection(setHistory)
     // the main process switched this window's connection, and the documents it
     // was on went with the old one: the window moves to the session it now has

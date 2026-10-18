@@ -30,7 +30,12 @@
     "tag_development": "development",
     "tag_staging": "staging",
     "tag_production": "production",
-    "kind_production": "production"
+    "kind_production": "production",
+    "kind_container": "container",
+    "container_engine": "Engine",
+    "container_name": "Container",
+    "container_placeholder": "laravel.test",
+    "container_command": "Command inside it"
   },
   "editor": {
     "ai": "AI",
@@ -110,7 +115,12 @@
     "logs_newer": "Newer",
     "logs_read_of": "read the last {read} KB of {size} KB",
     "logs_read_of_before": "read {read} KB ending {back} KB before the end of {size} KB",
-    "logs_reading": "Reading the log files…"
+    "logs_reading": "Reading the log files…",
+    "stop": "Stop",
+    "stop_title": "Stop the run that is going",
+    "sandbox": "Sandbox",
+    "dry_run_sandbox": "Turn on the sandbox: the run is rolled back, and mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening",
+    "dry_run_sandbox_off": "Turn off the sandbox: the run is kept"
   },
   "preference": {
     "preferences": "Preferences",
@@ -274,7 +284,10 @@
     "unguarded": "{count, plural, one {# statement} other {# statements}} on {connection} ran outside the dry run",
     "unguardable_title": "The dry run cannot take this back",
     "unguardable_content": "The connection {connection} is tagged production, and a dry run cannot undo what this run does:",
-    "unguardable_run": "Run anyway"
+    "unguardable_run": "Run anyway",
+    "sandbox_report": "Sandboxed: {summary}",
+    "sandbox_nothing": "Sandboxed: the run sent nothing, wrote nothing and logged nothing",
+    "sandbox_not": "Not sandboxed: {reason}"
   },
   "mutation": {
     "title": "This run changes the database",

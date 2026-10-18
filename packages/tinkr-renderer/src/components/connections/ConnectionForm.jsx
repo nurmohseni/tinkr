@@ -8,6 +8,8 @@ import ConnectButton from './ConnectButton'
 import ConnectionType from './ConnectionType'
 import SSHForm from './SSHForm'
 import BasicForm from './BasicForm'
+import ContainerForm from './ContainerForm'
+import {containerCommand} from '../../utils/containerCommand'
 
 /**
  * The connection as the design's dialog: the type row, the fields on one shared
@@ -35,10 +37,16 @@ const ConnectionForm = ({onSubmit, onClose}) => {
     [],
   )
 
-  // auto save connections
+  // auto save connections. A container's command is built from what it runs in,
+  // so what is saved is the connection with the command it would start with —
+  // which is also what a run reads
   useEffect(() => {
     if (data.id) {
-      debouncedSave(data)
+      const built = data.container_engine
+        ? containerCommand(data)
+        : data.command
+
+      debouncedSave(built === data.command ? data : Object.assign({}, data, {command: built}))
     }
   }, [data])
 
@@ -102,6 +110,7 @@ const ConnectionForm = ({onSubmit, onClose}) => {
           />
 
           <BasicForm/>
+          <ContainerForm/>
           <SSHForm/>
         </form>
       </div>

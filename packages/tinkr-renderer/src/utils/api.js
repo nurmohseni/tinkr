@@ -24,6 +24,7 @@ export const configureMcp = api.configureMcp
 export const popupConnectionContextMenu = api.popupConnectionContextMenu
 export const inputConnection = api.inputConnection
 export const runConnection = api.runConnection
+export const stopConnection = api.stopConnection
 export const closeConnection = api.closeConnection
 export const onSetIntlConfig = api.onSetIntlConfig
 export const onSetConfig = api.onSetConfig

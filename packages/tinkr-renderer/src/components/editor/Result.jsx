@@ -9,7 +9,7 @@ import ResultHtml from './ResultHtml'
 import ResultTable from './ResultTable'
 import ResultValue from './ResultValue'
 import {copy, copyText} from '../../utils/clipboard'
-import {guardReport} from '../../utils/guardReport'
+import {guardReport, sandboxReport} from '../../utils/guardReport'
 import {
   entriesOf,
   isComposite,
@@ -483,23 +483,41 @@ Imported.propTypes = {
  * read and there is no transaction left to close. The button's title says the
  * code runs a second time.
  */
-const Guard = ({transaction, run, onKeep = () => {}}) => {
+const Guard = ({transaction, sandbox, run, onKeep = () => {}}) => {
   const intl = useIntl()
   const report = guardReport(transaction, run)
+  const sealed = sandboxReport(sandbox)
 
-  if (!report) {
+  if (!report && !sealed) {
     return null
   }
 
+  // the sandbox is what the transaction could not say: what the run would have
+  // done to the world outside the database
+  const tone = (sealed && sealed.tone === 'error') || (report && report.tone === 'error') ? 'error' : 'ok'
+
   return (
-    <div className={`result-summary result-summary--wrap guard guard--${report.tone}`} role={report.tone === 'error' ? 'alert' : undefined}>
-      <span className='guard__note'>{intl.formatMessage({id: report.id}, report.values)}</span>
-      {report.unguarded.map(({connection, count}) => (
+    <div className={`result-summary result-summary--wrap guard guard--${tone}`} role={tone === 'error' ? 'alert' : undefined}>
+      {report && <span className='guard__note'>{intl.formatMessage({id: report.id}, report.values)}</span>}
+      {sealed && (
+        <span className='guard__note'>
+          {intl.formatMessage({id: sealed.id}, sealed.values)}
+        </span>
+      )}
+      {sealed && [...sealed.sent, ...sealed.requested].map(line => (
+        <span key={line} className='guard__note guard__unguarded mono'>{line}</span>
+      ))}
+      {sealed && sealed.notSandboxed.map(reason => (
+        <span key={reason} className='guard__note guard__unguarded'>
+          {intl.formatMessage({id: 'guard.sandbox_not'}, {reason})}
+        </span>
+      ))}
+      {report && report.unguarded.map(({connection, count}) => (
         <span key={connection} className='guard__note guard__unguarded'>
           {intl.formatMessage({id: report.unguardedId}, {count, connection})}
         </span>
       ))}
-      {report.keep && (
+      {report && report.keep && (
         <button
           className='btn btn--ghost btn--sm'
           type='button'
@@ -516,6 +534,12 @@ const Guard = ({transaction, run, onKeep = () => {}}) => {
 Guard.propTypes = {
   onKeep: PropTypes.func,
   run: PropTypes.object,
+  sandbox: PropTypes.shape({
+    channels: PropTypes.object,
+    sent: PropTypes.array,
+    requested: PropTypes.array,
+    not_sandboxed: PropTypes.array,
+  }),
   transaction: PropTypes.shape({
     mode: PropTypes.string,
     armed: PropTypes.bool,
@@ -529,7 +553,7 @@ Guard.propTypes = {
 
 const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {}, allStatements = false}) => {
   const intl = useIntl()
-  const {value, error, output, imported, blocks, transaction} = result
+  const {value, error, output, imported, blocks, transaction, sandbox} = result
 
   // a run of several statements, read statement by statement: the value of the
   // run is the last one's, so this is what "every statement" means
@@ -538,7 +562,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
 
     return (
       <>
-        <Guard transaction={transaction} run={result} onKeep={onKeep}/>
+        <Guard transaction={transaction} sandbox={sandbox} run={result} onKeep={onKeep}/>
 
         <Imported imported={imported}/>
 
@@ -569,7 +593,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
 
   return (
     <>
-      <Guard transaction={transaction} run={result} onKeep={onKeep}/>
+      <Guard transaction={transaction} sandbox={sandbox} run={result} onKeep={onKeep}/>
 
       <Imported imported={imported}/>
 

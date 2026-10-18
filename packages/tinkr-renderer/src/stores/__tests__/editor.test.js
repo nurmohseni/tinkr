@@ -1,6 +1,6 @@
 import {createStore} from 'jotai'
 
-import {confirmMutationsAtom, connectionAtom, dismissMutationsAtom, dryRunAtom, mutationGateAtom, runAtom, runCodeAtom} from '../editor'
+import {confirmMutationsAtom, connectionAtom, dismissMutationsAtom, dryRunAtom, mutationGateAtom, runAtom, runCodeAtom, sandboxAtom, runningAtom, stopRunAtom, settledRunAtom} from '../editor'
 
 // what the run was handed to the app as
 const sent = () => window.api.runConnection.mock.calls
@@ -21,8 +21,18 @@ describe('the run a snippet is sent as', () => {
     expect(sent()).toEqual([['$order = Order::first();', null]])
   })
 
-  test('is sent inside a transaction the dry run switch takes back', () => {
+  test('is sent inside a sandboxed transaction the dry run switch takes back', () => {
     store.set(dryRunAtom, true)
+    store.set(runAtom, '$order->update([\'paid\' => true]);')
+
+    // the dry run is the sandbox by default: a transaction holds the database
+    // and nothing else, and a run that is taken back must not have mailed anyone
+    expect(sent()).toEqual([['$order->update([\'paid\' => true]);', 'sandbox']])
+  })
+
+  test('is sent as a plain transaction when the sandbox is switched off', () => {
+    store.set(dryRunAtom, true)
+    store.set(sandboxAtom, false)
     store.set(runAtom, '$order->update([\'paid\' => true]);')
 
     expect(sent()).toEqual([['$order->update([\'paid\' => true]);', 'rollback']])
@@ -130,7 +140,7 @@ describe('the question a run that writes is asked', () => {
     store.set(runAtom, '$order->delete();')
 
     expect(store.get(mutationGateAtom)).toBe(null)
-    expect(sent()).toEqual([['$order->delete();', 'rollback']])
+    expect(sent()).toEqual([['$order->delete();', 'sandbox']])
   })
 
   test('asks about a dry run that holds what its transaction cannot take back', () => {
@@ -142,7 +152,7 @@ describe('the question a run that writes is asked', () => {
 
     expect(store.get(mutationGateAtom)).toEqual({
       code,
-      guard: 'rollback',
+      guard: 'sandbox',
       writes: [{line: 2, call: 'create table', reason: 'ddl'}],
       unguardable: true,
     })
@@ -151,7 +161,7 @@ describe('the question a run that writes is asked', () => {
     // answered, it goes as the dry run it was, without being asked again
     store.set(confirmMutationsAtom)
 
-    expect(sent()).toEqual([[code, 'rollback']])
+    expect(sent()).toEqual([[code, 'sandbox']])
   })
 
   test('asks about a dry run that writes to another connection', () => {
@@ -168,6 +178,52 @@ describe('the question a run that writes is asked', () => {
     store.set(runAtom, 'DB::commit();')
 
     expect(store.get(mutationGateAtom)).toBe(null)
-    expect(sent()).toEqual([['DB::commit();', 'rollback']])
+    expect(sent()).toEqual([['DB::commit();', 'sandbox']])
+  })
+})
+
+describe('a run that is going', () => {
+  let store
+
+  beforeEach(() => {
+    store = createStore()
+    window.api.runConnection.mockClear()
+    window.api.stopConnection.mockClear()
+  })
+
+  test('is going until it answers, and the stop is what ends it otherwise', () => {
+    expect(store.get(runningAtom)).toBe(false)
+
+    store.set(runAtom, 'sleep(60);')
+    expect(store.get(runningAtom)).toBe(true)
+
+    store.set(stopRunAtom)
+    expect(store.get(runningAtom)).toBe(false)
+    // the session is what the stop ends, because the php is inside it
+    expect(window.api.stopConnection).toHaveBeenCalledTimes(1)
+  })
+
+  test('is done with when its answer arrives', () => {
+    store.set(runAtom, 'return 1;')
+    store.set(settledRunAtom)
+
+    expect(store.get(runningAtom)).toBe(false)
+  })
+
+  test('a run that was stopped is not stopped again', () => {
+    store.set(runAtom, '1;')
+    store.set(stopRunAtom)
+    store.set(stopRunAtom)
+
+    expect(window.api.stopConnection).toHaveBeenCalledTimes(1)
+  })
+
+  test('a run held by the production gate is not going yet', () => {
+    store.set(connectionAtom, {name: 'orders', tag: 'production'})
+    store.set(runAtom, "DB::table('t')->insert(['a' => 1]);")
+
+    // the question is on screen and nothing was sent, so there is nothing to stop
+    expect(store.get(runningAtom)).toBe(false)
+    expect(window.api.runConnection).not.toHaveBeenCalled()
   })
 })

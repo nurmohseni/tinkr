@@ -3,3 +3,8 @@
 // has no app behind it, so it gets a bridge that answers nothing and remembers
 // every call, which is what a test of what a run is sent as reads
 window.api = new Proxy({}, {get: (target, key) => (target[key] ??= jest.fn())})
+
+// the bridge is a proxy, and a proxy's own keys are not there until they are
+// asked for: a module that imports a name and calls it later gets the one the
+// proxy made, so the names a test asserts on are made here, once
+window.api.stopConnection = jest.fn()

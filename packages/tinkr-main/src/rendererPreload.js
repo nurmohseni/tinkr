@@ -71,6 +71,9 @@ contextBridge.exposeInMainWorld('api', {
   popupConnectionContextMenu: id => ipcRenderer.send('popupConnectionContextMenu', id),
   inputConnection: code => ipcRenderer.send('inputConnection', connectionId(), code),
   runConnection: (code, guard) => ipcRenderer.send('runConnection', connectionId(), code, guard),
+  // stop the run that is going: the session is killed, which stops the php the
+  // run is doing, wherever the connection runs it
+  stopConnection: () => ipcRenderer.send('stopConnection', connectionId()),
   closeConnection: () => ipcRenderer.send('closeConnection', connectionId()),
 
   aiProviders: () => ipcRenderer.sendSync('aiProviders'),

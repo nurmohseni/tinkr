@@ -6,8 +6,8 @@ import PropTypes from 'prop-types'
  * the `.form-grid` grid that ConnectionForm draws; the connection form is the
  * only place it is used.
  */
-const Field = ({label, htmlFor, children}) => (
-  <div className='form-row'>
+const Field = ({label, htmlFor, hidden, children}) => (
+  <div className='form-row' hidden={hidden || undefined}>
     <label
       className='form-row__label'
       htmlFor={htmlFor}
@@ -24,6 +24,9 @@ const Field = ({label, htmlFor, children}) => (
 Field.propTypes = {
   label: PropTypes.node.isRequired,
   htmlFor: PropTypes.string.isRequired,
+  // a row that belongs to another kind of connection, and is not shown for this
+  // one: the control stays in the form, so its value travels with the save
+  hidden: PropTypes.bool,
   children: PropTypes.node.isRequired,
 }
 
