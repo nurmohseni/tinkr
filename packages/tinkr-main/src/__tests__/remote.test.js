@@ -67,9 +67,14 @@ describe('running a command on the machine a connection runs on', () => {
       path: '/var/www/html',
     }, 'php -v')
 
+    // each argument is one word of its own, and `--` is what stops a target that
+    // looks like an option from being read as one
     expect(spawn).toHaveBeenCalledWith('ssh', [
-      '-p2000',
-      '-i/usr/local/id.pem',
+      '-p',
+      '2000',
+      '-i',
+      '/usr/local/id.pem',
+      '--',
       'root@192.168.1.1',
       "cd '/var/www/html' && php -v",
     ])
@@ -80,7 +85,7 @@ describe('running a command on the machine a connection runs on', () => {
 
     await exec({is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}, 'php -v')
 
-    expect(spawn).toHaveBeenCalledWith('ssh', ['root@192.168.1.1', 'php -v'])
+    expect(spawn).toHaveBeenCalledWith('ssh', ['--', 'root@192.168.1.1', 'php -v'])
   })
 
   test('says what a command exited with rather than failing on it', async () => {
