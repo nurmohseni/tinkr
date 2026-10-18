@@ -150,6 +150,7 @@ describe('what the settings screen is told', () => {
     // the settings screen lists what the server offers, and the server is what
     // says what that is
     expect(info.tools).toEqual([
+      'tinkr_documentation',
       'tinkr_run_php',
       'tinkr_run_php_over_ssh',
       'tinkr_list_history',

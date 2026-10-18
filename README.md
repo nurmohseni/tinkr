@@ -61,7 +61,7 @@ You need `php` on the machine (or server) where your project lives. That's it.
 
 | | |
 | --- | --- |
-| **Connections** | Local projects, or any server over SSH. Tag one as production and Tinkr asks before it writes. A project inside a container works through the connection's own command (`docker exec app php artisan tinker`). |
+| **Connections** | Local projects, Docker/Podman/Sail/Kubernetes containers, or any server over SSH. Tag one as production and Tinkr asks before it writes. |
 | **Editor** | Monaco, with class names and `::` method suggestions read straight from your project, local or remote. |
 | **Snippet forms** | Turn a snippet's variables into a form and run it like a tiny admin panel. |
 | **Snippets & history** | Save the code you reuse. Every run is kept across restarts; one click puts it back in the editor. |
@@ -72,7 +72,8 @@ You need `php` on the machine (or server) where your project lives. That's it.
 | --- | --- |
 | **Readings** | The returned value as a tree, a table, a graph, or rendered markup, next to the raw output. Copy any table or save it as CSV. |
 | **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
-| **Dry run** | Run inside a transaction you can keep or take back. |
+| **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. |
+| **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. |
 | **Log viewer** | Your app's logs (`storage/logs` or anywhere), filtered by level and term, with stack traces, followed live. |
 
 ### Ask
@@ -120,6 +121,7 @@ The directory the client starts it in is the project code runs in. No API token,
 
 | Tool | What it does |
 | --- | --- |
+| `tinkr_documentation` | How Tinkr works and how to use these tools: the guards, connections, every tool, how to read an answer |
 | `tinkr_run_php` | Run PHP in a local project: what every statement returned, and what the code printed |
 | `tinkr_run_php_over_ssh` | The same, on a server, through one of Tinkr's SSH connections |
 | `tinkr_list_history` | The runs the app kept for a connection: the code, when it ran, how it ended |
@@ -130,7 +132,14 @@ The directory the client starts it in is the project code runs in. No API token,
 
 History is the app's own: the last fifty runs of a connection. A client's own runs are not written to it, because the app owns that file while it runs.
 
-`tinkr_run_php` and `tinkr_run_php_over_ssh` take an optional `guard: "rollback"`, which runs the code inside a transaction that is taken back at the end and reports what that transaction did — the safe way for an agent to look at production without changing it.
+`tinkr_run_php` and `tinkr_run_php_over_ssh` take an optional `guard`:
+
+- **`rollback`** runs the code inside a transaction that is taken back at the end, and reports what that transaction did — the safe way for an agent to look at production without changing it.
+- **`sandbox`** is the same transaction with the side-effect drivers swapped for recorders first: mail goes to the array transport, jobs and the bus to their fakes, the HTTP client answers only what it was given, every disk is faked, the cache is an array store and logging records instead of writing. A write that was rolled back cannot still have sent an email. The answer carries what was caught — a count per channel with the first mail and requests named.
+
+A transaction holds the database and nothing else, so `sandbox` is the guard to name when the code might send, queue, call or write something.
+
+**`tinkr_documentation`** is the same for a model: it answers with what the app is, what each guard holds and when to use which, what a connection is and what the production tag changes, every tool, and how to read the envelope. A model that reads it before running anything needs no prior knowledge of Tinkr.
 
 A connection tagged **production** is refused unless the server was started on that connection (`--connection`) or with `--allow-production`. A run there is a write nobody is watching.
 
