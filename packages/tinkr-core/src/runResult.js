@@ -400,8 +400,10 @@ const printer = (keys, close = '') => {
      */
     shutdown: 'register_shutdown_function(function()use(&$tinkr_sent,&$tinkr_results,&$tinkr_value,&$tinkr_error,' +
       '&$tinkr_queries,&$tinkr_query_total,&$tinkr_imported,&$tinkr_transaction,&$tinkr_safe,$tinkr' +
-      (close ? ',&$tinkr_db,&$tinkr_tx,&$tinkr_tx_armed,&$tinkr_tx_error,&$tinkr_tx_mode,&$tinkr_tx_level,' +
-        '&$tinkr_query_connections' : '') + '){' +
+      (close
+        ? ',&$tinkr_db,&$tinkr_tx,&$tinkr_tx_armed,&$tinkr_tx_error,&$tinkr_tx_mode,&$tinkr_tx_level,' +
+        '&$tinkr_query_connections'
+        : '') + '){' +
       `if($tinkr_sent){return;}${ended}$tinkr_value=null;` +
       (close ? 'if($tinkr_tx_armed&&!isset($tinkr_transaction)){' + close + '}' : '') +
       `${echo}});`,
