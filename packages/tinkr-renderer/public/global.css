@@ -84,6 +84,79 @@ button.tree-nav__row {
     color: var(--text);
 }
 
+/* The log viewer's rail: the connection's files, as the picker of the window.
+   It is the settings rail's own width and padding — .sidebar.rail above — and
+   what it adds is the rows, because a list of files is not a list of sections. */
+/* wider than the settings rail, and named as specifically as .sidebar.rail is:
+   a log's name carries a date, and the date is the part that tells one file
+   from another, so `laravel-2026-10-09` fits whole rather than truncating to
+   `laravel-2026-…` */
+.sidebar.rail.logs-rail {
+    width: 232px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.logs-rail__head {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    flex: none;
+    height: var(--tree-row-h);
+    margin-bottom: var(--s1);
+    padding: 0 var(--s2) 0 var(--s1);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.logs-rail__head svg {
+    flex: none;
+    color: var(--text-faint);
+}
+
+/* the files are the list that scrolls: a connection can keep a year of them */
+.logs-rail__row {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    width: 100%;
+    height: var(--tree-row-h);
+    padding: 0 var(--s2);
+    border: 0;
+    border-radius: var(--r-key);
+    background: transparent;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.logs-rail__row:hover {
+    background: var(--hover);
+    color: var(--text);
+}
+
+.logs-rail__row--active {
+    background: var(--selected);
+    color: var(--text);
+}
+
+.logs-rail__row .sidebar__meta {
+    margin-left: auto;
+}
+
+/* where the files were looked for, under the list rather than over it */
+.logs-rail__foot {
+    margin-top: auto;
+    padding: var(--s2) var(--s2) 0 var(--s1);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--text-faint);
+}
+
 /* the content column: the desk, one scrolling column of section groups.
    The desk itself does not scroll: it is the frame the lip belongs to, and the
    column inside it is what scrolls. A ring drawn on a scrolling box is laid out
