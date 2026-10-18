@@ -1150,6 +1150,14 @@ details:not([open]) > summary .tree__caret::before {
 /* a strip scrolled sideways draws no bar of its own: the row is one line tall,
    and the reading switch scrolls itself into view when the pane is narrow */
 .result-summary::-webkit-scrollbar { height: 0; }
+/* in a pane too narrow for one line, a head wraps instead of running out of it:
+   the actions stay reachable at the right rather than being the part that is
+   pushed past the pane's edge. The body is what the query measures */
+.output__body { container-type: inline-size; }
+@container (max-width: 560px) {
+  .result-summary--head { flex-wrap: wrap; white-space: normal; row-gap: var(--s1); padding-block: var(--s1); }
+  .result-summary--head > .result-summary__actions { position: static; margin-left: auto; margin-right: 0; }
+}
 /* the outcome word is one of the few display roles: it is what the run did */
 .result-summary .outcome__word { font-family: var(--font-display); font-size: 14px; font-weight: var(--fw-medium); color: var(--text); }
 

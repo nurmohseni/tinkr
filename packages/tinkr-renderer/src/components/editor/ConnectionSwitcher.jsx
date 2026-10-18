@@ -76,9 +76,16 @@ const ConnectionSwitcher = () => {
           >
             <span className={isCurrent ? 'dot dot--live dot--ring' : 'dot'}/>
             <span className='truncate'>{item.name}</span>
-            <span className='sidebar__meta'>
-            {intl.formatMessage({id: item.is_over_ssh ? 'connections.kind_ssh' : 'connections.kind_local'})}
-          </span>
+            {/* a connection tagged production says so where it is picked: the
+                kind (local or ssh) is already on the row's icon, and a run on
+                production is the one thing a reader has to know before typing */}
+            <span className={item.tag === 'production' ? 'sidebar__meta sidebar__meta--production' : 'sidebar__meta'}>
+              {intl.formatMessage({
+                id: item.tag === 'production'
+                  ? 'connections.kind_production'
+                  : (item.is_over_ssh ? 'connections.kind_ssh' : 'connections.kind_local'),
+              })}
+            </span>
           </button>
         )
       })}

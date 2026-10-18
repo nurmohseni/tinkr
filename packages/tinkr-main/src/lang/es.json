@@ -29,7 +29,8 @@
     "tag_testing": "pruebas",
     "tag_development": "desarrollo",
     "tag_staging": "preproducción",
-    "tag_production": "producción"
+    "tag_production": "producción",
+    "kind_production": "producción"
   },
   "editor": {
     "ai": "IA",

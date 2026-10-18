@@ -204,7 +204,9 @@ const LogsPanel = () => {
           >
             <span className='faint'><FormattedMessage id='editor.logs_follow'/></span>
             {/* the settings rows' switch, so it reads as on or off the same way
-                and its knob is placed against its own track */}
+                and its knob is placed against its own track. The row is the
+                switch's own row, so the knob sits beside its label and the
+                interval select after it is never under it */}
             <span className='switch'>
               <input
                 type='checkbox'
