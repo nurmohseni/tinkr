@@ -902,6 +902,9 @@ const createServer = ({
     appName: 'Tinkr',
     appVersion: version,
     log,
+    // where the app's data is, which is where a connection's saved password is:
+    // an agent runs the same connection the window does, and logs in the same way
+    dataDir: resolved.dataDir,
   })
 
   /**

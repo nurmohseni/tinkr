@@ -18,17 +18,26 @@ import {activeSessionIdAtom, newSession, sessionsAtom} from './sessions'
 import {snippetDataAtom} from './snippets'
 import {openTabsAtom} from './tabs'
 import {emptyLogs, logsAtom} from './logs'
+import withoutPassword from '../utils/withoutPassword'
 
 const connectionDataAtom = atomWithImmer(allConnections())
 
 const connectionListAtom = atom(get => Object.values(get(connectionDataAtom)))
 
 const createConnectionAtom = atom(null, (get, set, connection) => {
+  // the password the form was holding is the main process's to keep, and the
+  // window keeps the connection without it (see withoutPassword). The main
+  // process is given the form as it is, because the password is only ever in the
+  // form: a connection created with one would otherwise be written without it
+  const stored = withoutPassword(connection)
+
   set(connectionDataAtom, data => {
-    data[connection.id] = connection
+    data[stored.id] = Object.assign({}, stored, {
+      ssh_password: typeof connection.password === 'string' && connection.password !== '',
+    })
   })
 
-  createConnection(get(connectionDataAtom)[connection.id])
+  createConnection(connection)
 })
 
 /**
@@ -74,6 +83,8 @@ const connectConnectionAtom = atom(null, (get, set, connection) => {
     set(createConnectionAtom, connection)
   }
 
+  // the main process is given the password: a draft that is connected is written
+  // there with it, so the first session logs in the way the form says
   connectConnection(connection)
 })
 
@@ -92,8 +103,20 @@ const updateConnectionAtom = atom(null, (get, set, connection) => {
     return
   }
 
+  const stored = withoutPassword(connection)
+
+  // what the window holds is the connection without the password; what it hands
+  // the main process is what the form holds, so a password typed into the field
+  // is kept and an untouched field changes nothing. A password typed here is one
+  // the next session will have, so the window says one is kept — the main
+  // process is the one that decides, and this is what the form shows until it
+  // answers
+  const typed = typeof connection.password === 'string' && connection.password !== ''
+
   set(connectionDataAtom, data => {
-    data[connection.id] = connection
+    data[stored.id] = Object.assign({}, data[stored.id], stored, {
+      ssh_password: typed || Boolean(stored.ssh_password),
+    })
   })
 
   updateConnection(connection)

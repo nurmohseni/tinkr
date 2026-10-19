@@ -3,10 +3,12 @@ import {useFormContext} from 'react-hook-form'
 
 import Field from '../Field'
 import SSHKeyButton from './SSHKeyButton'
+import SSHPasswordField from './SSHPasswordField'
 
 /**
  * The fields the tunnel needs, shown only when the connection runs over SSH:
- * host, port, user and the key the app authenticates with.
+ * host, port, user, the key the app authenticates with, and a password for a
+ * server that takes one.
  */
 const SSHForm = () => {
   const intl = useIntl()
@@ -77,6 +79,10 @@ const SSHForm = () => {
       >
         <SSHKeyButton/>
       </Field>
+
+      {/* a connection with a key needs no password, and one with neither is
+          reached the way ssh already reaches it: the terminal asks */}
+      <SSHPasswordField/>
     </>
   )
 }

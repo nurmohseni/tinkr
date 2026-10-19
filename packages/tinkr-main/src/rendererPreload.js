@@ -60,6 +60,11 @@ contextBridge.exposeInMainWorld('api', {
   deleteConnection: id => ipcRenderer.send('deleteConnection', id),
   allConnections: () => ipcRenderer.sendSync('allConnections'),
   updateConnection: connection => ipcRenderer.send('updateConnection', connection),
+  forgetPassword: id => ipcRenderer.send('forgetPassword', id),
+  // what an engine is running, and where the projects inside it are: a container
+  // named per deploy cannot be typed, and neither can its path
+  listContainers: connection => ipcRenderer.invoke('listContainers', connection),
+  listProjectDirs: connection => ipcRenderer.invoke('listProjectDirs', connection),
   connectConnection: connection => ipcRenderer.send('connectConnection', connection),
   reconnectConnection: connection => ipcRenderer.send('reconnectConnection', connection),
   quickConnect: () => ipcRenderer.send('quickConnect'),

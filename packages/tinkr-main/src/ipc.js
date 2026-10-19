@@ -11,6 +11,7 @@ const {
   deleteConnection,
   createConnection,
   updateConnection,
+  forgetPassword,
   allConnections,
   getConnection,
   inputConnection,
@@ -21,6 +22,7 @@ const {
   reconnectConnection,
 } = require('./services/connections')
 const {setLocale, getLocale, allConfig, setConfig} = require('./services/config')
+const {containers, projectDirs} = require('./services/discovery')
 const {createSnippet, allSnippets, updateSnippet, deleteSnippet} = require('./services/snippets')
 const {allHistory, clearHistory} = require('./services/history')
 const {parsePhpForm, stringifyPhpForm} = require('./services/php')
@@ -95,8 +97,43 @@ ipcMain.on('updateConnection', (event, connection) => {
   updateConnection(connection)
 })
 
+/**
+ * Forget the password a connection logs in with.
+ *
+ * The window never holds the password, so it cannot remove one by clearing a
+ * field the way it would clear a name: this call is the removal. What the window
+ * keeps is the flag, and the renderer clears that itself — a rerun of the
+ * connection is what makes the next session log in without it.
+ */
+ipcMain.on('forgetPassword', (event, id) => {
+  forgetPassword(id)
+})
+
+/**
+ * What an engine is running on the machine this connection reaches.
+ *
+ * The form offers these instead of asking for a name: a container created by a
+ * compose file or a PaaS is named per deploy, so a typed name is stale after the
+ * next one. A machine that cannot answer is a form with nothing to offer, not a
+ * failure — what was typed by hand is still what the connection uses.
+ */
+ipcMain.handle('listContainers', async (event, connection) => containers(connection))
+
+/**
+ * The directories inside a container that look like a php project.
+ *
+ * A deployed project is somewhere under the container's own files, and its path
+ * is the one thing a form cannot know: this is what it can be picked from.
+ */
+ipcMain.handle('listProjectDirs', async (event, connection) => projectDirs(connection))
+
 ipcMain.on('connectConnection', async (event, connection) => {
+  // the password the form was holding is written here, and what the session
+  // boots from is the stored connection rather than the form: connectConnection
+  // reads it back, so the first session of a new connection logs in with the
+  // password it was given
   updateConnection(connection)
+
   await connectConnection(connection)
 })
 
