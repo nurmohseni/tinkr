@@ -105,7 +105,12 @@ const stripRendering = value => backspaces(value.replace(osc, '').replace(ansi, 
  * matched closely: `psy/psysh` on a ` // ` comment carrying a line number and
  * the eval it came from.
  */
-const psyshNote = / \/\/ [^\n]*psy\/psysh[^\n]*\(\d+\)[^\n]*eval\(\)'d code[^\n]*/g
+// the shape is psysh's, and it varies with the version: `ExecutionLoopClosure.php(55)`,
+// `ExecutionClosure.php(41)`, and a wrapper of its own on top
+// (`...code(184) : eval()'d code:1`). What every one of them says is `psy/psysh`,
+// a line number in brackets, and the eval it came from, so that is what is
+// matched rather than one version's exact spelling
+const psyshNote = / \/\/ [^\n]*psy\/psysh[^\n]*\(\d+\)[^\n]*(?:: eval\(\)'d code|eval\(\)'d code)[^\n]*/g
 
 /**
  * What a run printed, without what the session added around it.

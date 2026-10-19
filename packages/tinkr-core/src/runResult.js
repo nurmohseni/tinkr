@@ -603,6 +603,14 @@ class RunResultFilter {
     this.capturedLength = 0
     // what the run printed, once the session stopped booting, up to the envelope
     this.printed = ''
+    // what arrived after the session stopped booting and before the run's own
+    // start marker: `dd()` and `exit()` dump to the terminal on their own and
+    // abort before the wrapper's marker is flushed, so a run that leaves that
+    // way has its dump here and nowhere else
+    this.early = ''
+    // whether the echo of the wrapped command has been seen, which is where the
+    // session stops booting
+    this.asked = false
     this.started = false
     // whether the marker's own line ending has been dropped from the run yet
     this.trimmed = false
@@ -658,6 +666,17 @@ class RunResultFilter {
   }
 
   /**
+   * What the run wrote of itself, wherever it was written: the wrapper's own
+   * echo goes through the marker, and `dd()`/`exit()` write straight to the
+   * terminal before it.
+   *
+   * @return {String}
+   */
+  printedText() {
+    return `${this.early}${this.printed}`
+  }
+
+  /**
    * @param {String} data
    * @return {{output: String, run: String, result: Object|null}} `output` is
    * what is left of the chunk for the terminal, `run` is the run's own stream
@@ -694,10 +713,24 @@ class RunResultFilter {
       // the session echoes the wrapped command back (the shell once, and its
       // readline again); that echo is the point the session stops booting and
       // the snippet starts printing
+      const echo = output.lastIndexOf(ECHO)
+
+      if (echo !== -1) {
+        this.asked = true
+      }
+
       const run = this.runOf(output)
 
       if (this.started && !this.done) {
         this.printed += run
+      } else if (this.asked && !this.started && !this.done) {
+        // after the echo and before the marker: what the run wrote without going
+        // through the wrapper. `dd()` and `exit()` do exactly that — they dump
+        // and abort, so the wrapper's marker is never flushed and this is the
+        // only place their output exists
+        this.early += echo === -1
+          ? output
+          : output.slice(output.indexOf('\n', echo) === -1 ? output.length : output.indexOf('\n', echo) + 1)
       }
 
       // the terminal keeps the session as it is, minus the readline echoing the

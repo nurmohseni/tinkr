@@ -46,6 +46,33 @@ describe('the run result filter', () => {
     expect(filter.printed).toBe('array:1 [\n  0 => "a"\n]\n')
   })
 
+  // the bug this waits against: `dd()` dumps to the terminal on its own and
+  // aborts before the wrapper's marker is flushed, so the dump lands before the
+  // marker and the filter threw it away — a run that printed its value and then
+  // stopped showed nothing at all
+  test('keeps what a run printed before its own marker, as dd() does', () => {
+    const filter = new RunResultFilter(marker, start)
+
+    // the session is up and the wrapped command has been echoed
+    filter.push('Psy Shell v0.12.24\n> ')
+    filter.push("$tinkr='TINK'.'RTEST';$tinkr_code=base64_decode('YWJj');\r\n")
+
+    // psysh dumps, and aborts before the marker is written
+    filter.push('"DUMPED" // vendor/psy/psysh/src/ExecutionLoopClosure.php(55) : eval()\'d code:2\r\n')
+    filter.push(`${start}TINKRTEST@${Buffer.from(JSON.stringify({value: null, error: {class: 'Exit', message: 'stopped'}})).toString('base64')}@`)
+
+    expect(filter.printedText()).toContain('"DUMPED"')
+  })
+
+  test('does not call the session booting a run printed', () => {
+    const filter = new RunResultFilter(marker, start)
+
+    // psysh's banner is after no echo of its own: it is the session, not the run
+    filter.push('Psy Shell v0.12.24 (PHP 8.5.11 — cli) by Justin Hileman\n')
+
+    expect(filter.printedText()).toBe('')
+  })
+
   test('keeps the session booting out of the run, however the chunks fall', () => {
     const filter = new RunResultFilter(marker, start)
 

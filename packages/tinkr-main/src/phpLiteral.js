@@ -117,7 +117,19 @@ const writeFields = (code, fields) => {
       continue
     }
 
-    const start = source.indexOf('=', at) + 1
+    const equals = source.indexOf('=', at)
+    // the gap after the `=` is the writer's own: a value is written with one
+    // space before it, and whatever the snippet had there — a tab, a run of
+    // spaces, a non-breaking space an editor inserted — is not kept, because it
+    // belongs to the assignment the form is rewriting and not to the value
+    let gapEnd = equals + 1
+
+    while (gapEnd < source.length && /\s/.test(source[gapEnd])) {
+      gapEnd++
+    }
+
+    const start = gapEnd
+
     const end = endOfValue(source, start)
 
     if (end === -1) {
@@ -129,7 +141,9 @@ const writeFields = (code, fields) => {
     // typed into is the text they typed
     const type = field.type || field.literal
 
-    source = `${source.slice(0, start)} ${phpLiteral(field.value, type)}${source.slice(end)}`
+    // the space the value is written with comes from here, and the whitespace
+    // that was there has already been skipped, so one is what it gets
+    source = `${source.slice(0, equals + 1)} ${phpLiteral(field.value, type)}${source.slice(end)}`
   }
 
   return source

@@ -479,7 +479,7 @@ class Session {
  * @param {RunResultFilter} filter
  * @return {String}
  */
-const runOutput = filter => stripSessionNotes(filter.printed).replace(/\r\n/g, '\n').trim()
+const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\n/g, '\n').trim()
 
 /**
  * Run a snippet in the connection's own session, and answer with what it
