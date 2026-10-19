@@ -32,7 +32,8 @@ const RunButton = () => {
   const [, params] = useRoute('/snippets/:id/:mode')
   const [isFormMode] = useRoute('/snippets/:id/form')
   const session = useAtomValue(activeSessionAtom)
-  const document = useAtomValue(documentAtomWithId(params?.id || session?.id))
+  const documentId = params?.id || session?.id
+  const document = useAtomValue(documentAtomWithId(documentId))
   const config = useAtomValue(configAtom)
   const run = useSetAtom(runAtom)
   const running = useAtomValue(runningAtom)
@@ -62,7 +63,7 @@ const RunButton = () => {
   const isDisabled = !running && code.trim() === ''
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(value => run(value), 500), [])
+  const runDebounced = useCallback(debounce(value => run(value, {document: documentId}), 500), [documentId])
 
   const label = intl.formatMessage({id: running ? 'editor.stop' : 'editor.run'})
 

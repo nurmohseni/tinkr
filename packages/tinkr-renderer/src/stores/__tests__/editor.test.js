@@ -1,6 +1,6 @@
 import {createStore} from 'jotai'
 
-import {confirmMutationsAtom, connectionAtom, dismissMutationsAtom, dryRunAtom, mutationGateAtom, runAtom, runCodeAtom, sandboxAtom, runningAtom, stopRunAtom, settledRunAtom} from '../editor'
+import {confirmMutationsAtom, connectionAtom, dismissMutationsAtom, dryRunAtom, mutationGateAtom, runAtom, currentRunCodeAtom as runCodeAtom, sandboxAtom, runningAtom, stopRunAtom, settledRunAtom, activeDocumentAtom, runsAtom, setAnswer, inFlightAtom, inFlightDocumentAtom, currentResultAtom, appendOutputAtom} from '../editor'
 
 // what the run was handed to the app as
 const sent = () => window.api.runConnection.mock.calls
@@ -10,6 +10,8 @@ describe('the run a snippet is sent as', () => {
 
   beforeEach(() => {
     store = createStore()
+    // the window is on a document: a run belongs to the tab that sent it
+    store.set(activeDocumentAtom, 'doc')
     window.api.runConnection.mockClear()
   })
 
@@ -70,6 +72,8 @@ describe('the question a run that writes is asked', () => {
 
   beforeEach(() => {
     store = createStore()
+    // the window is on a document: a run belongs to the tab that sent it
+    store.set(activeDocumentAtom, 'doc')
     window.api.runConnection.mockClear()
   })
 
@@ -187,6 +191,7 @@ describe('a run that is going', () => {
 
   beforeEach(() => {
     store = createStore()
+    store.set(activeDocumentAtom, 'doc')
     window.api.runConnection.mockClear()
     window.api.stopConnection.mockClear()
   })
@@ -225,5 +230,104 @@ describe('a run that is going', () => {
     // the question is on screen and nothing was sent, so there is nothing to stop
     expect(store.get(runningAtom)).toBe(false)
     expect(window.api.runConnection).not.toHaveBeenCalled()
+  })
+})
+
+describe('two tabs and their runs', () => {
+  let store
+
+  beforeEach(() => {
+    store = createStore()
+    window.api.runConnection.mockClear()
+    window.api.stopConnection.mockClear()
+  })
+
+  const record = id => store.get(runsAtom)[id]
+  // the answer the pane would read for a document, which is the record's result
+  const resultOf = id => record(id).result
+
+  // the bug this waits against: a run in one tab wrote the window's one result,
+  // so a run in another tab wiped the first tab's answer — the pane showed one
+  // document's result to every tab
+  test('a run in one tab does not touch the answer of another', () => {
+    store.set(activeDocumentAtom, 'one')
+    store.set(runAtom, 'first();', {document: 'one'})
+    store.set(setAnswer, {
+      document: 'one',
+      value: {value: 1, error: null, output: '', blocks: [{line: 1, value: 1, error: null}]},
+    })
+
+    store.set(activeDocumentAtom, 'two')
+    store.set(runAtom, 'second();', {document: 'two'})
+    store.set(setAnswer, {
+      document: 'two',
+      value: {value: 2, error: null, output: '', blocks: [{line: 1, value: 2, error: null}]},
+    })
+
+    // each tab kept its own answer
+    expect(resultOf('one').value).toBe(1)
+    expect(resultOf('two').value).toBe(2)
+
+    // and the pane reads the document it is on
+    expect(store.get(currentResultAtom).value).toBe(2)
+
+    store.set(activeDocumentAtom, 'one')
+    expect(store.get(currentResultAtom).value).toBe(1)
+  })
+
+  test('the code a tab ran is the code its own dot compares to', () => {
+    store.set(runAtom, 'first();', {document: 'one'})
+    store.set(runAtom, 'second();', {document: 'two'})
+
+    expect(record('one').code).toBe('first();')
+    expect(record('two').code).toBe('second();')
+  })
+
+  test('an answer that lands while another tab is open is put under the tab that sent it', () => {
+    store.set(activeDocumentAtom, 'one')
+    store.set(runAtom, 'first();', {document: 'one'})
+
+    // the person moved to another tab while the run was going
+    store.set(activeDocumentAtom, 'two')
+
+    // the window reads the run that is going, not the document on screen
+    const sending = store.get(inFlightDocumentAtom)
+
+    expect(sending).toBe('one')
+
+    store.set(setAnswer, {document: sending, value: {value: 42, error: null, output: ''}})
+    store.set(inFlightAtom, null)
+
+    // the answer is the tab that sent it, and the tab being read has none
+    expect(resultOf('one').value).toBe(42)
+    expect(store.get(currentResultAtom)).toBe(null)
+  })
+
+  // a connection has one session, so a second run ends the first: the button is
+  // a stop wherever the person is
+  test('a run that is going is the window one, whichever tab it was sent from', () => {
+    store.set(runAtom, 'first();', {document: 'one'})
+    store.set(activeDocumentAtom, 'two')
+
+    expect(store.get(runningAtom)).toBe(true)
+
+    store.set(activeDocumentAtom, 'one')
+    store.set(stopRunAtom)
+
+    expect(window.api.stopConnection).toHaveBeenCalled()
+    expect(store.get(runningAtom)).toBe(false)
+  })
+
+  test('what a run printed is the printing tab output', () => {
+    store.set(activeDocumentAtom, 'one')
+    store.set(runAtom, 'echo "one";', {document: 'one'})
+    store.set(appendOutputAtom, 'one')
+
+    store.set(activeDocumentAtom, 'two')
+    store.set(runAtom, 'echo "two";', {document: 'two'})
+    store.set(appendOutputAtom, 'two')
+
+    expect(record('one').output).toBe('one')
+    expect(record('two').output).toBe('two')
   })
 })

@@ -4,7 +4,7 @@ import AiPanel from './AiPanel'
 import Output from './Output'
 import Queries from './Queries'
 import Terminal from './Terminal'
-import {outputTabIndexAtom, resultAtom} from '../../stores/editor'
+import {outputTabIndexAtom, currentResultAtom} from '../../stores/editor'
 
 // the view that is not shown is hidden where it keeps the size it is measured
 // at: a terminal that is fitted while its view is hidden has to fit the same box
@@ -25,7 +25,7 @@ const hidden = {visibility: 'hidden', position: 'absolute', zIndex: -999}
  */
 const OutputTabView = () => {
   const tabIndex = useAtomValue(outputTabIndexAtom)
-  const result = useAtomValue(resultAtom)
+  const result = useAtomValue(currentResultAtom)
 
   return (
     <div

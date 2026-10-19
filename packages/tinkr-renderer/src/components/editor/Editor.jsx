@@ -60,7 +60,7 @@ const Editor = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const writeCodeDebounced = useCallback(debounce(value => writeCode(value), 200), [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(code => run(code), 500), [])
+  const runDebounced = useCallback(debounce(code => run(code, {document: documentId}), 500), [documentId])
 
   // 重置编辑器的事件和代码
   const resetEditor = editor => {

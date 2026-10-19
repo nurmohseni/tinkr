@@ -39,6 +39,11 @@ describe('switching the window connection', () => {
       tabs: require('../tabs'),
       ai: require('../ai'),
       config: require('../config'),
+      // the modules the test reads after a switch are the ones it already
+      // required: a second require of a reset module is a second set of atoms,
+      // and a store written through one is not read through the other
+      snippets: require('../snippets'),
+      history: require('../history'),
     }
     store = createStore()
   })
@@ -47,7 +52,7 @@ describe('switching the window connection', () => {
     // a session with code, a run's result and a thread are all the old one's
     store.set(stores.sessions.addSessionAtom, stores.sessions.newSession({name: '18:30', code: 'old'}))
     store.set(stores.tabs.openTabAtom, 's1')
-    store.set(stores.editor.resultAtom, {value: 1, error: null})
+    store.set(stores.editor.runsAtom, {doc: {result: {value: 1, error: null}, output: '', code: 'old', gate: null}})
     store.set(stores.ai.aiThreadAtom, [{id: 1, prompt: 'about the other project'}])
 
     connection = second
@@ -57,17 +62,19 @@ describe('switching the window connection', () => {
     expect(Object.values(store.get(stores.connections.connectionDataAtom))).toEqual([first, second])
     expect(Object.keys(store.get(stores.connections.connectionDataAtom))).toEqual(['c1', 'c2'])
     // the snippets and the runs of the connection it is on now
-    expect(Object.values(store.get(require('../snippets').snippetDataAtom))).toEqual([
+    expect(Object.values(store.get(stores.snippets.snippetDataAtom))).toEqual([
       {id: 's2', name: 'Of Two', code: '2'},
     ])
-    expect(store.get(require('../history').historyListAtom)).toEqual([])
+    expect(store.get(stores.history.historyListAtom)).toEqual([])
   })
 
   test('and nothing of the old connection is still on screen', () => {
     store.set(stores.sessions.addSessionAtom, stores.sessions.newSession({name: '18:30', code: 'old'}))
     store.set(stores.tabs.openTabAtom, 's1')
-    store.set(stores.editor.resultAtom, {value: 1, error: null})
-    store.set(stores.editor.outputAtom, 'array:1 [\n  0 => "a"\n]')
+    // a run's answer and what it printed are one document's record
+    store.set(stores.editor.runsAtom, {
+      doc: {result: {value: 1, error: null}, output: 'array:1 [\n  0 => "a"\n]', code: 'old', gate: null},
+    })
     store.set(stores.ai.aiThreadAtom, [{id: 1, prompt: 'about the other project'}])
 
     connection = second
@@ -79,10 +86,11 @@ describe('switching the window connection', () => {
     expect(sessions).toHaveLength(1)
     expect(sessions[0].code).toBe('')
     expect(sessions[0].name).toBe('')
-    // no tabs of the connection it left, no result of its run, no thread of its code
+    // no tabs of the connection it left, no run of any of its tabs, no thread of
+    // its code, and nothing going any more
     expect(store.get(stores.tabs.openTabsAtom)).toEqual([])
-    expect(store.get(stores.editor.resultAtom)).toBe(null)
-    expect(store.get(stores.editor.outputAtom)).toBe('')
+    expect(store.get(stores.editor.runsAtom)).toEqual({})
+    expect(store.get(stores.editor.inFlightAtom)).toBe(null)
     expect(store.get(stores.ai.aiThreadAtom)).toEqual([])
   })
 

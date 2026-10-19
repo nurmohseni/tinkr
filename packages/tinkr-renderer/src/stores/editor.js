@@ -5,20 +5,163 @@ import {mutationScan, unguardableScan} from '../utils/mutationScan'
 
 const connectionAtom = atom(getConnection())
 const sizesAtom = atom([])
-const outputAtom = atom('')
+
+// which view of the output panel is on: the run's own output, the queries, the
+// terminal, the ai panel. It is the panel's, not a document's — the panel is one
+// pane and the view in it is a way of reading, so switching tabs keeps the view
+// the person chose
 const outputTabIndexAtom = atom(1)
-// what the result of the last run is read as: the tree of its value, or the text
-// that value is drawn from. The last choice is kept, and it is what the run
-// after it opens in.
+
+// what a run's value is read as: the tree, or the text it is drawn from. That is
+// a way of reading rather than a fact about a run, so it is the window's too, and
+// a run that lands is read the way the last one was
 const outputViewAtom = atom('organized')
-const resultAtom = atom(null)
+
 // the code the ai panel asked the editor to take. The editor is what holds the
 // model, so the panel cannot write into it: it asks, and the editor takes what
 // was asked of the document it is showing.
 const applyCodeAtom = atom(null)
-// the code the last run handed the session, which is what a tab's dot compares
-// the editor against
-const runCodeAtom = atom('')
+
+/**
+ * Every document's run, by the document it is of.
+ *
+ * A run belongs to the document that sent it, not to the window: a window with
+ * three tabs open is three snippets, and a run in each is three answers. Held
+ * here rather than as one window-wide value, a run that has answered stays with
+ * its tab while another tab is read and another run is sent — which is what a
+ * tab is for.
+ *
+ * A record is `{result, output, code, gate}`:
+ *
+ * - `result` is the envelope the main process answered with, or null;
+ * - `output` is what the run printed, as it printed it;
+ * - `code` is the code the run was sent with, which is what a tab's dot compares
+ *   the editor against;
+ * - `gate` is the pre-flight question a run that writes is waiting behind.
+ *
+ * What a record is not is whether a run is going: a connection has one session,
+ * so the window has one run at a time, and that is the window's to say (see
+ * `inFlightAtom`). A second run anywhere ends the first, which is the way it has
+ * always been, and a tab whose answer is landing is not distinguishable from one
+ * that is waiting — there is only ever one of either.
+ *
+ * A document that has run nothing has no record at all, and reads as the empty
+ * one.
+ */
+const runsAtom = atom({})
+
+/**
+ * The run that is going, if one is: the document it is of, and when it was sent.
+ *
+ * One at a time, because a run is a session of the connection and a connection
+ * has one — a second run kills the first. Held here rather than in a record so
+ * that a run sent from one tab is still the window's one run after the person
+ * has moved to another tab, and so that stopping it stops the one that is
+ * actually going.
+ */
+const inFlightAtom = atom(null)
+
+// the document whose run is on screen, which is the document the window is on.
+// It is a field rather than a hook so that the atoms below can read it: the
+// components that show a run do not have to say which document they are on
+const activeDocumentAtom = atom(null)
+
+/**
+ * The empty record, which is what a document that has run nothing reads as.
+ *
+ * Every field a record has is here, so a partial record is never a field that is
+ * missing: a document with no run is one with nothing to show, not one with an
+ * `undefined` in the pane.
+ */
+const emptyRun = {
+  result: null,
+  output: '',
+  code: '',
+  gate: null,
+}
+
+/**
+ * The record of a document's run, or the empty one a document that has run
+ * nothing reads as.
+ *
+ * @param {String|null} id
+ * @return {Atom}
+ */
+const runOfAtom = id => atom(get => get(runsAtom)[id] || emptyRun)
+
+/**
+ * A field of the record of the document on screen.
+ *
+ * The pane, the button and the status bar all read the document they are on, so
+ * this is what they read: one atom per field, derived from the record of the
+ * document the window is on.
+ *
+ * @param {String} field
+ * @return {Atom}
+ */
+const currentRunField = field => atom(get => {
+  const record = get(runsAtom)[get(activeDocumentAtom)]
+
+  return record ? record[field] : emptyRun[field]
+})
+
+const currentResultAtom = currentRunField('result')
+const currentOutputAtom = currentRunField('output')
+const currentRunCodeAtom = currentRunField('code')
+const mutationGateAtom = currentRunField('gate')
+
+// a run that is going, which is the window's: the button is a stop wherever the
+// person has moved to, because the second run they could start would end the
+// first one anyway
+const runningAtom = atom(get => get(inFlightAtom) !== null)
+const runStartedAtAtom = atom(get => get(inFlightAtom)?.startedAt ?? null)
+
+// the document the answer that is coming belongs to: the one that sent the run
+// that is going
+const inFlightDocumentAtom = atom(get => get(inFlightAtom)?.document ?? null)
+
+/**
+ * A change of one document's record, keeping the others'.
+ *
+ * A record is replaced whole rather than merged: each write here is what the
+ * run of that document is after it, and a merge would keep a `gate` that a run
+ * has already answered past. The empty one a document starts with is the shape
+ * every field reads as, so a partial record is never a document with no record.
+ *
+ * Each write is an atom of its own, so it can be written from a component and
+ * from another atom alike — a run is sent by the button, by the editor's
+ * shortcut and by the form, and the answers that follow it are written by the
+ * window.
+ *
+ * @param {Function} change
+ * @return {Atom} one that takes `{document, value}`
+ */
+const runWrite = change => atom(null, (get, set, {document, value}) => {
+  if (document === null || document === undefined) {
+    return
+  }
+
+  const current = get(runsAtom)[document] || emptyRun
+
+  set(runsAtom, Object.assign({}, get(runsAtom), {[document]: change(current, value)}))
+})
+
+// the run a document's record is, as it is being sent
+const setRun = runWrite((current, value) => Object.assign({}, emptyRun, value))
+
+// the question a run that writes is held behind
+const setGate = runWrite((current, value) => Object.assign({}, current, {gate: value}))
+
+// the answer to a run: what came back, and no question waiting behind it
+const setAnswer = runWrite((current, value) => Object.assign({}, current, {
+  result: value,
+  gate: null,
+}))
+
+// what the run printed, as it prints it
+const appendToOutput = runWrite((current, value) => Object.assign({}, current, {
+  output: `${current.output}${value}`,
+}))
 // whether a run is sent inside a transaction it takes back when it is done. It
 // is a switch the user keeps set, and it is read when the run is sent rather
 // than stored with it, so turning it on changes the next run and not the last.
@@ -31,23 +174,6 @@ const dryRunAtom = atom(false)
 // separate switch because it changes what the code sees while it runs, and a
 // run that inspects the mailer is not the run that would happen
 const sandboxAtom = atom(true)
-
-// whether a run is going: set when one is sent and cleared when its answer
-// arrives, or when it is stopped. The Run button reads it to become the stop
-// the run needs, and a run that is going is the only one a stop can end
-const runningAtom = atom(false)
-
-// when the run that is going was sent, in milliseconds since the epoch. The
-// pane's timer counts from it, so the wait a person sees is the wait the main
-// process is measuring as well
-const runStartedAtAtom = atom(null)
-
-// the run the pre-flight scan is holding back, with what the scan found in it:
-// the code, the guard the run was being sent under, and the calls that write.
-// `unguardable` is set when the run is a dry run and what was found is what its
-// transaction cannot hold, which is a different question. Null whenever nothing
-// is waiting to be answered.
-const mutationGateAtom = atom(null)
 
 /**
  * Run the code, optionally inside a transaction the run is sent under.
@@ -96,8 +222,12 @@ const runAtom = atom(null, (get, set, code, options) => {
     writes = mutationScan(code)
   }
 
+  // the document the run is of: the one on screen when it is sent. A run belongs
+  // to its tab, and the tab it belongs to is the one that was being read
+  const document = options && options.document !== undefined ? options.document : get(activeDocumentAtom)
+
   if (writes.length) {
-    set(mutationGateAtom, unguardable ? {code, guard, writes, unguardable} : {code, guard, writes})
+    set(setGate, {document, value: unguardable ? {code, guard, writes, unguardable} : {code, guard, writes}})
 
     return
   }
@@ -107,11 +237,17 @@ const runAtom = atom(null, (get, set, code, options) => {
     set(outputTabIndexAtom, 1)
   }
 
-  set(outputAtom, '')
-  set(resultAtom, null)
-  set(runCodeAtom, code)
-  set(runStartedAtAtom, Date.now())
-  set(runningAtom, true)
+  set(setRun, {
+    document,
+    value: {
+      result: null,
+      output: '',
+      code,
+      gate: null,
+    },
+  })
+
+  set(inFlightAtom, {document, startedAt: Date.now()})
 
   // the code is sent as it is: the main process base64 encodes it before the
   // session evals it, so newlines need no escaping, and rewriting them broke
@@ -131,19 +267,22 @@ const runAtom = atom(null, (get, set, code, options) => {
  * a run that answers can be the only one it was asking about.
  */
 const confirmMutationsAtom = atom(null, (get, set) => {
-  const held = get(mutationGateAtom)
+  // the question belongs to the document that is on screen: it was asked about
+  // that document's run, and the run it sends is that document's too
+  const document = get(activeDocumentAtom)
+  const held = get(runsAtom)[document]?.gate
 
-  set(mutationGateAtom, null)
+  set(setGate, {document, value: null})
 
   if (held) {
-    set(runAtom, held.code, {guard: held.guard, confirmed: true})
+    set(runAtom, held.code, {guard: held.guard, confirmed: true, document})
   }
 })
 
 // the other answer: nothing is sent, and what the scan found is dropped with the
 // question, since the run it was about is the run that did not happen
 const dismissMutationsAtom = atom(null, (get, set) => {
-  set(mutationGateAtom, null)
+  set(setGate, {document: get(activeDocumentAtom), value: null})
 })
 
 /**
@@ -156,21 +295,23 @@ const dismissMutationsAtom = atom(null, (get, set) => {
  * worse than an empty pane.
  */
 const stopRunAtom = atom(null, (get, set) => {
-  if (!get(runningAtom)) {
+  if (!get(inFlightAtom)) {
     return
   }
 
-  set(runningAtom, false)
-  set(runStartedAtAtom, null)
+  set(inFlightAtom, null)
   stopConnection()
 })
 
 /**
  * The run's answer arrived, by whatever path: nothing is going any more.
+ *
+ * The answer itself is written by the window, which is what hears it from the
+ * main process (see EditorWindow): this is the part that is true whichever way
+ * it came, and it is the document the answer is of that is settled.
  */
 const settledRunAtom = atom(null, (get, set) => {
-  set(runningAtom, false)
-  set(runStartedAtAtom, null)
+  set(inFlightAtom, null)
 })
 
 // 重新连接
@@ -180,7 +321,9 @@ const reconnectAtom = atom(null, (get, set, code) => {
     set(outputTabIndexAtom, 0)
   }
 
-  set(outputAtom, '')
+  // the terminal is the connection's session, and reconnecting starts a new one:
+  // what the run printed into the old one is not this session's output
+  set(appendToOutput, {document: get(activeDocumentAtom), value: ''})
 
   const connection = get(connectionAtom)
 
@@ -189,23 +332,34 @@ const reconnectAtom = atom(null, (get, set, code) => {
 
 // 增加 output 数据
 const appendOutputAtom = atom(null, (get, set, update) => {
-  set(outputAtom, prev => `${prev}${update}`)
+  set(appendToOutput, {document: get(activeDocumentAtom), value: update})
 })
 
 // 清空 output
-const clearOutputAtom = atom(null, (get, set, update) => {
-  set(outputAtom, '')
+const clearOutputAtom = atom(null, (get, set) => {
+  set(setRun, {document: get(activeDocumentAtom), value: emptyRun})
 })
 
 export {
   connectionAtom,
   sizesAtom,
-  outputAtom,
+  // the run of a document, and the document whose run is on screen: a tab keeps
+  // its own answer, and these are what the pane, the button and the status bar
+  // read
+  runsAtom,
+  activeDocumentAtom,
+  inFlightAtom,
+  inFlightDocumentAtom,
+  runOfAtom,
+  setRun,
+  setGate,
+  setAnswer,
+  currentResultAtom,
+  currentOutputAtom,
+  currentRunCodeAtom,
   outputTabIndexAtom,
   outputViewAtom,
-  resultAtom,
   applyCodeAtom,
-  runCodeAtom,
   dryRunAtom,
   sandboxAtom,
   runningAtom,

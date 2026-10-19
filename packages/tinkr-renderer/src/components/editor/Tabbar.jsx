@@ -1,4 +1,3 @@
-import {useEffect, useRef, useState} from 'react'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {useIntl} from 'react-intl'
 
@@ -11,7 +10,7 @@ import useNewSession from '../../hooks/useNewSession'
 import useOpenDocuments from '../../hooks/useOpenDocuments'
 import {updateSnippetAtom} from '../../stores/snippets'
 import {closeSessionPromptAtom, snippetMenuAtom} from '../../stores/snippetMenu'
-import {runCodeAtom} from '../../stores/editor'
+import {runsAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
 
 const CloseIcon = () => (
@@ -33,31 +32,19 @@ const CloseIcon = () => (
  * behind the window instead of being a record of where it has been.
  *
  * The dot on a tab is the run marker: it appears when the document has been
- * edited since the code it was last run with.
+ * edited since the code it was last run with. Each tab is compared against its
+ * own run — the code that tab sent — so a run in one tab does not mark another
+ * one as edited, and the mark survives switching away and back.
  */
 const Tabbar = () => {
   const intl = useIntl()
   const {documents, activeId, activate, close} = useOpenDocuments()
   const startSession = useNewSession()
   const updateSnippet = useSetAtom(updateSnippetAtom)
-  const runCode = useAtomValue(runCodeAtom)
+  const runs = useAtomValue(runsAtom)
   const config = useAtomValue(configAtom)
   const setMenu = useSetAtom(snippetMenuAtom)
   const setClosePrompt = useSetAtom(closeSessionPromptAtom)
-
-  const [runs, setRuns] = useState({})
-  const activeRef = useRef(activeId)
-
-  useEffect(() => {
-    activeRef.current = activeId
-  }, [activeId])
-
-  // a run hands its code to the window, which is what the tab's dot compares to
-  useEffect(() => {
-    if (runCode && activeRef.current) {
-      setRuns(previous => ({...previous, [activeRef.current]: runCode}))
-    }
-  }, [runCode])
 
   const unsavedLabel = intl.formatMessage({id: 'editor.unsaved'})
   const newSessionLabel = intl.formatMessage({id: 'editor.new_session'})
@@ -81,7 +68,10 @@ const Tabbar = () => {
           const label = tab.isLog
             ? tab.log
             : (tab.isSession ? (tab.document.name || unsavedLabel) : tab.snippet.name)
-          const isEdited = !tab.isLog && runs[tab.id] !== undefined && runs[tab.id] !== tab.document.code
+          // the code this tab last ran, if it has run: a tab that has not is not
+          // a tab that is edited
+          const ran = runs[tab.id]?.code
+          const isEdited = !tab.isLog && ran !== undefined && ran !== '' && ran !== tab.document.code
 
           return (
             <div
@@ -114,7 +104,13 @@ const Tabbar = () => {
                   onChange={name => updateSnippet({id: tab.id, name})}
                 />
               ) : (
-                <span className={tab.isLog ? 'truncate mono' : 'truncate'}>{label}</span>
+                <span
+                  className={tab.isLog
+                    ? 'truncate mono'
+                    : 'truncate'}
+                >
+                  {label}
+                </span>
               )}
 
               {isEdited && (

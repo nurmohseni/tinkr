@@ -11,7 +11,7 @@ import {
   getConnection,
   updateConnection,
 } from '../utils/api'
-import {connectionAtom, outputAtom, resultAtom} from './editor'
+import {connectionAtom, runsAtom, inFlightAtom} from './editor'
 import {historyListAtom} from './history'
 import {aiThreadAtom} from './ai'
 import {activeSessionIdAtom, newSession, sessionsAtom} from './sessions'
@@ -51,8 +51,10 @@ const switchConnectionAtom = atom(null, (get, set) => {
   set(sessionsAtom, [newSession()])
   set(activeSessionIdAtom, null)
   set(openTabsAtom, [])
-  set(resultAtom, null)
-  set(outputAtom, '')
+  // every tab's run was a run of the connection that has just been left: its
+  // answers, its output and the run that was going are not the new one's
+  set(runsAtom, {})
+  set(inFlightAtom, null)
   set(aiThreadAtom, [])
   // the logs were the other connection's project, and the panel reads the new
   // one's the moment it has none
