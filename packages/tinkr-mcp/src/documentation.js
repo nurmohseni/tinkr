@@ -195,13 +195,26 @@ A connection is a project plus the command that reaches it. The app saves them;
 
 - **local** — the project's directory on this machine, and \`php artisan tinker\`
   run in it.
-- **container** — the files are on this machine, mounted into a container, and
-  the command reaches inside: \`docker exec -it <name> php artisan tinker\`,
+- **container** — the php that runs the code is inside a container, and the
+  command reaches in: \`docker exec -it <name> php artisan tinker\`,
   \`podman exec …\`, \`./vendor/bin/sail <service> …\`, or
-  \`kubectl exec -it <pod> -- …\`. The index, the logs and the files are read from
-  the host directory; the php is the container's.
-- **ssh** — the project is on a server, reached with \`ssh\` (a key, never a
-  password prompt the app cannot answer).
+  \`kubectl exec -it <pod> -- …\`. \`container_path\` is where the project is
+  *inside* the container, which is what the reads of the index, the logs and the
+  files use. On a local connection the files are also on this machine, mounted
+  in, and \`path\` is that directory. The app lists the running containers of an
+  engine and the projects inside one, because a compose file or a PaaS names a
+  container per deploy and the stored name goes stale after the next one.
+- **ssh** — the project is on a server, reached with \`ssh\`: a private key when
+  the connection names one, and otherwise the password it saved. A password is
+  answered by the app's own helper, so it never reaches the terminal; a
+  connection with neither is asked for one in its terminal, which is why it is
+  not one an agent can open.
+- **ssh + container** — both at once: a project deployed by a compose file, a
+  Dokploy or a Coolify install, where a container runs on a server. The session
+  goes over ssh and then into the container, \`ssh -t host -- 'cd <path> &&
+  docker exec -it <name> php artisan tinker'\`, and the reads run inside the
+  container over the same connection. \`path\` is the project's directory on the
+  server, \`container_path\` is where the container sees it.
 
 ## The production tag
 

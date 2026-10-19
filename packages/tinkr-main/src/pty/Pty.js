@@ -1,6 +1,7 @@
 const log = require('electron-log')
+const {app} = require('electron')
 
-const {Session} = require('tinkr-core')
+const {Session, sessionCommand} = require('tinkr-core')
 
 const {version} = require('../../package.json')
 const {config} = require('../database/config')
@@ -33,10 +34,15 @@ class Pty {
       appName,
       appVersion: version,
       log,
+      // where a connection's saved password is answered from: the app's own
+      // data directory, which is what the helper reads (see sshAskpass)
+      dataDir: app.getPath('userData'),
     })
 
     // 默认使用配置中的 default command
-    this.session.start(command || this.connection.command || config.get('command_default'))
+    // a connection whose project is in a container runs the container's command:
+    // the php is in there, not on the machine the shell is on
+    this.session.start(command || sessionCommand(this.connection) || config.get('command_default'))
   }
 
   /**

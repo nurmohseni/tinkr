@@ -8,6 +8,7 @@ import {phpVersionAtom} from '../stores/php'
 import {configAtom} from '../stores/config'
 import {snippetAtomWithId} from '../stores/snippets'
 import appVersion from '../utils/appVersion'
+import kindOf from '../utils/connectionKind'
 
 // the status bar is mounted above the router, so on the root route there is no
 // snippet to read a caret position from
@@ -48,13 +49,7 @@ const Statusbar = () => {
           <span className='dot dot--live'/>
           {intl.formatMessage({id: 'statusbar.connected'}, {
             name: connection.name,
-            kind: intl.formatMessage({
-              id: connection.tag === 'production'
-                ? 'connections.kind_production'
-                : (connection.is_over_ssh
-                  ? 'connections.kind_ssh'
-                  : (connection.container_engine ? 'connections.kind_container' : 'connections.kind_local')),
-            }),
+            kind: intl.formatMessage({id: kindOf(connection)}),
           })}
         </span>
       )}
