@@ -1,3 +1,6 @@
+const {passwordArgs} = require('./sshAskpass')
+const {inContainer} = require('./containerCommand')
+
 /**
  * A value as one word of the shell the session is typed into.
  *
@@ -75,6 +78,11 @@ const sshArgs = connection => {
     args.push('-i', String(connection.ssh_key))
   }
 
+  // a connection with a saved password is answered by the app's own helper, so
+  // the two options that make one usable — a host key accepted on first use,
+  // and one prompt — travel with it (see sshAskpass)
+  args.push(...passwordArgs(connection))
+
   args.push('--', `${connection.ssh_user}@${connection.ssh_server}`)
 
   return args
@@ -115,11 +123,22 @@ const sshArgs = connection => {
  * never began. Written here, it is the remote shell's to run, and ssh's
  * questions are ssh's alone.
  *
+ * A connection with a saved password puts the helper's variables at the front of
+ * this line rather than in the pty's environment, and that placement is the
+ * whole of it working: the shell in front of ssh is a *login* shell, and a
+ * profile that sets `SSH_ASKPASS` — a desktop's own askpass helper is one — runs
+ * after the environment was handed over and replaces what was in it. What is
+ * written on the line is read after the profile has run, so it is what ssh sees.
+ * A pty's environment is the first half of the answer; this is the half that
+ * survives the profile.
+ *
  * @param {Object} connection
  * @param {String} [command] what to run once the remote shell is up
+ * @param {Object} [askpass] what the helper needs to find the password, when the
+ *   connection has one (see sshAskpass); empty for a connection without one
  * @returns {String}
  */
-const parseSSHCommand = (connection, command = null) => {
+const parseSSHCommand = (connection, command = null, askpass = null) => {
   const problem = sshProblem(connection)
 
   if (problem) {
@@ -136,13 +155,22 @@ const parseSSHCommand = (connection, command = null) => {
     args.push('-i', word(connection.ssh_key))
   }
 
+  passwordArgs(connection)
+    .forEach(option => args.push(word(option)))
+
   args.push('--', word(`${connection.ssh_user}@${connection.ssh_server}`))
 
   // what the remote side runs: into the project's directory, then whatever the
   // session was started with, and otherwise the account's own login shell
   const remote = []
 
-  if (connection.path) {
+  // a project in a container is not in the machine's directory. `path` is where
+  // the machine keeps it, and a containerized deploy need not keep it there at
+  // all — the files can be in a volume, or only in the image. The command is a
+  // `docker exec` that cd's inside the container itself (see containerRead), so
+  // a `cd` out here is a directory that need not exist, and the session would
+  // fail before the container was ever reached
+  if (connection.path && !inContainer(connection)) {
     remote.push(`cd ${word(connection.path)}`)
   }
 
@@ -156,7 +184,12 @@ const parseSSHCommand = (connection, command = null) => {
     args.push(word(remote.length ? `${remote[0]} && exec bash --login -i` : 'exec bash --login -i'))
   }
 
-  return args.join(' ')
+  // the helper's variables go before the command, as assignments the shell reads
+  // after its profile has run: `SSH_ASKPASS=… ssh -t …`
+  const assignments = Object.entries(askpass || {})
+    .map(([name, value]) => `${name}=${word(value)}`)
+
+  return assignments.length ? `${assignments.join(' ')} ${args.join(' ')}` : args.join(' ')
 }
 
 module.exports = {

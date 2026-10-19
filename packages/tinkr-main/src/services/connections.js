@@ -1,5 +1,7 @@
+const {app} = require('electron')
+
 const {detectPhpVersion} = require('./phpVersion')
-const {connections} = require('../database/connections')
+const {connections, sessionConnection} = require('../database/connections')
 const {
   getPtyProcess,
   setPtyProcess,
@@ -15,6 +17,7 @@ const {
 } = require('../processes')
 const {quickConnection, appName} = require('../constants')
 const {config} = require('../database/config')
+const secrets = require('../database/secrets')
 const {createEditorWindow} = require('../createEditorWindow')
 const {createPty} = require('../createPty')
 const {createBackgroundPty} = require('../createBackgroundPty')
@@ -24,6 +27,19 @@ const {watchSnippets} = require('./snippetsWatch')
 // window, and one connection it is showing
 let snippetsWatcher = null
 const {allSnippets} = require('./snippets')
+
+/**
+ * Where the app keeps its files, and therefore where a connection's password is.
+ *
+ * @return {String|null}
+ */
+const dataDir = () => {
+  try {
+    return app.getPath('userData')
+  } catch (e) {
+    return null
+  }
+}
 
 /**
  * The connections the app lists. The quick connection is the session the
@@ -60,6 +76,9 @@ const firstConnection = () => {
  * @param {String} id
  */
 const deleteConnection = id => {
+  // a password whose connection is gone is one nothing can use, and keeping it
+  // is keeping a secret for nobody
+  secrets.forget(dataDir(), id)
   connections.delete(id)
 }
 
@@ -81,7 +100,12 @@ const cloneConnection = id => {
   const win = getCurrentEditorWindow()
 
   if (win) {
-    win.webContents.send('cloneConnection', getConnection(id))
+    // a copy is a new connection, and the password of the one it copies is not
+    // its own: the flag is dropped, so the copy logs in the way its own fields
+    // say it does and the form asks for a password again
+    const copy = Object.assign({}, getConnection(id), {ssh_password: false})
+
+    win.webContents.send('cloneConnection', copy)
   }
 }
 
@@ -101,6 +125,8 @@ const cloneConnection = id => {
  * @returns {Promise<void>}
  */
 const connectConnection = async connection => {
+  connection = sessionConnection(connection)
+
   const win = getCurrentEditorWindow()
 
   if (!win) {
@@ -161,6 +187,8 @@ const watchSnippetsOf = id => {
 }
 
 const reconnectConnection = connection => {
+  connection = sessionConnection(connection)
+
   const pty = getPtyProcess(connection.id)
   if (pty) {
     pty.kill()
@@ -175,21 +203,41 @@ const reconnectConnection = connection => {
  * @returns {Record<string, any>}
  */
 const createConnection = connection => {
-  connections.set(connection.id, connection)
+  const stored = secrets.keptConnection(dataDir(), connection)
+
+  connections.set(stored.id, stored)
+
+  return stored
 }
 
 /**
- * @param {Record<string, any>} connection
+ * @param {Record<String, any>} connection
  */
 const updateConnection = connection => {
-  if (connections.has(connection.id)) {
-    connections.set(connection.id, connection)
+  if (!connections.has(connection.id)) {
+    return
   }
+
+  connections.set(connection.id, secrets.keptConnection(dataDir(), connection, connections.get(connection.id, {})))
 }
 
 /**
  * @param {String} id
- * @returns {Record<string, any>}
+ */
+const forgetPassword = id => {
+  const connection = connections.get(id, {})
+
+  if (!connection.id) {
+    return
+  }
+
+  secrets.forget(dataDir(), id)
+  connections.set(id, Object.assign({}, connection, {ssh_password: false}))
+}
+
+/**
+ * @param {String} id
+ * @returns {Record<String, any>}
  */
 const getConnection = id => connections.get(id, {})
 
@@ -304,6 +352,7 @@ module.exports = {
   cloneConnection,
   createConnection,
   updateConnection,
+  forgetPassword,
   getConnection,
   inputConnection,
   runConnection,

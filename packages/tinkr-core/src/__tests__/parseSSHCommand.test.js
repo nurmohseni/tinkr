@@ -8,8 +8,14 @@ const {execFileSync} = require('child_process')
 
 const words = line => {
   // the ssh binary is replaced by printf, and printf prints its own arguments as
-  // bash split them: nothing connects, and nothing in the line is evaluated
-  const probe = line.replace(/^ssh/, 'printf \'[%s]\'')
+  // bash split them: nothing connects, and nothing in the line is evaluated. The
+  // helper's leading assignments stay, because they are what the shell reads
+  // first and what the line is being checked for, and only a word that is the
+  // command itself is swapped — a helper's path can hold `ssh` too
+  const probe = line
+    .split(' ')
+    .map(word => (word === 'ssh' ? 'printf \'[%s]\'' : word))
+    .join(' ')
 
   return execFileSync('/bin/bash', ['-c', probe], {encoding: 'utf8'})
 }
@@ -88,6 +94,32 @@ describe('the session command', () => {
 
     expect(line.startsWith("ssh -t -- 'root@192.168.1.1' 'cd '")).toBe(true)
     expect(line.endsWith("'")).toBe(true)
+  })
+
+  // the bug this waits against: the shell in front of ssh is a login shell, and
+  // a profile that sets SSH_ASKPASS — a desktop's own askpass helper is one —
+  // replaces what the pty's environment had. What is written on the line is read
+  // after the profile has run, which is what makes the helper the app's
+  test('puts the helper\'s variables on the line, after the login profile runs', () => {
+    const line = parseSSHCommand(
+      conn({ssh_password: true}),
+      null,
+      {SSH_ASKPASS: '/data/ssh/askpass.sh', SSH_ASKPASS_REQUIRE: 'force'},
+    )
+
+    expect(line.startsWith("SSH_ASKPASS='/data/ssh/askpass.sh' SSH_ASKPASS_REQUIRE='force' ssh -t")).toBe(true)
+
+    // and they are assignments of a shell, so the first word the shell runs is
+    // still ssh, with the target it was given
+    expect(words(line))
+      .toBe('[-t][--][root@192.168.1.1][exec bash --login -i]')
+  })
+
+  test('carries the options a password login needs, and none for a key', () => {
+    expect(words(parseSSHCommand(conn({is_over_ssh: true, ssh_password: true}))))
+      .toBe('[-t][-o][StrictHostKeyChecking=accept-new][-o][NumberOfPasswordPrompts=1][--][root@192.168.1.1][exec bash --login -i]')
+
+    expect(parseSSHCommand(conn({is_over_ssh: true, ssh_key: '/keys/id'}))).not.toContain('StrictHostKeyChecking')
   })
 
   test('says why a connection ssh cannot be given is not used', () => {
