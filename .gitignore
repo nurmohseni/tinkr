@@ -12,6 +12,10 @@ yarn-error.log
 codedb.snapshot
 .codegraph/
 
+# the memory a local agent keeps for this checkout: it names the project and
+# holds its notes, and none of it belongs to the repository
+.engram/
+
 # Switzer and Sentient: the ITF Free Font License lets the app embed them but
 # not redistribute them, so `node scripts/fetch-fonts.js` puts them here
 packages/tinkr-renderer/public/fonts/itf/
