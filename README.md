@@ -163,7 +163,9 @@ Try it from a terminal to see what a tool answers:
 yarn mcp --path /path/to/your/project
 ```
 
-When Tinkr has a connection for that directory, the server uses it, so snippets and history are shared with the app. A packaged app carries its own copy of the server outside the asar, where plain `node` can read it.
+When Tinkr has a connection for that directory, the server uses it, so snippets and history are shared with the app. A packaged app carries its own copy of the server outside the asar, where plain `node` can read it. An **AppImage** is mounted under a temporary directory that goes away when the app closes, so on that build the settings screen points clients at a copy in the app's own data directory, which survives both a restart and an update.
+
+A run whose command never boots — no `artisan` in the directory, a platform check that refuses the php — answers as soon as the command exits, with what it printed and the status it left, instead of waiting out the timeout.
 
 </details>
 

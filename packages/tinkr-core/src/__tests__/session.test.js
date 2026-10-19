@@ -157,4 +157,62 @@ describe('what a session waits for before it is handed a run', () => {
 
     expect(readied).toBe(true)
   })
+
+  // the bug this waits against: a command that never booted leaves the shell at
+  // its own prompt, which takes the terminal with the same escape a command's
+  // prompt does, so the run was written into the shell and the caller waited out
+  // the whole timeout for an answer that could not come
+  test('fails as soon as the command exits instead of answering with a prompt', async () => {
+    let failed = null
+
+    session.ready().catch(error => {
+      failed = error
+    })
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    // the command printed what went wrong and the shell came back
+    terminal.print('Could not open input file: artisan\r\n')
+    terminal.print('\r\n\u001b]9999;1\u0007')
+    await flush()
+
+    expect(failed).toBeInstanceOf(Error)
+    expect(failed.name).toBe('SessionError')
+    expect(failed.message).toContain('Could not open input file: artisan')
+    expect(failed.message).toContain('exit status 1')
+    expect(failed.status).toBe(1)
+    // before any timeout was spent
+    jest.advanceTimersByTime(0)
+  })
+
+  test('fails with the status alone when the command printed nothing', async () => {
+    let failed = null
+
+    session.ready().catch(error => {
+      failed = error
+    })
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    terminal.print('\u001b]9999;127\u0007')
+    await flush()
+
+    expect(failed.message).toContain('exit status 127')
+    expect(failed.output).toBe('')
+  })
+
+  test('is not failed by a shell that hands the terminal over and stays quiet', async () => {
+    let readied = false
+
+    session.ready().then(() => {
+      readied = true
+    })
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    jest.advanceTimersByTime(1500)
+    await flush()
+
+    expect(readied).toBe(true)
+  })
 })

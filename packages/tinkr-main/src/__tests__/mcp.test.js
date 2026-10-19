@@ -2,6 +2,10 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
+// the main process runs inside electron, and a test has none: the package's own
+// mock is what the service reads, and it is what these set up and put back
+const {app} = require('electron')
+
 const mcp = require('../services/mcp')
 
 // a client, as the catalogue describes one, with its file inside a test's own
@@ -161,3 +165,146 @@ describe('what the settings screen is told', () => {
     ])
   })
 })
+
+/**
+ * A packaged app, mounted where the system mounted it: the AppImage's own FUSE
+ * directory, which holds the resources and goes away with the app.
+ *
+ * @param {{appImage?: Boolean}} options whether the mount is an AppImage's
+ * @return {{mount: String, userData: String, restore: Function}}
+ */
+const packaged = ({appImage = true} = {}) => {
+  const mount = fs.mkdtempSync(path.join(os.tmpdir(), 'mount_tinkr.'))
+  const main = path.join(mount, 'resources', 'app.asar.unpacked', 'main')
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-data-'))
+
+  fs.mkdirSync(path.join(main, 'build', 'Release'), {recursive: true})
+  fs.writeFileSync(path.join(main, 'mcp-server.js'), 'module.exports = {started: true}\n')
+  fs.writeFileSync(path.join(main, 'build', 'Release', 'pty.node'), 'binary')
+
+  const real = {
+    resourcesPath: Object.getOwnPropertyDescriptor(process, 'resourcesPath'),
+    appdir: process.env.APPDIR,
+    isPackaged: app.isPackaged,
+    getPath: app.getPath,
+    getVersion: app.getVersion,
+  }
+
+  Object.defineProperty(process, 'resourcesPath', {
+    value: path.join(mount, 'resources'),
+    configurable: true,
+  })
+
+  if (appImage) {
+    process.env.APPDIR = mount
+  } else {
+    delete process.env.APPDIR
+  }
+
+  app.isPackaged = true
+  app.getPath = () => userData
+  app.getVersion = () => '9.9.9'
+
+  return {
+    mount,
+    userData,
+    restore: () => {
+      if (real.resourcesPath) {
+        Object.defineProperty(process, 'resourcesPath', real.resourcesPath)
+      } else {
+        delete process.resourcesPath
+      }
+
+      if (real.appdir === undefined) {
+        delete process.env.APPDIR
+      } else {
+        process.env.APPDIR = real.appdir
+      }
+
+      app.isPackaged = real.isPackaged
+      app.getPath = real.getPath
+      app.getVersion = real.getVersion
+
+      fs.rmSync(mount, {recursive: true, force: true})
+      fs.rmSync(userData, {recursive: true, force: true})
+    },
+  }
+}
+
+describe('the server path a packaged app hands out', () => {
+  let mounted = null
+
+  afterEach(() => {
+    if (mounted) {
+      mounted.restore()
+      mounted = null
+    }
+  })
+
+  // the bug this waits against: an AppImage's mount is gone the moment the app
+  // closes and its random suffix changes on every launch, so the entry the
+  // settings screen wrote failed on the client's next start with
+  // `Cannot find module`
+  test('an AppImage gets a copy that outlives the app being closed', () => {
+    mounted = packaged()
+    const server = mcp.serverPath()
+
+    expect(server.startsWith(mounted.mount)).toBe(false)
+    expect(server.startsWith(mounted.userData)).toBe(true)
+    expect(fs.existsSync(server)).toBe(true)
+    // the native module travels with it, because the server loads it relative
+    // to its own directory
+    expect(fs.existsSync(path.join(path.dirname(server), 'build', 'Release', 'pty.node'))).toBe(true)
+
+    // the app closes, and the mount is gone: the copy is not
+    fs.rmSync(mounted.mount, {recursive: true, force: true})
+
+    expect(fs.existsSync(server)).toBe(true)
+    expect(require(server)).toEqual({started: true})
+  })
+
+  test('a second launch mounted somewhere else hands out the same path', () => {
+    mounted = packaged()
+    const first = mcp.serverPath()
+
+    // a new mount, a new random suffix, and the same version
+    const second = packedMountAgain(mounted)
+
+    expect(second).toBe(first)
+  })
+
+  test('an installed build is pointed at its own resources, which are permanent', () => {
+    mounted = packaged({appImage: false})
+
+    expect(mcp.serverPath())
+      .toBe(path.join(mounted.mount, 'resources', 'app.asar.unpacked', 'main', 'mcp-server.js'))
+    expect(fs.existsSync(path.join(mounted.userData, 'mcp-server-9.9.9'))).toBe(false)
+  })
+})
+
+/**
+ * Remount a packaged app somewhere else, as a second AppImage launch does.
+ *
+ * @param {{mount: String}} mounted
+ * @return {String} the server path the new mount hands out
+ */
+const packedMountAgain = mounted => {
+  const again = fs.mkdtempSync(path.join(os.tmpdir(), 'mount_tinkr.'))
+  const main = path.join(again, 'resources', 'app.asar.unpacked', 'main')
+
+  fs.mkdirSync(path.join(main, 'build', 'Release'), {recursive: true})
+  fs.writeFileSync(path.join(main, 'mcp-server.js'), 'module.exports = {started: true}\n')
+  fs.writeFileSync(path.join(main, 'build', 'Release', 'pty.node'), 'binary')
+
+  Object.defineProperty(process, 'resourcesPath', {
+    value: path.join(again, 'resources'),
+    configurable: true,
+  })
+  process.env.APPDIR = again
+
+  try {
+    return mcp.serverPath()
+  } finally {
+    fs.rmSync(again, {recursive: true, force: true})
+  }
+}

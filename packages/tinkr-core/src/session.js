@@ -53,6 +53,76 @@ const terminalTaken = '\u001b[?2004h'
 const terminalGivenUp = '\u001b[?2004l'
 
 /**
+ * What the shell prints once the command it was given has exited: an OSC 9999
+ * carrying the exit status, which no terminal draws and which no command of a
+ * project prints.
+ *
+ * A shell's prompt and a command's prompt both take the terminal with the same
+ * escape (see Session#ready), so a command that failed to boot is
+ * indistinguishable from one that is reading — until its status comes back. The
+ * status is the only thing the shell knows and the command does not, and it
+ * arrives with the exit, well before any timeout is spent.
+ *
+ * `printf` is the shell's own, and `\033` and `\007` are written as octal
+ * because a shell's `printf` is not php's.
+ */
+const bootMarker = '\u001b]9999;'
+const bootSentinel = String.raw`;printf '\033]9999;%s\007' $?`
+
+/**
+ * How much of what the command printed is kept for the failure it explains.
+ *
+ * The text is what a developer would read at a terminal, and it is the answer a
+ * session that never booted gives instead of a message about a timeout.
+ */
+const bootOutputLimit = 4000
+
+/**
+ * The error a session raises when the command it was started with exited
+ * instead of becoming the session.
+ *
+ * It is the class the MCP server answers with when a run's session never came
+ * up (see tinkr-mcp's sessionFailure), so the terminal's own words reach the
+ * caller rather than a message about a timeout.
+ */
+class SessionError extends Error {
+  /**
+   * @param {String} message
+   * @param {{output?: String, status?: Number|null}} [detail] what the command
+   * printed, and the status the shell reported for it
+   */
+  constructor(message, {output = '', status = null} = {}) {
+    super(message)
+
+    this.name = 'SessionError'
+    this.output = output
+    this.status = status
+  }
+}
+
+/**
+ * What a session that never booted says about itself, in the terms a developer
+ * reading a terminal would use.
+ *
+ * The whole of what the command printed is carried, not only its last line: a
+ * platform check prints several, and the one that explains the failure is not
+ * always the last.
+ *
+ * @param {String} output what the command printed
+ * @param {Number|null} status the status the shell reported, or null
+ * @return {String}
+ */
+const sessionFailureMessage = (output, status) => {
+  const code = status === null ? '' : ` (exit status ${status})`
+
+  if (!output) {
+    return `the session's command exited before it was ready${code}`
+  }
+
+  return `the session's command exited before it was ready${code}: ${output}`
+}
+
+/**
  * The command to start the session with, with the pager out of the way.
  *
  * psysh hands output taller than the terminal to a pager, and the pager it picks
@@ -165,7 +235,10 @@ class Session {
     }
 
     if (command) {
-      this.pty.write(`${withoutPager(command)}\r`)
+      // the status of the command, printed by the shell once it is back: the
+      // shell's prompt is the same escape as a command's, so this is what says
+      // which of the two the session is looking at (see Session#ready)
+      this.pty.write(`${withoutPager(command)}${bootSentinel}\r`)
     }
   }
 
@@ -207,10 +280,19 @@ class Session {
    * left idle: a shell that is still reading its own files is quiet too, so
    * silence on its own says nothing about whether the command is ready.
    *
-   * @return {Promise<void>}
+   * A command that fails to boot is the other way the terminal comes back: the
+   * shell takes it over again and prints its own prompt, which is the same
+   * escape a command's prompt is (see `bootMarker`). That is why the command's
+   * line carries a status sentinel: the shell prints it when the command exits,
+   * before it prints a prompt, so its arrival is what says the command never
+   * became the session. The answer is then the failure itself — what the
+   * command printed and the status it left — rather than a timeout later.
+   *
+   * @return {Promise<void>} rejects with a SessionError when the command exits
+   * before it takes the terminal
    */
   ready() {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const pty = this.pty
 
       if (!pty) {
@@ -224,6 +306,7 @@ class Session {
       let listener = null
       let handedBack = false
       let everSeen = false
+      let booted = ''
 
       const settle = () => {
         clearTimeout(quiet)
@@ -232,12 +315,51 @@ class Session {
         resolve()
       }
 
+      const fail = status => {
+        clearTimeout(quiet)
+        clearTimeout(limit)
+        listener.dispose()
+
+        const output = stripSessionNotes(booted).replace(/\r\n/g, '\n').trim()
+
+        reject(new SessionError(sessionFailureMessage(output, status), {output, status}))
+      }
+
       listener = pty.onData(data => {
+        // the shell printed the status of the command it was given, so the
+        // command has exited and the terminal is the shell's again
+        const sentinel = data.lastIndexOf(bootMarker)
+
+        if (sentinel !== -1) {
+          // the shell's printf writes the status right after the marker, and
+          // nothing but digits comes before its terminator
+          const rest = data.slice(sentinel + bootMarker.length)
+          const end = rest.search(/\D/)
+          const digits = end === -1 ? rest : rest.slice(0, end)
+          // what the command printed follows the handover and precedes the
+          // status, and it is the whole of the answer when there is none
+          booted += data.slice(0, sentinel)
+
+          fail(digits === '' ? null : Number(digits))
+
+          return
+        }
+
         const taken = data.lastIndexOf(terminalTaken)
         const given = data.lastIndexOf(terminalGivenUp)
 
         if (given !== -1 || taken !== -1) {
           everSeen = true
+        }
+
+        // what the command prints is what explains a boot that failed, so it is
+        // kept from the handover — before that the terminal is the shell's
+        if (handedBack) {
+          booted += data
+
+          if (booted.length > bootOutputLimit * 4) {
+            booted = booted.slice(-bootOutputLimit)
+          }
         }
 
         // the command is reading: whichever of the two escapes is last is the
@@ -455,7 +577,7 @@ const runCode = (connection, code, options = {}) => {
       }
 
       session.write(`${run.code}\r`)
-    })
+    }).catch(error => finish(error))
 
     session.onExit(() => {
       finish(new Error('the session exited before it answered'))
@@ -465,8 +587,10 @@ const runCode = (connection, code, options = {}) => {
 
 module.exports = {
   Session,
+  SessionError,
   runCode,
   runOutput,
   withoutPager,
   killSteps,
+  bootSentinel,
 }

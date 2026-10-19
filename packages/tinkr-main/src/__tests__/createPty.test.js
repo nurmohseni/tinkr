@@ -175,4 +175,37 @@ describe('a run of a connection', () => {
 
     expect(pty.input).not.toHaveBeenCalled()
   })
+
+  // the bug this waits against: a command that never booted left the pane
+  // waiting for an answer that could not come, and the reason — a missing
+  // artisan, a platform check — was thrown away
+  test('answers a run whose session never booted with what the command said', async () => {
+    Pty.mockImplementation(() => ({
+      connect: jest.fn(),
+      input: jest.fn(),
+      ready: jest.fn(() => Promise.reject(
+        Object.assign(new Error('the session\'s command exited before it was ready (exit status 1): Could not open input file: artisan'), {
+          name: 'SessionError',
+          output: 'Could not open input file: artisan',
+        }),
+      )),
+      onData: jest.fn(() => ({dispose: jest.fn()})),
+      onExit: jest.fn(),
+    }))
+
+    createPty(connection, 'the snippet')
+
+    await new Promise(resolve => setImmediate(resolve))
+    await new Promise(resolve => setImmediate(resolve))
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer).toBeDefined()
+    expect(answer[1].error.class).toBe('SessionError')
+    expect(answer[1].error.message).toContain('Could not open input file: artisan')
+    // what the command printed is kept as the run's output, so the pane shows
+    // it the way the terminal would have
+    expect(answer[1].output).toBe('Could not open input file: artisan')
+    expect(answer[1].value).toBe(null)
+  })
 })

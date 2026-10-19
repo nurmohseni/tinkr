@@ -65,13 +65,18 @@ const importBlock = entries => {
   }
 
   const map = entries.map(([name, qualified]) => `${phpString(name)}=>${phpString(qualified)}`).join(',')
+  // `class_exists($name)` asks the autoloaders too, and tinker's own
+  // ClassAliasAutoloader answers by aliasing the name it was asked for: the
+  // class is then defined, the check looks satisfied, and the wrapper reports
+  // nothing for a name it was the one to resolve. Asking without autoloading is
+  // what tells an existing definition from one this block has yet to make
   const defined = ['class_exists', 'interface_exists', 'trait_exists']
-    .map(check => `${check}($tinkr_name)`)
+    .map(check => `${check}($tinkr_name,false)`)
     .join('||')
 
   return '$tinkr_imported=[];' +
     `foreach([${map}] as $tinkr_name=>$tinkr_class){` +
-    `try{if(${defined}||(function_exists('enum_exists')&&enum_exists($tinkr_name))){continue;}` +
+    `try{if(${defined}||(function_exists('enum_exists')&&enum_exists($tinkr_name,false))){continue;}` +
     'if(@class_alias($tinkr_class,$tinkr_name)){$tinkr_imported[$tinkr_name]=$tinkr_class;}}' +
     'catch(\\Throwable $tinkr_import_failure){}' +
     '}'
@@ -515,8 +520,11 @@ const wrapRun = (source, imports = {}, guard = null) => {
     "'value'=>$tinkr_error!==null?null:$tinkr_safe($tinkr_value),",
     "'error'=>$tinkr_error,",
     "'queries'=>$tinkr_safe($tinkr_queries),'queriesTotal'=>$tinkr_query_total",
-    // what the run's own names resolved to, when the project resolved any
-    entries.length ? ",'imported'=>(object)$tinkr_imported" : '',
+    // what the run's own names resolved to. It is always an object: a project
+    // that resolved nothing answers `{}` rather than dropping the key, so a
+    // reader never has to tell "none were imported" from "this run has no such
+    // answer"
+    ",'imported'=>(object)$tinkr_imported",
     mode ? ",'transaction'=>$tinkr_transaction" : '',
     // what the sandbox caught, when there was one: the counts and the first few
     // of each, so an answer says what the run would have done
@@ -542,7 +550,7 @@ const wrapRun = (source, imports = {}, guard = null) => {
       // the values that cannot be written as themselves are written as what
       // they are, so nothing comes back as a null it never was
       SAFE_ENCODE,
-      '$tinkr_error=null;$tinkr_sent=false;',
+      '$tinkr_error=null;$tinkr_sent=false;$tinkr_imported=[];',
       importBlock(entries),
       // the pane reads the run from here: everything the session printed before
       // this line is the session booting

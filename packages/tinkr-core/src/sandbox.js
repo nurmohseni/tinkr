@@ -40,6 +40,18 @@
 /**
  * The php that arms the sandbox: every driver swapped for a recorder.
  *
+ * Each facade's `fake()` returns the instance it bound, and that instance is
+ * what `finish` counts: the notification fake is bound under the manager's own
+ * key, so looking it up by its class answers with a fresh, empty one, and the
+ * bus fake keeps what it intercepted in properties it has no getter for.
+ *
+ * The HTTP guard arms `preventStrayRequests()` and then a `fake()` whose
+ * callback answers nothing. `fake()` with no callback installs a catch-all that
+ * answers every request with an empty `200`, which is the lie the guard exists
+ * to prevent: that stub always matches, so the stray branch is never reached. A
+ * callback returning null matches nothing, the stray branch is reached, and
+ * every attempt is still recorded.
+ *
  * @type {String}
  */
 const arm = String.raw`
@@ -57,13 +69,14 @@ try{
   $tinkr_effects['mail']=&$tinkr_seen;
 }catch(\Throwable $tinkr_sandbox_failure){$tinkr_sandbox[]='mail could not be sandboxed: '.$tinkr_sandbox_failure->getMessage();}
 try{
-  Illuminate\Support\Facades\Queue::fake();
-  Illuminate\Support\Facades\Bus::fake();
-  $tinkr_effects['jobs']=true;
-}catch(\Throwable $tinkr_sandbox_failure){$tinkr_sandbox[]='jobs could not be sandboxed: '.$tinkr_sandbox_failure->getMessage();}
+  $tinkr_effects['queue']=Illuminate\Support\Facades\Queue::fake();
+}catch(\Throwable $tinkr_sandbox_failure){$tinkr_sandbox[]='the queue could not be sandboxed: '.$tinkr_sandbox_failure->getMessage();}
+try{
+  $tinkr_effects['bus']=Illuminate\Support\Facades\Bus::fake();
+}catch(\Throwable $tinkr_sandbox_failure){$tinkr_sandbox[]='the bus could not be sandboxed: '.$tinkr_sandbox_failure->getMessage();}
 try{
   Illuminate\Support\Facades\Http::preventStrayRequests();
-  Illuminate\Support\Facades\Http::fake();
+  Illuminate\Support\Facades\Http::fake(function(){return null;});
   $tinkr_effects['requests']=true;
 }catch(\Throwable $tinkr_sandbox_failure){$tinkr_sandbox[]='http could not be sandboxed: '.$tinkr_sandbox_failure->getMessage();}
 try{
@@ -78,8 +91,7 @@ try{
   $tinkr_effects['log']=true;
 }catch(\Throwable $tinkr_sandbox_failure){$tinkr_sandbox[]='the log could not be sandboxed: '.$tinkr_sandbox_failure->getMessage();}
 try{
-  Illuminate\Support\Facades\Notification::fake();
-  $tinkr_effects['notifications']=true;
+  $tinkr_effects['notifications']=Illuminate\Support\Facades\Notification::fake();
 }catch(\Throwable $tinkr_sandbox_failure){$tinkr_sandbox[]='notifications could not be sandboxed: '.$tinkr_sandbox_failure->getMessage();}
 `
 
@@ -88,9 +100,16 @@ try{
  *
  * The fakes keep their own records, so the counts are read at the end: mail from
  * the listener that recorded each message, requests from the client's own log,
- * jobs from the queue fake, notifications from theirs. The first twenty of the
- * messages and requests are named, which is what an answer needs to say what the
- * run would have done; the rest are a count.
+ * jobs from the queue fake plus the bus fake, notifications from the instance
+ * the facade returned. The first twenty of the messages and requests are named,
+ * which is what an answer needs to say what the run would have done; the rest
+ * are a count.
+ *
+ * A job goes through one of two fakes. `Queue::push` is kept by the queue fake,
+ * and `dispatch()` — through the bus facade, or the `dispatch` helper with a
+ * `ShouldQueue` job — is kept by the bus fake in `commands`,
+ * `commandsSync` and `commandsAfterResponse`, which have no getter for their
+ * total. Both are read, so a channel that intercepted something says so.
  *
  * Each channel is guarded on its own, because a report that throws must not take
  * the run's answer with it.
@@ -119,13 +138,26 @@ try{
   }
 }catch(\Throwable $tinkr_report_failure){}
 try{
-  if(isset($tinkr_effects['jobs'])){
-    $tinkr_report['channels']['jobs']=count(Illuminate\Support\Facades\Queue::pushedJobs());
+  if(isset($tinkr_effects['queue'])||isset($tinkr_effects['bus'])){
+    $tinkr_jobs=0;
+    if(isset($tinkr_effects['queue'])){$tinkr_jobs+=count($tinkr_effects['queue']->pushedJobs());}
+    if(isset($tinkr_effects['bus'])){
+      foreach(['commands','commandsSync','commandsAfterResponse'] as $tinkr_property){
+        try{
+          $tinkr_read=(function($tinkr_name){
+            if(!property_exists($this,$tinkr_name)){return [];}
+            return (array)$this->$tinkr_name;
+          })->call($tinkr_effects['bus'],$tinkr_property);
+          $tinkr_jobs+=array_sum(array_map('count',$tinkr_read));
+        }catch(\Throwable $tinkr_property_failure){}
+      }
+    }
+    $tinkr_report['channels']['jobs']=$tinkr_jobs;
   }
 }catch(\Throwable $tinkr_report_failure){}
 try{
   if(isset($tinkr_effects['notifications'])){
-    $tinkr_report['channels']['notifications']=count(app(Illuminate\Support\Testing\Fakes\NotificationFake::class)->sentNotifications());
+    $tinkr_report['channels']['notifications']=count($tinkr_effects['notifications']->sentNotifications());
   }
 }catch(\Throwable $tinkr_report_failure){}
 `
