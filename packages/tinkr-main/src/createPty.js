@@ -109,6 +109,32 @@ const createPty = (connection, code, guard = null) => {
       }
 
       pty.input(`${run.code}\r`)
+    }).catch(error => {
+      // the command never became the session — a missing `artisan`, a platform
+      // check, a php that is not there — so the run did not happen and the
+      // reason is the command's own words. Without this the wait was the pane's
+      // whole answer, and it never came
+      if (getPtyProcess(id) !== pty) {
+        return
+      }
+
+      const win = getEditorWindow(id)
+
+      if (!win) {
+        return
+      }
+
+      const result = {
+        blocks: [],
+        value: null,
+        error: {class: 'SessionError', message: error.message},
+        queries: [],
+        queriesTotal: 0,
+        output: error.output || '',
+      }
+
+      win.webContents.send('runResult', result)
+      win.webContents.send('historyConnection', appendHistory(id, code, result))
     })
   }
 }

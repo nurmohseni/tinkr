@@ -23,6 +23,140 @@ const {config} = require('../database/config')
  */
 
 /**
+ * Where the server is inside a packaged app, before anything is done about it.
+ *
+ * @return {String}
+ */
+const packagedServerPath = () => path.join(process.resourcesPath, 'app.asar.unpacked', 'main')
+
+/**
+ * The app's own version, which is what a copied server is kept under.
+ *
+ * @return {String}
+ */
+const versionOfApp = () => {
+  try {
+    return app.getVersion()
+  } catch (e) {
+    return 'unknown'
+  }
+}
+
+/**
+ * Whether the app is running from an AppImage.
+ *
+ * An AppImage is mounted on a FUSE directory named after the image and a random
+ * suffix (`/tmp/.mount_tinkr.ajFYvZ`), and the mount exists only while the app
+ * runs: `process.resourcesPath` is inside it, and the suffix differs on every
+ * launch. electron-builder's AppImage runtime exports the mount as `APPDIR`, and
+ * the app's own resources being inside that directory is what tells this case
+ * apart from an installed one: `/opt/Tinkr/resources` and the snap's revision
+ * directory are outside it, and a stray `APPDIR` in someone's environment is not
+ * what the app runs from.
+ *
+ * @return {Boolean}
+ */
+const fromAppImage = () => {
+  const mounted = process.env.APPDIR
+
+  if (!mounted) {
+    return false
+  }
+
+  try {
+    const mount = path.resolve(mounted)
+    const resources = path.resolve(process.resourcesPath)
+
+    return resources === mount || resources.startsWith(`${mount}${path.sep}`)
+  } catch (e) {
+    return false
+  }
+}
+
+/**
+ * The native module the server loads, and the files that travel with it.
+ *
+ * node-pty resolves its binary relative to the code requiring it
+ * (`build/Release`, `build/Debug`, `prebuilds/<platform>-<arch>`), so whatever
+ * directory holds the one this app was built with is the directory that has to
+ * be copied: on windows that is also where `winpty.dll` and its agent live.
+ *
+ * @param {String} from where the packaged server is
+ * @return {String|null} the directory, or null when there is no binary at all
+ */
+const nativeDirectory = from => {
+  const dirs = [
+    path.join(from, 'build', 'Release'),
+    path.join(from, 'prebuilds', `${process.platform}-${process.arch}`),
+  ]
+
+  const found = dirs.find(dir => fs.existsSync(path.join(dir, 'pty.node')))
+
+  return found || null
+}
+
+/**
+ * Copy the files a client needs to run the server into a directory that
+ * outlives the app, and answer with the server's path there.
+ *
+ * An AppImage's mount is gone the moment the app closes, so a client pointed
+ * inside it fails on its next start with `Cannot find module`, and the entry the
+ * settings screen wrote is wrong before it is even used. The copy is what an
+ * AppImage install needs and what every other target already has: `/opt/Tinkr`,
+ * `/usr/lib/tinkr` and the snap's revision directory are permanent.
+ *
+ * The directory is per version, so an update writes a new one and nothing reads
+ * a half-replaced server. A copy that cannot be made is not fatal — the app is
+ * still usable, and a read-only home is nobody's fault — so the packaged path is
+ * answered and the settings screen shows a path that works until the app closes.
+ *
+ * @param {String} from the packaged server's directory
+ * @param {String} version
+ * @return {String}
+ */
+const stableServerPath = (from, version) => {
+  const source = path.join(from, 'mcp-server.js')
+
+  if (!fs.existsSync(source)) {
+    return source
+  }
+
+  const into = path.join(app.getPath('userData'), `mcp-server-${version}`)
+  const script = path.join(into, 'mcp-server.js')
+
+  try {
+    const fresh = fs.existsSync(script) &&
+      fs.statSync(script).size === fs.statSync(source).size
+
+    if (!fresh) {
+      fs.mkdirSync(into, {recursive: true})
+      fs.copyFileSync(source, script)
+    }
+
+    const native = nativeDirectory(from)
+
+    if (native) {
+      const target = path.join(into, 'build', 'Release')
+
+      fs.mkdirSync(target, {recursive: true})
+      fs.readdirSync(native).forEach(file => {
+        const written = path.join(target, file)
+
+        if (fs.existsSync(written) && fs.statSync(written).size === fs.statSync(path.join(native, file)).size) {
+          return
+        }
+
+        fs.copyFileSync(path.join(native, file), written)
+      })
+    }
+
+    return script
+  } catch (e) {
+    return source
+  }
+}
+
+/**
  * The server, as a program to run.
  *
  * In a packaged app it sits beside the main process's own bundle and outside the
@@ -30,11 +164,25 @@ const {config} = require('../database/config')
  * one. From source it is the package's own entry, where node finds the
  * workspace's modules.
  *
+ * An AppImage is the one target whose own directory does not survive the app
+ * closing, so what a client is pointed at there is a copy in the app's data
+ * directory (see stableServerPath).
+ *
+ * @param {String} [version] the app's version, which is what a copied server is
+ * kept under
  * @return {String}
  */
-const serverPath = () => (app.isPackaged
-  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'main', 'mcp-server.js')
-  : path.join(__dirname, '..', '..', '..', 'tinkr-mcp', 'src', 'cli.js'))
+const serverPath = (version = versionOfApp()) => {
+  if (!app.isPackaged) {
+    return path.join(__dirname, '..', '..', '..', 'tinkr-mcp', 'src', 'cli.js')
+  }
+
+  const packaged = packagedServerPath()
+
+  return fromAppImage()
+    ? stableServerPath(packaged, version)
+    : path.join(packaged, 'mcp-server.js')
+}
 
 /**
  * The entry a client is given.

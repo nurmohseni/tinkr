@@ -410,11 +410,47 @@ const answer = (result, guard) => ({
  * @param {Error} error
  * @return {{content: Array, structuredContent: Object, isError: Boolean}}
  */
-const failure = error => ({
-  content: [{type: 'text', text: truncate(error.message)}],
-  structuredContent: {error: {class: error.name === 'AbortError' ? 'Cancelled' : 'ToolError', message: truncate(error.message)}},
-  isError: true,
-})
+const failure = error => {
+  if (error && error.name === 'SessionError') {
+    return sessionFailureOf(error)
+  }
+
+  return {
+    content: [{type: 'text', text: truncate(error.message)}],
+    structuredContent: {error: {class: error.name === 'AbortError' ? 'Cancelled' : 'ToolError', message: truncate(error.message)}},
+    isError: true,
+  }
+}
+
+/**
+ * A run whose session never came up — the connection's command failed to boot,
+ * or exited — as the tool answers with it.
+ *
+ * The command's own words are the answer: a missing `artisan`, a platform check
+ * that refuses the php, a php that is not on the path. Waiting for the timeout
+ * and saying only that nothing answered threw that away, and it is the one thing
+ * that says what to fix.
+ *
+ * @param {Error} error the SessionError runCode raised
+ * @return {{content: Array, structuredContent: Object, isError: Boolean}}
+ */
+const sessionFailureOf = error => {
+  const output = typeof error.output === 'string' ? error.output : ''
+  const message = truncate(output ? `${error.message}` : error.message)
+
+  return {
+    content: [{type: 'text', text: truncate(message)}],
+    structuredContent: bound({
+      blocks: [],
+      value: null,
+      error: {class: 'SessionError', message},
+      queries: [],
+      queriesTotal: 0,
+      output: truncate(output),
+    }),
+    isError: true,
+  }
+}
 
 /**
  * A run whose session ended before it answered — it would not boot, or it died

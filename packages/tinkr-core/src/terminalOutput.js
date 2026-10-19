@@ -8,6 +8,19 @@
 const ansi = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g
 
 /**
+ * The operating system commands: `ESC ] <code>;<text>` ended by a bell or by
+ * `ESC \`. A shell's prompt, its title and the shell integration's `3008`
+ * context markers are all written this way, and the ansi pattern above does not
+ * read them: it reads an `ESC ]` as a colour and leaves the payload behind as if
+ * it were output.
+ *
+ * The payload is matched up to its own terminator rather than by its length,
+ * because a title or a working directory is as long as it is.
+ */
+// eslint-disable-next-line no-control-regex
+const osc = /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g
+
+/**
  * The soft wraps the terminal writes are `ESC[m \b`: once the escape is gone,
  * the backspace deletes the space that was written with it, so the stream has
  * to be read the way the terminal shows it.
@@ -80,7 +93,7 @@ const backspaces = value => {
  * @param {String} value
  * @return {String}
  */
-const stripRendering = value => backspaces(value.replace(ansi, ''))
+const stripRendering = value => backspaces(value.replace(osc, '').replace(ansi, ''))
 
 /**
  * Where psysh evaluated the code, which it appends to what the code printed:

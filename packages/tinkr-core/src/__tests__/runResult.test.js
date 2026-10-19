@@ -170,13 +170,16 @@ describe('a large envelope', () => {
 })
 
 describe('the run payload', () => {
-  test('carries no import when the project resolved none', () => {
+  test('carries an empty import when the project resolved none', () => {
     const run = wrapRun("Order::where('paid', true)->count();")
 
     expect(run.imports).toEqual({})
-    // nothing resolved means nothing to alias, and the envelope has no key for it
-    expect(run.code).not.toContain("'imported'=>")
+    // nothing resolved means nothing to alias...
     expect(run.code).not.toContain('class_alias')
+    // ...and the key is there as an empty object all the same, so a reader can
+    // tell "none were imported" from "this run has no such answer"
+    expect(run.code).toContain('$tinkr_imported=[];')
+    expect(run.code.slice(run.code.indexOf('json_encode(['))).toContain("'imported'=>(object)$tinkr_imported")
   })
 
   test('prints a marker before it evaluates, which the echo cannot show whole', () => {
@@ -196,7 +199,11 @@ describe('the run payload', () => {
 
     expect(run.imports).toEqual({Order: 'App\\Models\\Order', Invoice: 'App\\Models\\Invoice'})
     expect(run.code).toContain("$tinkr_imported=[];foreach(['Order'=>'App\\\\Models\\\\Order','Invoice'=>'App\\\\Models\\\\Invoice'] as $tinkr_name=>$tinkr_class)")
-    expect(run.code).toContain("if(class_exists($tinkr_name)||interface_exists($tinkr_name)||trait_exists($tinkr_name)||(function_exists('enum_exists')&&enum_exists($tinkr_name))){continue;}")
+    // every check is asked without autoloading: `class_exists('Order')` asks
+    // the autoloaders, and tinker's own answers by aliasing the name — the
+    // class is then defined, the block skips it, and the run reports nothing
+    // for a name it was the one to resolve
+    expect(run.code).toContain("if(class_exists($tinkr_name,false)||interface_exists($tinkr_name,false)||trait_exists($tinkr_name,false)||(function_exists('enum_exists')&&enum_exists($tinkr_name,false))){continue;}")
     expect(run.code).toContain('if(@class_alias($tinkr_class,$tinkr_name)){$tinkr_imported[$tinkr_name]=$tinkr_class;}')
     // an import that cannot be made is dropped, and the run goes on
     expect(run.code).toContain('catch(\\Throwable $tinkr_import_failure){}')
@@ -406,6 +413,42 @@ describe('the sandbox', () => {
     expect(run.code).toContain('Illuminate\\Support\\Facades\\Notification::fake();')
     expect(run.code.indexOf('$tinkr_effects=[];'))
       .toBeLessThan(run.code.indexOf('foreach($tinkr_stmts as $tinkr_one)'))
+  })
+
+  test('refuses a request it was not stubbed for', () => {
+    const run = wrapRun('Http::get("https://example.test");', {}, 'sandbox')
+
+    // a `fake()` with no callback installs a catch-all that answers every
+    // request with an empty 200, so the stray check below it is never reached
+    expect(run.code).not.toContain('Http::fake();')
+    expect(run.code).toContain('Illuminate\\Support\\Facades\\Http::fake(function(){return null;});')
+    // and the stray refusal is armed before it, so the request runs into it
+    expect(run.code.indexOf('Http::preventStrayRequests();'))
+      .toBeLessThan(run.code.indexOf('Http::fake(function(){return null;});'))
+  })
+
+  test('counts the jobs the bus intercepted, not only the queue\'s', () => {
+    const run = wrapRun('Bus::dispatch($job);', {}, 'sandbox')
+
+    // both fakes are kept, because a job goes through one of two of them:
+    // `Queue::push` is the queue fake's, `dispatch()` is the bus fake's
+    expect(run.code).toContain("$tinkr_effects['queue']=Illuminate\\Support\\Facades\\Queue::fake();")
+    expect(run.code).toContain("$tinkr_effects['bus']=Illuminate\\Support\\Facades\\Bus::fake();")
+    expect(run.code).toContain("$tinkr_jobs+=count($tinkr_effects['queue']->pushedJobs());")
+    // the bus fake keeps its dispatches in properties with no getter for their
+    // total, so all three lists are read
+    expect(run.code).toContain("foreach(['commands','commandsSync','commandsAfterResponse'] as $tinkr_property)")
+    expect(run.code).toContain("$tinkr_report['channels']['jobs']=$tinkr_jobs;")
+  })
+
+  test('reads the notification fake the facade returned, not one it rebuilds', () => {
+    const run = wrapRun('Notification::route("mail", "a@b.c")->notify($one);', {}, 'sandbox')
+
+    // the fake is bound under the manager's key, so asking the container for
+    // the fake's own class answers with a fresh, empty one
+    expect(run.code).not.toContain('app(Illuminate\\Support\\Testing\\Fakes\\NotificationFake::class)')
+    expect(run.code).toContain("$tinkr_effects['notifications']=Illuminate\\Support\\Facades\\Notification::fake();")
+    expect(run.code).toContain("$tinkr_report['channels']['notifications']=count($tinkr_effects['notifications']->sentNotifications());")
   })
 
   test('reports what it caught, and counts it at the end', () => {

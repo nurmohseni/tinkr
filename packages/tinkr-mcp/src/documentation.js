@@ -149,8 +149,8 @@ the framework's own test double:
 | What | Becomes |
 | --- | --- |
 | mail | the \`array\` transport: every message is recorded, none leaves |
-| jobs and the bus | their fakes: a pushed job runs nowhere and the fake keeps it |
-| HTTP | a fake that answers through a stub set and **refuses what it was not given** |
+| jobs and the bus | their fakes: a pushed job runs nowhere and the fake keeps it, whether it went through the queue or the bus |
+| HTTP | a fake that answers through a stub set and **refuses what it was not given**, with a \`StrayRequestException\` |
 | files | every disk is a fake root under \`storage/framework/testing/disks\` |
 | cache | an array store |
 | logging | a handler that keeps records instead of writing the project's log |
@@ -159,7 +159,9 @@ the framework's own test double:
 The answer's \`sandbox\` says what it caught: \`channels\` with a count per channel,
 \`sent\` with the first twenty mails (subject and recipients), \`requested\` with the
 first twenty requests, and \`not_sandboxed\` naming any channel it could not swap —
-a session that is not a booted Laravel application, most often.
+a session that is not a booted Laravel application, most often. A refused request
+was never sent, so it is not counted in \`requests\`: the exception the run ended in
+is what says it happened.
 
 ## Which one
 
@@ -337,7 +339,8 @@ failed is not in the list.
 
 ## \`imported\`
 The short class names the project resolved for the snippet, and what each one was
-aliased to.
+aliased to. It is always there: a project that resolved nothing, and a session
+whose classes were already loaded, answer \`{}\` rather than dropping the key.
 
 ## \`transaction\` and \`sandbox\`
 Only present when a guard was asked for. See \`guards\`.
@@ -364,7 +367,14 @@ classes you may see that are not exceptions in the code:
 - \`Exit\` — the run ended in \`exit()\`, \`die()\` or \`dd()\`. What the run printed
   before it stopped is in \`output\`, and \`value\` is \`null\`.
 - \`FatalError\` — a memory limit, a redeclared class, a stack overflow. The run's
-  statements before it keep their values.`
+  statements before it keep their values.
+
+A run whose connection's command never booted — no \`artisan\` in the directory, a
+platform check that refuses the php, a php that is not on the path — fails as the
+call did, not as an answer: \`isError\` is set, and the message is the command's own
+words with the status it left (\`Could not open input file: artisan\`). It comes
+back as soon as the command exits, not when the timeout is spent, and what it
+printed is in \`output\`.`
 
 /**
  * The app itself.

@@ -122,6 +122,31 @@ describe('the tools', () => {
     expect(answer.content[0].text).toBe('the session did not answer within 60000ms')
   })
 
+  // the bug this waits against: a command that never booted was answered with a
+  // timeout, and what the command printed — the one thing that says what to fix
+  // — was thrown away
+  test('a command that never booted answers with what it printed', async () => {
+    const {server} = opened({
+      at: project,
+      run: async () => {
+        const error = new Error('the session\'s command exited before it was ready (exit status 1): Could not open input file: artisan')
+
+        error.name = 'SessionError'
+        error.output = 'Could not open input file: artisan'
+
+        throw error
+      },
+    })
+
+    const answer = await server.call('tinkr_run_php', {code: '1;'})
+
+    expect(answer.isError).toBe(true)
+    expect(answer.content[0].text).toContain('Could not open input file: artisan')
+    expect(answer.content[0].text).toContain('exit status 1')
+    expect(answer.structuredContent.error.class).toBe('SessionError')
+    expect(answer.structuredContent.output).toBe('Could not open input file: artisan')
+  })
+
   test('waits as long as the caller asks, within reason', async () => {
     const seen = []
     const {server} = opened({
