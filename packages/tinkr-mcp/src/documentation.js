@@ -275,6 +275,13 @@ Arguments: \`connection\`.
 Keep code as a snippet of a connection, so the app has it next time. Arguments:
 \`name\` (required), \`code\` (required), \`connection\`.
 
+### \`tinkr_delete_snippet\`
+Delete a snippet of a connection, by the id \`tinkr_list_snippets\` answers with.
+Arguments: \`id\` (required), \`connection\`. A snippet that is already gone is not
+an error — the answer says it was gone — because a delete asked for twice is
+still a delete that happened. The app writes the same file, so the change is made
+under the lock both writers take.
+
 ## Finding out what is there
 
 ### \`tinkr_list_connections\`

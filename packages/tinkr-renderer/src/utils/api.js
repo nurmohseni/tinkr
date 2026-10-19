@@ -38,6 +38,7 @@ export const onRunOutput = api.onRunOutput
 export const onSetConnection = api.onSetConnection
 export const onRunResult = api.onRunResult
 export const onHistoryConnection = api.onHistoryConnection
+export const onSnippetsConnection = api.onSnippetsConnection
 export const onReconnectConnection = api.onReconnectConnection
 export const onCloneConnection = api.onCloneConnection
 

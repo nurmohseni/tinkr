@@ -45,6 +45,10 @@ const defaults = {
   // what the result pane shows of a run that has several statements in it: all
   // of them, or only what the last one answered
   result_blocks: 'all',
+  // how long a run may take before it is given up on, in milliseconds. A run
+  // that reaches it is stopped, and the pane says so — a session left to itself
+  // would hold its connection and its transaction open for as long as it ran
+  run_timeout: 30000,
   shortcut_run: ['Control', 'r'],
   shortcut_new_connection: ['Meta', 'Shift', 'n'],
   // what opens the ai panel and puts the cursor in its prompt

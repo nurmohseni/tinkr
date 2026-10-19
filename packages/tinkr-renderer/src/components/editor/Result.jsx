@@ -197,8 +197,40 @@ ReadingActions.propTypes = {
   output: PropTypes.string,
 }
 
+/**
+ * How long the run took, as the small note the summary ends with.
+ *
+ * The time is what the person waited through, boot of the session included, and
+ * it is measured by the main process — the side that knows when the code was
+ * sent and when the answer came back — rather than guessed at here.
+ */
+const Duration = ({duration}) => {
+  const intl = useIntl()
+
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) {
+    return null
+  }
+
+  // a second is the unit, and a run that took less than a tenth of one says so
+  // rather than showing `0.0s`
+  const seconds = duration < 100 ? '<0.1' : (duration / 1000).toFixed(duration < 10000 ? 1 : 0)
+
+  return (
+    <span
+      className='result-summary__duration mono'
+      title={intl.formatMessage({id: 'result.duration_title'}, {seconds})}
+    >
+      {intl.formatMessage({id: 'result.duration'}, {seconds})}
+    </span>
+  )
+}
+
+Duration.propTypes = {
+  duration: PropTypes.number,
+}
+
 /** The run's exception: the class over its message, as the design's surface. */
-const Failure = ({error}) => {
+const Failure = ({error, duration = null}) => {
   const intl = useIntl()
 
   return (
@@ -207,6 +239,7 @@ const Failure = ({error}) => {
       <Outcome kind='threw' label animate key={failureKey(error)}/>
       <span className='muted'>{intl.formatMessage({id: 'result.no_value'})}</span>
       <span className='grow'/>
+      <Duration duration={duration}/>
       <span className='result-summary__actions'>
         <button
           className='btn btn--ghost btn--sm'
@@ -228,6 +261,7 @@ const Failure = ({error}) => {
 }
 
 Failure.propTypes = {
+  duration: PropTypes.number,
   error: PropTypes.shape({
     class: PropTypes.string,
     message: PropTypes.string,
@@ -394,7 +428,7 @@ ViewSwitch.propTypes = {
  * is read raw as the json the tree is drawn from. Either way the readings are
  * alternatives: one replaces the other, and neither is said twice.
  */
-const Returned = ({value, view, onView, output = ''}) => {
+const Returned = ({value, view, onView, output = '', duration = null}) => {
   const intl = useIntl()
   const views = readingsOf([value])
   const reading = readingOf(view, value)
@@ -406,6 +440,7 @@ const Returned = ({value, view, onView, output = ''}) => {
         <span>{describe(intl, value)}</span>
         <ViewSwitch views={views} view={reading} onChange={onView}/>
         <span className='grow'/>
+        <Duration duration={duration}/>
         <ReadingActions value={value} view={reading} output={output}/>
       </div>
 
@@ -416,6 +451,7 @@ const Returned = ({value, view, onView, output = ''}) => {
 
 Returned.propTypes = {
   value: PropTypes.any,
+  duration: PropTypes.number,
   output: PropTypes.string,
   view: PropTypes.oneOf(READINGS).isRequired,
   onView: PropTypes.func.isRequired,
@@ -553,7 +589,7 @@ Guard.propTypes = {
 
 const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {}, allStatements = false}) => {
   const intl = useIntl()
-  const {value, error, output, imported, blocks, transaction, sandbox} = result
+  const {value, error, output, imported, blocks, transaction, sandbox, duration} = result
 
   // a run of several statements, read statement by statement: the value of the
   // run is the last one's, so this is what "every statement" means
@@ -577,6 +613,8 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
           />
           <span>{intl.formatMessage({id: 'result.statements'}, {count: blocks.length})}</span>
           <ViewSwitch views={views} view={onReading(views, view)} onChange={onView}/>
+          <span className='grow'/>
+          <Duration duration={duration}/>
         </div>
 
         {blocks.map((block, index) => (
@@ -601,7 +639,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
           the run after they have printed what they were for */}
       {error && output && <Printed output={output}/>}
 
-      {error && <Failure error={error}/>}
+      {error && <Failure error={error} duration={duration}/>}
 
       {/* a run that printed and returned nothing is read as it printed */}
       {!error && value === null && output && <Printed output={output}/>}
@@ -614,6 +652,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
           view={view}
           onView={onView}
           output={output}
+          duration={duration}
         />
       )}
 

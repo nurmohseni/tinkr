@@ -259,6 +259,28 @@ describe('the tools', () => {
     expect(app.snippets(dir, 'local').map(one => one.name).sort()).toEqual(['Count users', 'One'])
   })
 
+  test('deletes a snippet, and says what it deleted', async () => {
+    dir = makeAppDir({
+      connections: {local: connection({id: 'local', name: 'The App', path: project})},
+      snippets: {local: {abc: {id: 'abc', code: '$n = 1;', name: 'One'}}},
+    })
+
+    const {server} = opened({dataDir: dir, at: project})
+    const answer = await server.call('tinkr_delete_snippet', {id: 'abc'})
+
+    expect(answer.isError).toBe(false)
+    expect(answer.structuredContent.deleted).toBe(true)
+    expect(answer.structuredContent.name).toBe('One')
+    expect(app.snippets(dir, 'local')).toEqual([])
+
+    // a second delete is not an error: it says the snippet was already gone
+    const again = await server.call('tinkr_delete_snippet', {id: 'abc'})
+
+    expect(again.isError).toBe(false)
+    expect(again.structuredContent.deleted).toBe(false)
+    expect(again.content[0].text).toMatch(/nothing was deleted/)
+  })
+
   test('refuses to keep a snippet for a directory that is not a connection', async () => {
     dir = makeAppDir()
 

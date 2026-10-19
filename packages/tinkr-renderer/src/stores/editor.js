@@ -37,6 +37,11 @@ const sandboxAtom = atom(true)
 // the run needs, and a run that is going is the only one a stop can end
 const runningAtom = atom(false)
 
+// when the run that is going was sent, in milliseconds since the epoch. The
+// pane's timer counts from it, so the wait a person sees is the wait the main
+// process is measuring as well
+const runStartedAtAtom = atom(null)
+
 // the run the pre-flight scan is holding back, with what the scan found in it:
 // the code, the guard the run was being sent under, and the calls that write.
 // `unguardable` is set when the run is a dry run and what was found is what its
@@ -105,6 +110,7 @@ const runAtom = atom(null, (get, set, code, options) => {
   set(outputAtom, '')
   set(resultAtom, null)
   set(runCodeAtom, code)
+  set(runStartedAtAtom, Date.now())
   set(runningAtom, true)
 
   // the code is sent as it is: the main process base64 encodes it before the
@@ -155,6 +161,7 @@ const stopRunAtom = atom(null, (get, set) => {
   }
 
   set(runningAtom, false)
+  set(runStartedAtAtom, null)
   stopConnection()
 })
 
@@ -163,6 +170,7 @@ const stopRunAtom = atom(null, (get, set) => {
  */
 const settledRunAtom = atom(null, (get, set) => {
   set(runningAtom, false)
+  set(runStartedAtAtom, null)
 })
 
 // 重新连接
@@ -201,6 +209,7 @@ export {
   dryRunAtom,
   sandboxAtom,
   runningAtom,
+  runStartedAtAtom,
   stopRunAtom,
   settledRunAtom,
   mutationGateAtom,

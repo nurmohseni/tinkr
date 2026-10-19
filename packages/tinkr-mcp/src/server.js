@@ -839,6 +839,27 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'tinkr_delete_snippet',
+    title: 'Delete a snippet',
+    description: 'Delete a snippet of a connection from Tinkr, by its id. The ids are what ' +
+      'tinkr_list_snippets answers with. A snippet that is already gone is not an error: ' +
+      'the answer says it was gone.',
+    annotations: {readOnlyHint: false, destructiveHint: true, openWorldHint: false},
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {type: 'string', description: 'The id of the snippet, as tinkr_list_snippets lists it.'},
+        connection: {
+          type: 'string',
+          description: 'The id or name of a connection saved in Tinkr. The connection this ' +
+            'server was started on when it is not given.',
+        },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
 ]
 
 /**
@@ -1164,6 +1185,26 @@ const createServer = ({
             text: `Saved "${target.said(args.name)}" as a snippet of ${found.connection.name} (${snippet.id}).`,
           }],
           structuredContent: {snippet: Object.assign({}, snippet, {code: truncate(snippet.code)})},
+          isError: false,
+        }
+      }
+
+      case 'tinkr_delete_snippet': {
+        if (typeof args.id !== 'string' || args.id.trim() === '') {
+          throw new Error('`id` is required: the id of the snippet, as tinkr_list_snippets lists it.')
+        }
+
+        const found = knownConnectionOf(args, 'snippets to delete')
+        const result = app.deleteSnippet(found.dataDir, found.connection.id, args.id)
+
+        return {
+          content: [{
+            type: 'text',
+            text: result.deleted
+              ? `Deleted ${result.name === null ? 'the snippet' : `"${target.said(result.name)}"`} from ${found.connection.name}.`
+              : `No snippet with the id ${target.said(args.id)} is kept for ${found.connection.name}, so nothing was deleted.`,
+          }],
+          structuredContent: Object.assign({connection: found.connection.id}, result),
           isError: false,
         }
       }

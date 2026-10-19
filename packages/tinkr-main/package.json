@@ -27,7 +27,6 @@
     "lodash": "^4.17.21",
     "node-pty": "^1.1.0",
     "os-locale": "^5.0.0",
-    "php-form": "^0.0.8",
     "query-string": "^7.0.1"
   },
   "devDependencies": {

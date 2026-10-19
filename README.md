@@ -73,7 +73,7 @@ You need `php` on the machine (or server) where your project lives. That's it.
 | **Readings** | The returned value as a tree, a table, a graph, or rendered markup, next to the raw output. Copy any table or save it as CSV. |
 | **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
 | **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. |
-| **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. |
+| **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. It also gives up on its own after the **run timeout** you set in Settings, so a snippet that never returns cannot hold the session. While a run is going the editor is read-only, the button counts the wait, and the answer reports how long the whole of it took. |
 | **Log viewer** | Your app's logs (`storage/logs` or anywhere) in a window of their own, so the editor keeps its width. Filter by any of monolog's eight levels, by a term, and by a span of time. Follow a file live, or step back through it a window at a time. |
 
 ### Ask
@@ -129,6 +129,7 @@ The directory the client starts it in is the project code runs in. No API token,
 | `tinkr_list_connections` | The connections saved in the app, with the command each session starts with |
 | `tinkr_list_snippets` | The snippets saved for a connection |
 | `tinkr_save_snippet` | Keep code as a snippet of a connection |
+| `tinkr_delete_snippet` | Delete a snippet by its id |
 
 History is the app's own: the last fifty runs of a connection. A client's own runs are not written to it, because the app owns that file while it runs.
 

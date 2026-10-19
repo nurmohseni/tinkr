@@ -18,6 +18,7 @@ const toolMessages = {
   tinkr_list_connections: 'preference.mcp_tool_list_connections',
   tinkr_list_snippets: 'preference.mcp_tool_list_snippets',
   tinkr_save_snippet: 'preference.mcp_tool_save_snippet',
+  tinkr_delete_snippet: 'preference.mcp_tool_delete_snippet',
 }
 
 /**

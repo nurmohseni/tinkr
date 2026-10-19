@@ -22,6 +22,35 @@ const render = (result, view, allStatements = false, onKeep = () => {}) => rende
 // that label ends with
 const offers = (markup, reading) => markup.includes(`/>${reading}</label>`)
 
+describe('how long the run took', () => {
+  test('a run that returned a value says how long it took', () => {
+    const markup = render({value: 42, error: null, output: '', imported: {}, duration: 1350})
+
+    // the note the summary ends with, in the seconds a person thinks in
+    expect(markup).toContain('1.4s')
+    expect(markup).toContain('It took 1.4 seconds')
+  })
+
+  test('a run that threw says it too', () => {
+    const markup = render({
+      value: null,
+      error: {class: 'RuntimeException', message: 'boom'},
+      output: '',
+      imported: {},
+      blocks: [],
+      duration: 800,
+    })
+
+    expect(markup).toContain('0.8s')
+  })
+
+  test('a run with no time to report says nothing rather than 0s', () => {
+    const markup = render({value: 1, error: null, output: '', imported: {}})
+
+    expect(markup).not.toContain('result-summary__duration')
+  })
+})
+
 describe('the result panel', () => {
   test('a run that returned a value says what it aliased', () => {
     const markup = render({

@@ -88,17 +88,45 @@ const sshArgs = connection => {
  * the word it is: the key, the port, the target, and the command that cd's into
  * the project and starts a login shell.
  *
+ * Two things about the line are load-bearing:
+ *
+ * - **Every option comes before the target.** ssh reads the first argument after
+ *   the destination as the command to run there, so a `-t` written after it is
+ *   not an option at all: it becomes part of the remote command line, the far
+ *   shell tries to run a program called `-t`, and the session that comes back
+ *   has no terminal. That is a login that "does not initialize": the shell is
+ *   there but not as the pty a tinker needs.
+ * - **The remote side is given a terminal and an interactive shell.** ssh only
+ *   allocates a pty when told to (`-t`), and a login shell on the far side is
+ *   interactive only when it has one. psysh needs both: without a terminal it
+ *   reads its input as a pipe and never draws a prompt.
+ *
+ * `exec` is what the shell is started with, so the tty's signals reach bash and
+ * the tinker under it rather than an extra shell in between, and `&&` is what
+ * makes a directory that is not there a failure that says so instead of a
+ * session that quietly lands in the home directory.
+ *
+ * The command the session is started with travels in this line too, rather than
+ * being typed after ssh has been started. ssh's own questions — a host key it
+ * has not seen, a password to type — are read from the terminal ssh was started
+ * on, and a command written into that terminal alongside ssh is what they answer
+ * instead: on a first connection the command was consumed by
+ * `Are you sure you want to continue connecting?`, and the session it was for
+ * never began. Written here, it is the remote shell's to run, and ssh's
+ * questions are ssh's alone.
+ *
  * @param {Object} connection
+ * @param {String} [command] what to run once the remote shell is up
  * @returns {String}
  */
-const parseSSHCommand = connection => {
+const parseSSHCommand = (connection, command = null) => {
   const problem = sshProblem(connection)
 
   if (problem) {
     return `echo ${word(`Tinkr: ${problem}`)}`
   }
 
-  const args = ['ssh']
+  const args = ['ssh', '-t']
 
   if (connection.ssh_port) {
     args.push('-p', word(connection.ssh_port))
@@ -110,8 +138,22 @@ const parseSSHCommand = connection => {
 
   args.push('--', word(`${connection.ssh_user}@${connection.ssh_server}`))
 
+  // what the remote side runs: into the project's directory, then whatever the
+  // session was started with, and otherwise the account's own login shell
+  const remote = []
+
   if (connection.path) {
-    args.push('-t', word(`cd ${word(connection.path)};bash --login`))
+    remote.push(`cd ${word(connection.path)}`)
+  }
+
+  if (command) {
+    // the project's directory, and then the command, which only runs when the
+    // directory was reached: a path that is not there is a failure that says so
+    args.push(word(remote.length ? `${remote[0]} && ${command}` : command))
+  } else {
+    // no command: a login shell, as ssh would have run it, in the project's
+    // directory when one was named
+    args.push(word(remote.length ? `${remote[0]} && exec bash --login -i` : 'exec bash --login -i'))
   }
 
   return args.join(' ')

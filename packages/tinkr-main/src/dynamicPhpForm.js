@@ -1,92 +1,63 @@
-const isString = require('lodash/isString')
-const set = require('lodash/set')
-const {instance} = require('php-form')
-
 const {getBackgroundPtyProcess} = require('./processes')
 const {writeFields} = require('./phpLiteral')
+const {readForm} = require('./phpForm')
 const {getFormPrefix} = require('./services/config')
 
 /**
- * What a field's value is, as the text of an input.
+ * The form of a snippet: its variables, and the code those variables are written
+ * back into.
  *
- * A field is edited as text, so a number, a boolean, null and an array all have
- * to have a text form — and the text form has to be the one that reads back as
- * what it was, which is what `phpLiteral` writes.
- *
- * @param {any} value
- * @return {String}
+ * The reading is `phpForm.readForm`'s, which is a scan and not a parse. That is
+ * the point of it: `php-form` — the WebAssembly PHP 7 parser this used to use —
+ * rejected every construct php added after 7, so one nullsafe `?->` anywhere in
+ * a snippet took the whole form down with `syntax error: unexpected
+ * T_OBJECT_OPERATOR`. A form only needs to know where each `$field_x = …;` starts
+ * and ends, and that does not need a grammar.
  */
-const textOf = value => {
-  if (value === null || value === undefined) {
-    return ''
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false'
-  }
-
-  if (typeof value === 'number') {
-    return String(value)
-  }
-
-  try {
-    return JSON.stringify(value)
-  } catch (e) {
-    return ''
-  }
-}
-
 class DynamicPhpForm {
   /**
-   * @param {PHPForm} phpForm
+   * The fields of a snippet.
+   *
+   * A value that is written as a closure is asked of the session — the snippet
+   * says what a variable is, and a closure's answer is whatever it returns —
+   * while every other value is the text it was written with.
+   *
+   * @param {String} connectionId
+   * @param {String} code
+   * @param {String} [prefix] what a field's variable starts with
+   * @return {Promise<Array<Object>>}
    */
-  constructor(phpForm) {
-    this.phpForm = phpForm
-  }
-
-  /**
-   * @param {string} connectionId
-   * @param {string} code
-   * @return {Promise<PHPFormField[]>}
-   */
-  async parse(connectionId, code) {
-    const fields = await this.phpForm.parse(code)
+  async parse(connectionId, code, prefix = getFormPrefix()) {
+    const source = String(code || '')
 
     // a form is written back into the code it came from, so that code is kept
-    this.code = code
+    this.code = source
 
-    for (let i = 0; i < fields.length; i++) {
-      const keys = Object.keys(fields[i])
+    const fields = readForm(source, prefix)
+    const pty = getBackgroundPtyProcess(connectionId)
 
-      for (let j = 0; j < keys.length; j++) {
-        const value = fields[i][keys[j]]
-        if (isString(value) && value.match(/^(function|fn)/)) {
-          const pty = getBackgroundPtyProcess(connectionId)
-          const res = await pty.jsonResult(value)
+    for (const field of fields) {
+      if (!pty || typeof field.value !== 'string' || !/^\s*(function|fn)\b/.test(field.value)) {
+        continue
+      }
 
-          set(fields, [i, keys[j]], this.parseJsonResult(res))
-        }
+      try {
+        field.value = this.parseJsonResult(await pty.jsonResult(field.value))
+      } catch (e) {
+        // a closure the session could not answer for is shown as the code it is:
+        // the field is still editable, and the run is what says why
       }
     }
 
-    // a field is an input, so what it holds is text: a number, a boolean, null
-    // and an array are shown as the text php would read back as them, and the
-    // field's type is what turns them back into literals when the form runs
-    return fields.map(field => Object.assign({}, field, {value: textOf(field.value)}))
+    return fields
   }
 
   /**
-   * @param {string} jsonString
+   * @param {String} jsonString
    * @return {any}
    */
   parseJsonResult(jsonString) {
     try {
-      // the value as php answered it, with strings as the characters they are:
-      // a form shows `it's "quoted"` and not the json of it
       return JSON.parse(jsonString)
     } catch (e) {
       // what a field cannot read is what the field is, and the form says so
@@ -98,35 +69,36 @@ class DynamicPhpForm {
   /**
    * The code a form was read from, with what the form now holds written into it.
    *
-   * php-form's `stringify` cannot do this safely: it writes a value as it is,
-   * which is how a field ran code, and it panics on any value that is not text,
-   * which takes the whole form down with it. What a form is, though, is the code
-   * with its fields' values — so the code it was parsed from is kept, and each
-   * field's assignment is rewritten here.
+   * The code is kept from the parse, and each field's assignment is rewritten in
+   * it: a value written into a snippet is code, so the literal is `phpLiteral`'s
+   * and never the form's own text.
    *
-   * @param {PHPFormField[]} fields
+   * @param {Array<Object>} fields
    * @param {String} [code] the code the fields were parsed from
    * @return {String}
    */
   stringify(fields, code = this.code) {
     return writeFields(code || '', fields)
   }
-
-  /**
-   * @return {Promise<DynamicPhpForm>}
-   */
-  static async instance() {
-    if (!DynamicPhpForm.dynamicPhpForm) {
-      const phpForm = await instance(getFormPrefix())
-      DynamicPhpForm.dynamicPhpForm = new DynamicPhpForm(phpForm)
-    }
-
-    return DynamicPhpForm.dynamicPhpForm
-  }
 }
 
 DynamicPhpForm.dynamicPhpForm = null
 
+/**
+ * The form, read without a package behind it: nothing is loaded and nothing is
+ * started, so it can be made wherever a snippet's form is asked for.
+ *
+ * @return {Promise<DynamicPhpForm>}
+ */
+const instance = async () => {
+  if (!DynamicPhpForm.dynamicPhpForm) {
+    DynamicPhpForm.dynamicPhpForm = new DynamicPhpForm()
+  }
+
+  return DynamicPhpForm.dynamicPhpForm
+}
+
 module.exports = {
   DynamicPhpForm,
+  instance,
 }

@@ -34,6 +34,14 @@ const GeneralForm = () => {
         {value: 'last', labelId: 'preference.result_blocks_last'},
       ]}
     />
+    <GeneralField
+      label={intl.formatMessage({id: 'preference.run_timeout'})}
+      description={intl.formatMessage({id: 'preference.run_timeout_description'})}
+      configKey='run_timeout'
+      type='number'
+      placeholder='30000'
+    />
+
     <SwitchField
       labelId='preference.confirm_close_session'
       descriptionId='preference.confirm_close_session_description'

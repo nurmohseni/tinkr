@@ -231,10 +231,12 @@ class Session {
     }
 
     if (this.connection.is_over_ssh) {
-      this.pty.write(`${parseSSHCommand(this.connection)}\r`)
-    }
-
-    if (command) {
+      // the command travels inside the ssh line rather than being typed after
+      // it: ssh's own prompts — a host key to accept, a password to type — read
+      // the terminal it was started on, and a command written there alongside
+      // ssh is what they answered instead. See parseSSHCommand.
+      this.pty.write(`${parseSSHCommand(this.connection, command)}${bootSentinel}\r`)
+    } else if (command) {
       // the status of the command, printed by the shell once it is back: the
       // shell's prompt is the same escape as a command's, so this is what says
       // which of the two the session is looking at (see Session#ready)

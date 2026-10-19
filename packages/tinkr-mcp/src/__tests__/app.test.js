@@ -88,4 +88,29 @@ describe('the app\'s own files', () => {
 
     expect(fs.readFileSync(path.join(dir, 'app', 'snippets', 'one.json'), 'utf8')).toMatch(/\n\t"/)
   })
+
+  test('deletes one snippet and keeps the others', () => {
+    dir = makeAppDir({
+      snippets: {
+        one: {
+          abc: {id: 'abc', code: '$n = 1;', name: 'One'},
+          def: {id: 'def', code: '$n = 2;', name: 'Two'},
+        },
+      },
+    })
+
+    expect(app.deleteSnippet(dir, 'one', 'abc')).toEqual({id: 'abc', name: 'One', deleted: true})
+    expect(app.snippets(dir, 'one')).toEqual([{id: 'def', code: '$n = 2;', name: 'Two'}])
+  })
+
+  // a delete asked for twice is still a delete that happened: it says the
+  // snippet was already gone rather than failing, and it deletes nothing else
+  test('deleting what is not there says so and changes nothing', () => {
+    dir = makeAppDir({
+      snippets: {one: {abc: {id: 'abc', code: '$n = 1;', name: 'One'}}},
+    })
+
+    expect(app.deleteSnippet(dir, 'one', 'missing')).toEqual({id: 'missing', name: null, deleted: false})
+    expect(app.snippets(dir, 'one')).toHaveLength(1)
+  })
 })

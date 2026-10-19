@@ -1,11 +1,11 @@
-import {useCallback} from 'react'
+import {useCallback, useEffect, useState} from 'react'
 import {useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {useRoute} from 'wouter'
 import debounce from 'lodash/debounce'
 
 import {activeSessionAtom, documentAtomWithId} from '../../stores/sessions'
-import {runAtom, runningAtom, stopRunAtom} from '../../stores/editor'
+import {runAtom, runStartedAtAtom, runningAtom, stopRunAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
 import {shortcutLabel} from '../../utils/isMatchShortcut'
 
@@ -22,6 +22,10 @@ import {shortcutLabel} from '../../utils/isMatchShortcut'
  *
  * It says its word and its shortcut as a keycap on the fill, and the stop carries
  * the key the terminal itself uses for one.
+ *
+ * While the run is going the button also counts the wait, from the moment the
+ * run was sent: a run that is taking longer than it should is something to
+ * see, and the count is the same one the result reports when the answer comes.
  */
 const RunButton = () => {
   const intl = useIntl()
@@ -32,7 +36,25 @@ const RunButton = () => {
   const config = useAtomValue(configAtom)
   const run = useSetAtom(runAtom)
   const running = useAtomValue(runningAtom)
+  const startedAt = useAtomValue(runStartedAtAtom)
   const stop = useSetAtom(stopRunAtom)
+  const [now, setNow] = useState(() => Date.now())
+
+  // a second is the unit the count is shown in, so a tick a second is enough
+  useEffect(() => {
+    if (!running) {
+      return undefined
+    }
+
+    setNow(Date.now())
+
+    const tick = setInterval(() => setNow(Date.now()), 250)
+
+    return () => clearInterval(tick)
+  }, [running, startedAt])
+
+  const elapsed = running && startedAt ? Math.max(0, now - startedAt) : 0
+  const seconds = (elapsed / 1000).toFixed(elapsed < 10000 ? 1 : 0)
 
   const code = document?.code || ''
   // a stop is always available: the code that is running is not the code in the
@@ -65,6 +87,11 @@ const RunButton = () => {
         </svg>
       )}
       {label}
+      {running && (
+        <span className='btn__timer mono'>
+          {intl.formatMessage({id: 'result.duration'}, {seconds})}
+        </span>
+      )}
       <span className='keycap keycap--on-primary'>{shortcutLabel(config.shortcut_run)}</span>
     </button>
   )

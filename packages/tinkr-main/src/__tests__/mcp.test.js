@@ -162,6 +162,7 @@ describe('what the settings screen is told', () => {
       'tinkr_list_connections',
       'tinkr_list_snippets',
       'tinkr_save_snippet',
+      'tinkr_delete_snippet',
     ])
   })
 })
@@ -308,3 +309,85 @@ const packedMountAgain = mounted => {
     fs.rmSync(again, {recursive: true, force: true})
   }
 }
+
+describe('the snippets a connection has, watched', () => {
+  const {watchSnippets} = require('../services/snippetsWatch')
+
+  let dir = null
+  let win = null
+  let watcher = null
+
+  // the watcher holds the process open, so it is closed whether the test passed
+  // or threw: a watch left running is a jest that never exits
+  const watching = (connectionId, read) => {
+    watcher = watchSnippets(win, connectionId, read)
+
+    return watcher
+  }
+
+  const settle = () => new Promise(resolve => setTimeout(resolve, 250))
+
+  const sent = () => win.webContents.send.mock.calls.filter(([channel]) => channel === 'snippetsConnection')
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-watch-'))
+    win = {webContents: {send: jest.fn()}, isDestroyed: () => false}
+    app.getPath = () => dir
+  })
+
+  afterEach(() => {
+    if (watcher) {
+      watcher.close()
+      watcher = null
+    }
+
+    fs.rmSync(dir, {recursive: true, force: true})
+    app.getPath = () => '/tmp'
+  })
+
+  // the bug this waits against: an agent saved a snippet through the MCP server,
+  // and the window kept showing the list it had read when it switched connection
+  // until it was closed and opened again
+  test('tells the window what a snippet saved outside the app is', async () => {
+    const file = path.join(dir, 'app', 'snippets', 'one.json')
+    const watcherOf = watching('one', () => JSON.parse(fs.readFileSync(file, 'utf8')))
+
+    expect(watcherOf).not.toBeNull()
+
+    fs.mkdirSync(path.dirname(file), {recursive: true})
+    // written the way the MCP server writes it: a file of its own, renamed over
+    fs.writeFileSync(`${file}.tinkr-tmp`, JSON.stringify({abc: {id: 'abc', name: 'One', code: '$n = 1;'}}))
+    fs.renameSync(`${file}.tinkr-tmp`, file)
+
+    await settle()
+
+    expect(sent()).toHaveLength(1)
+    // the store's shape is the file's: a snippet by its id
+    expect(sent()[0][1]).toEqual({
+      connection: 'one',
+      snippets: {abc: {id: 'abc', name: 'One', code: '$n = 1;'}},
+    })
+  })
+
+  test('does not redraw the window for a rewrite that says the same thing', async () => {
+    const file = path.join(dir, 'app', 'snippets', 'one.json')
+    const held = {abc: {id: 'abc', name: 'One', code: '$n = 1;'}}
+
+    fs.mkdirSync(path.dirname(file), {recursive: true})
+    fs.writeFileSync(file, JSON.stringify(held))
+
+    watching('one', () => JSON.parse(fs.readFileSync(file, 'utf8')))
+
+    // the app's own save looks like this from out here: the same content, written
+    // again in the way electron-store writes it
+    await settle()
+
+    const before = sent().length
+
+    fs.writeFileSync(file, JSON.stringify(held, null, 2))
+
+    await settle()
+
+    expect(sent().length).toBe(before)
+  })
+})

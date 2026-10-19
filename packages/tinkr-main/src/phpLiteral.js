@@ -10,7 +10,7 @@
 /**
  * A value as the php literal it is.
  *
- * php-form's own `stringify` writes a value between quotes as it is, which is
+ * A value between quotes used to be written as it is, which is
  * how a snippet form used to run whatever a field held: a field set to
  * `'; system('id'); //` closed the string and the rest of it ran as code. So the
  * literal is written here, where escaping is the point: a string is single
@@ -64,6 +64,22 @@ const phpLiteral = (value, type) => {
     return /^-?\d+$/.test(trimmed) ? trimmed : phpLiteral(text)
   }
 
+  // a field the form read back as `null` writes `null`, and one that read a
+  // boolean writes the boolean it shows
+  if (type === 'null') {
+    return 'null'
+  }
+
+  // a field whose value was code is code: the form shows `User::find(1)` and
+  // writing it back quoted would turn the query into a string
+  if (type === 'code') {
+    return text.trim() === '' ? 'null' : text
+  }
+
+  if (type === 'boolean') {
+    return text.trim() === 'false' ? 'false' : 'true'
+  }
+
   // everything else is a string, and a string is what php will read back as
   // exactly the characters it holds
   return `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
@@ -108,7 +124,12 @@ const writeFields = (code, fields) => {
       continue
     }
 
-    source = `${source.slice(0, start)} ${phpLiteral(field.value, field.type)}${source.slice(end)}`
+    // what the field was read as decides how a bare text value is written: a
+    // number stays a number and a null stays a null, while a field a person
+    // typed into is the text they typed
+    const type = field.type || field.literal
+
+    source = `${source.slice(0, start)} ${phpLiteral(field.value, type)}${source.slice(end)}`
   }
 
   return source

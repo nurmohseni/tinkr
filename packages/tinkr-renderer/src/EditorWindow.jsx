@@ -22,6 +22,7 @@ import useSplit from './hooks/useSplit'
 import {sizesAtom, resultAtom, connectionAtom, settledRunAtom} from './stores/editor'
 import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
+import {snippetsConnectionAtom} from './stores/snippets'
 import {switchConnectionAtom} from './stores/connections'
 import {phpVersionAnsweredAtom} from './stores/php'
 import {
@@ -34,6 +35,7 @@ import {
 import {
   onRunResult,
   onHistoryConnection,
+  onSnippetsConnection,
   onSetConnection,
   onPhpVersion,
   onUpdateState,
@@ -68,6 +70,7 @@ const EditorWindow = () => {
   const setUpdateFailed = useSetAtom(updateFailedAtom)
   const setPhpVersion = useSetAtom(phpVersionAnsweredAtom)
   const setSettled = useSetAtom(settledRunAtom)
+  const setSnippets = useSetAtom(snippetsConnectionAtom)
   const updates = {
     updateAvailable: setUpdateAvailable,
     updateNotAvailable: setUpdateNotAvailable,
@@ -86,6 +89,11 @@ const EditorWindow = () => {
       setSettled()
     })
     const onHistory = onHistoryConnection(setHistory)
+    // the snippets a client's MCP server saved or deleted are this connection's:
+    // the store takes them as they now stand rather than being told one at a
+    // time, because the writer was another process and the whole file is what it
+    // changed
+    const onSnippets = onSnippetsConnection(setSnippets)
     // the main process switched this window's connection, and the documents it
     // was on went with the old one: the window moves to the session it now has
     const onConnection = onSetConnection(() => {
@@ -104,6 +112,7 @@ const EditorWindow = () => {
     return () => {
       onResult.dispose()
       onHistory.dispose()
+      onSnippets.dispose()
       onConnection.dispose()
       onUpdate.forEach(dispose => dispose.dispose())
       onPhp.dispose()
