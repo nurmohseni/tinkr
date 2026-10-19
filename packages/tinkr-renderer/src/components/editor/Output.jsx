@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 import debounce from 'lodash/debounce'
 
 import {termOptions, watchTermTheme} from '../../utils/getTermOptions'
-import {outputAtom, outputViewAtom, resultAtom, runAtom, runCodeAtom} from '../../stores/editor'
+import {currentResultAtom, currentOutputAtom, currentRunCodeAtom, outputViewAtom, runAtom, activeDocumentAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
 import Result from './Result'
 import useFitAddon from '../../hooks/useFitAddon'
@@ -41,15 +41,18 @@ const Output = () => {
   const termRef = useRef()
   const config = useAtomValue(configAtom)
   const {fitAddonRef} = useFitAddon()
-  const output = useAtomValue(outputAtom)
-  const result = useAtomValue(resultAtom)
+  const output = useAtomValue(currentOutputAtom)
+  const result = useAtomValue(currentResultAtom)
   const [view, setView] = useAtom(outputViewAtom)
   const run = useSetAtom(runAtom)
-  const code = useAtomValue(runCodeAtom)
+  const runningFor = useAtomValue(activeDocumentAtom)
+  const code = useAtomValue(currentRunCodeAtom)
 
   // keeping a dry run means running it again, and what it runs is the code the
   // run it is offered under was sent with, not whatever the editor holds now
-  const keepRun = useCallback(() => run(code, {guard: 'commit'}), [run, code])
+  // the run kept is the document's the pane is on: the same tab, sent again with
+  // its transaction kept
+  const keepRun = useCallback(() => run(code, {guard: 'commit', document: runningFor}), [run, code, runningFor])
 
   // 清空 output，写入内容
   // https://github.com/xtermjs/xterm.js/issues/943

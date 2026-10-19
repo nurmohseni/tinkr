@@ -4,7 +4,7 @@ import {FormattedMessage, useIntl} from 'react-intl'
 
 import ReconnectButton from './ReconnectButton'
 import Outcome from '../Outcome'
-import {outputTabIndexAtom, resultAtom} from '../../stores/editor'
+import {outputTabIndexAtom, currentResultAtom} from '../../stores/editor'
 
 /**
  * The output panel's tab row, as the design draws it: the views as radio tabs,
@@ -22,7 +22,7 @@ import {outputTabIndexAtom, resultAtom} from '../../stores/editor'
 const Toolbar = () => {
   const intl = useIntl()
   const [tabIndex, setTabIndex] = useAtom(outputTabIndexAtom)
-  const result = useAtomValue(resultAtom)
+  const result = useAtomValue(currentResultAtom)
   const strip = useRef(null)
 
   // the strip scrolls its own overflow and nothing else's: bringing the view in

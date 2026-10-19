@@ -41,7 +41,7 @@ const Form = () => {
   }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(code => run(code), 500), [])
+  const runDebounced = useCallback(debounce(code => run(code, {document: params.id}), 500), [params.id])
 
   const runSnippet = async () => {
     // the form's values are written into the code the form was read from, so

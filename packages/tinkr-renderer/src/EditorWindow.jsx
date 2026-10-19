@@ -1,7 +1,7 @@
 import {useEffect} from 'react'
 import Split from 'react-split'
 import {Route} from 'wouter'
-import {useAtomValue, useSetAtom} from 'jotai'
+import {useAtomValue, useSetAtom, useStore} from 'jotai'
 import throttle from 'lodash/throttle'
 import useHashLocation from './utils/useHashLocation'
 
@@ -19,7 +19,8 @@ import DeleteSnippetConfirm from './components/editor/DeleteSnippetConfirm'
 import ConnectionPage from './components/ConnectionPage'
 import DeleteConnectionConfirm from './components/connections/DeleteConnectionConfirm'
 import useSplit from './hooks/useSplit'
-import {sizesAtom, resultAtom, connectionAtom, settledRunAtom} from './stores/editor'
+import DocumentScope from './components/editor/DocumentScope'
+import {sizesAtom, connectionAtom, settledRunAtom, setAnswer, inFlightDocumentAtom, inFlightAtom} from './stores/editor'
 import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
 import {snippetsConnectionAtom} from './stores/snippets'
@@ -57,8 +58,15 @@ const splitGutter = (index, direction) => {
 const EditorWindow = () => {
   const {splitRef} = useSplit()
   const setSizes = useSetAtom(sizesAtom)
-  const setResult = useSetAtom(resultAtom)
+  const setAnswerFor = useSetAtom(setAnswer)
+  const setInFlight = useSetAtom(inFlightAtom)
   const setHistory = useSetAtom(historyListAtom)
+
+  // the store itself, so the answer can be put under the document that sent the
+  // run rather than under whatever is on screen when it lands
+  const store = useStore()
+
+
   const connection = useAtomValue(connectionAtom)
   const config = useAtomValue(configAtom)
   const [, setLocation] = useHashLocation()
@@ -82,10 +90,21 @@ const EditorWindow = () => {
   const side = config.editor_layout !== 'stacked'
 
   useEffect(() => {
-    // the answer is the end of the run, whichever way it came: the stop it may
-    // have been given is done with
+    // the answer is written to the document that sent the run, not to whatever
+    // is on screen: a run is its tab's, and a person who moved to another tab
+    // while it ran comes back to the answer it left there. The run the answer
+    // ends is the one that was going, which is the window's.
     const onResult = onRunResult(result => {
-      setResult(result)
+      // the run that is going knows which tab sent it, and it is still going as
+      // this runs: a person who moved to another tab while it ran comes back to
+      // the answer it left in the tab they sent it from
+      const document = store.get(inFlightDocumentAtom)
+
+      if (document) {
+        setAnswerFor({document, value: result})
+      }
+
+      setInFlight(null)
       setSettled()
     })
     const onHistory = onHistoryConnection(setHistory)
@@ -159,6 +178,10 @@ const EditorWindow = () => {
         </div>
 
         <Statusbar/>
+
+        {/* the window is the container the router is inside, so the document on
+            screen is read from in here, where the route is */}
+        <DocumentScope/>
 
         <Route path='/connections/:id' component={ConnectionPage}/>
         <SnippetActions/>

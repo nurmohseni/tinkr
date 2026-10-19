@@ -13,7 +13,7 @@ import {
   resolveTurnAtom,
   toggleAiContextAtom,
 } from '../../stores/ai'
-import {applyCodeAtom, resultAtom} from '../../stores/editor'
+import {applyCodeAtom, currentResultAtom} from '../../stores/editor'
 import {aiFiles} from '../../utils/api'
 import {mentionAt, withMention} from '../../utils/aiMention'
 
@@ -131,7 +131,7 @@ const AiPanel = () => {
   const ask = useSetAtom(askAiAtom)
   const resolve = useSetAtom(resolveTurnAtom)
   const applyCode = useSetAtom(applyCodeAtom)
-  const result = useAtomValue(resultAtom)
+  const result = useAtomValue(currentResultAtom)
   const focus = useAtomValue(aiFocusAtom)
   const [prompt, setPrompt] = useState('')
   const [mention, setMention] = useState(null)

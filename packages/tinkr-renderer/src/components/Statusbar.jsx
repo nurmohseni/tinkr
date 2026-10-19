@@ -3,7 +3,7 @@ import {useIntl} from 'react-intl'
 import {useRoute} from 'wouter'
 
 import Outcome from './Outcome'
-import {connectionAtom, resultAtom} from '../stores/editor'
+import {connectionAtom, currentResultAtom} from '../stores/editor'
 import {phpVersionAtom} from '../stores/php'
 import {configAtom} from '../stores/config'
 import {snippetAtomWithId} from '../stores/snippets'
@@ -30,7 +30,7 @@ const Statusbar = () => {
   const connection = useAtomValue(connectionAtom)
   const php = useAtomValue(phpVersionAtom)
   const config = useAtomValue(configAtom)
-  const result = useAtomValue(resultAtom)
+  const result = useAtomValue(currentResultAtom)
   const [, params] = useRoute('/snippets/:id/:mode')
   const snippet = useAtomValue(params?.id ? snippetAtomWithId(params.id) : noSnippetAtom)
   const position = snippet?.position

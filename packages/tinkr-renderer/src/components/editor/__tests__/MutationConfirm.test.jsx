@@ -5,7 +5,7 @@ import {createStore, Provider} from 'jotai'
 import flatten from 'flat'
 
 import MutationConfirm from '../MutationConfirm'
-import {connectionAtom, mutationGateAtom} from '../../../stores/editor'
+import {activeDocumentAtom, connectionAtom, runsAtom} from '../../../stores/editor'
 import english from '../../../../../tinkr-main/src/lang/en.json'
 
 // the vite build uses the automatic jsx runtime, so the component has no React
@@ -20,7 +20,13 @@ const render = (held, press) => {
   const store = createStore()
 
   store.set(connectionAtom, {name: 'orders', tag: 'production'})
-  store.set(mutationGateAtom, held)
+  // the question is the document's: the box reads the record of the tab the
+  // window is on, so that is where a held run is written
+  store.set(activeDocumentAtom, 'doc')
+
+  if (held) {
+    store.set(runsAtom, {doc: {result: null, output: '', code: '', gate: held}})
+  }
 
   window.api.runConnection.mockClear()
 
@@ -82,7 +88,8 @@ describe('the box a held run is asked about', () => {
     const {store} = render(held, '.btn--primary')
 
     expect(window.api.runConnection.mock.calls).toEqual([['$order->save();', null]])
-    expect(store.get(mutationGateAtom)).toBe(null)
+    // the question is answered: nothing is waiting behind it any more
+    expect(store.get(runsAtom).doc?.gate ?? null).toBe(null)
   })
 
   test('sends the held run under the guard it was held with', () => {
@@ -98,6 +105,7 @@ describe('the box a held run is asked about', () => {
     const {store} = render(held, '.btn--ghost')
 
     expect(window.api.runConnection.mock.calls).toEqual([])
-    expect(store.get(mutationGateAtom)).toBe(null)
+    // the question is answered: nothing is waiting behind it any more
+    expect(store.get(runsAtom).doc?.gate ?? null).toBe(null)
   })
 })
