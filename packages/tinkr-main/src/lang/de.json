@@ -19,6 +19,11 @@
     "ssh_key": "SSH-Schlüssel",
     "ssh_key_tooltip": "ohne SSH-Schlüssel wird die Standard-SSH-Konfiguration verwendet",
     "import_ssh_key": "Privaten Schlüssel importieren...",
+    "ssh_password": "Passwort",
+    "ssh_password_placeholder": "das Passwort des Servers",
+    "ssh_password_saved": "gespeichert",
+    "ssh_password_kept": "Das Passwort bleibt auf diesem Rechner und wird nie wieder angezeigt.",
+    "ssh_password_forget": "Verwerfen",
     "delete_confirm_title": "Bist du dir absolut sicher?",
     "delete_confirm_content": "Diese Aktion kann <strong>nicht</strong> rückgängig gemacht werden. Die Verbindung <strong>{name}</strong> wird endgültig gelöscht.",
     "delete_connection": "Verbindung löschen",
@@ -32,10 +37,15 @@
     "tag_production": "Produktion",
     "kind_production": "Produktion",
     "kind_container": "Container",
+    "kind_ssh_container": "ssh + Container",
     "container_engine": "Engine",
     "container_name": "Container",
     "container_placeholder": "laravel.test",
-    "container_command": "Befehl darin"
+    "container_loading": "suche…",
+    "container_none": "Kein laufender Container hat geantwortet. Gib den Namen ein, wenn du ihn kennst.",
+    "container_command": "Befehl darin",
+    "container_path": "Pfad im Container",
+    "container_path_placeholder": "/var/www/html"
   },
   "editor": {
     "ai": "KI",

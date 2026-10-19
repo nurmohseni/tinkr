@@ -61,7 +61,7 @@ You need `php` on the machine (or server) where your project lives. That's it.
 
 | | |
 | --- | --- |
-| **Connections** | Local projects, Docker/Podman/Sail/Kubernetes containers, or any server over SSH. Tag one as production and Tinkr asks before it writes. |
+| **Connections** | Local projects; Docker, Podman, Sail and Kubernetes containers; any server over SSH, with a key or a password; and a container on a server, which is what a Dokploy, Coolify or compose deploy is. The container and the project inside it are picked from what is running rather than typed. A password is kept in a file only you can read, never shown back, and answered by the app itself. Tag a connection as production and Tinkr asks before it writes. |
 | **Editor** | Monaco, with class names and `::` method suggestions read straight from your project, local or remote. |
 | **Snippet forms** | Turn a snippet's variables into a form and run it like a tiny admin panel. |
 | **Snippets & history** | Save the code you reuse. Every run is kept across restarts; one click puts it back in the editor. |

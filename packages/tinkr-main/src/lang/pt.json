@@ -19,6 +19,11 @@
     "ssh_key": "Chave SSH",
     "ssh_key_tooltip": "se você deixar a chave SSH vazia, será usada a configuração SSH padrão",
     "import_ssh_key": "Importar uma chave privada...",
+    "ssh_password": "Senha",
+    "ssh_password_placeholder": "a senha do servidor",
+    "ssh_password_saved": "salva",
+    "ssh_password_kept": "A senha fica guardada neste computador e nunca é mostrada outra vez.",
+    "ssh_password_forget": "Esquecer",
     "delete_confirm_title": "Tem certeza absoluta?",
     "delete_confirm_content": "Esta ação <strong>não pode</strong> ser desfeita. A conexão <strong>{name}</strong> será excluída permanentemente.",
     "delete_connection": "Excluir conexão",
@@ -32,10 +37,15 @@
     "tag_production": "produção",
     "kind_production": "produção",
     "kind_container": "contentor",
+    "kind_ssh_container": "ssh + contentor",
     "container_engine": "Motor",
     "container_name": "Contentor",
     "container_placeholder": "laravel.test",
-    "container_command": "Comando dentro"
+    "container_loading": "a procurar…",
+    "container_none": "Nenhum contentor em execução respondeu. Escreve o nome se o souberes.",
+    "container_command": "Comando dentro",
+    "container_path": "Caminho dentro do contentor",
+    "container_path_placeholder": "/var/www/html"
   },
   "editor": {
     "ai": "IA",

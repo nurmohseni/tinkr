@@ -1,4 +1,4 @@
-const {classIndex, indexFrom, matchingFilesIn, phpString} = require('tinkr-core')
+const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead} = require('tinkr-core')
 
 const {exec, quoted} = require('../remote')
 
@@ -142,7 +142,17 @@ const indexCode = () => 'error_reporting(0);' +
  * @return {Promise<String|null>}
  */
 const ask = async (connection, code) => {
-  const answer = await exec(connection, `php -r ${quoted(code)}`, {maxBuffer: maxAnswer})
+  const question = `php -r ${quoted(code)}`
+  // a project in a container has its php in the container: the question is asked
+  // there, in the project's own directory, because the machine may hold none of
+  // the files at all (see containerRead)
+  const inside = containerRead(connection, question)
+
+  const answer = await exec(
+    connection,
+    inside || question,
+    {maxBuffer: maxAnswer},
+  )
 
   return answer.code === 0 ? answer.stdout : null
 }

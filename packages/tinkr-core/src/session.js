@@ -8,6 +8,8 @@ const {wrapRun, RunResultFilter} = require('./runResult')
 const {stripSessionNotes} = require('./terminalOutput')
 const {importsFor} = require('./classIndex')
 const {parseSSHCommand} = require('./parseSSHCommand')
+const {askpassEnvironment} = require('./sshAskpass')
+const {sessionCommand} = require('./containerCommand')
 
 /**
  * The keys a kill sends before it gives up on the session, and how long each is
@@ -157,15 +159,19 @@ const withoutPager = command => command.replace(/^(\s*)php(\s)/, '$1php -d cli.p
 class Session {
   /**
    * @param {Record<String, any>} connection
-   * @param {{appName?: String, appVersion?: String, log?: Object}} [options]
-   *   what the session reports itself as (`TERM_PROGRAM`), and where a session
-   *   that will not start is reported. No window and no electron is involved.
+   * @param {{appName?: String, appVersion?: String, log?: Object,
+   *   dataDir?: String}} [options]
+   *   what the session reports itself as (`TERM_PROGRAM`), where a session
+   *   that will not start is reported, and the app's data directory — which is
+   *   where a connection's saved password is answered from. No window and no
+   *   electron is involved.
    */
-  constructor(connection, {appName = 'Tinkr', appVersion = '', log = console} = {}) {
+  constructor(connection, {appName = 'Tinkr', appVersion = '', log = console, dataDir = null} = {}) {
     this.connection = connection
     this.appName = appName
     this.appVersion = appVersion
     this.log = log
+    this.dataDir = dataDir
     this.pty = null
   }
 
@@ -179,6 +185,12 @@ class Session {
    * @param {String} [command]
    */
   start(command = null) {
+    // a session with nothing to run still has to run what the connection is:
+    // a connection whose project is in a container runs the container's command,
+    // and one over ssh is reached before anything is typed. Asking for "no
+    // command" is not asking for a bare shell on a connection that has one
+    command = command || sessionCommand(this.connection) || null
+
     const shell = defaultShell
     // A login shell is a posix shell's idea. cmd.exe reads --login as a program
     // to run, fails, and leaves a session that does nothing else: no prompt, no
@@ -196,6 +208,14 @@ class Session {
         TERM_PROGRAM_VERSION: this.appVersion,
       },
     )
+
+    // a connection with a saved password is answered by the app's own helper
+    // rather than by the terminal, and what it needs to find that password is
+    // computed once: part of it goes into this environment and the rest onto the
+    // line ssh is given (see parseSSHCommand — a login profile replaces what was
+    // in the environment, and the line is read after it has run). Nothing of the
+    // password itself is in either: the helper reads it from the app's own file
+    const askpass = askpassEnvironment(this.dataDir, this.connection)
 
     const options = {
       // a session starts in the home directory. Windows has no HOME in its
@@ -235,7 +255,7 @@ class Session {
       // it: ssh's own prompts — a host key to accept, a password to type — read
       // the terminal it was started on, and a command written there alongside
       // ssh is what they answered instead. See parseSSHCommand.
-      this.pty.write(`${parseSSHCommand(this.connection, command)}${bootSentinel}\r`)
+      this.pty.write(`${parseSSHCommand(this.connection, command, askpass && askpass.line)}${bootSentinel}\r`)
     } else if (command) {
       // the status of the command, printed by the shell once it is back: the
       // shell's prompt is the same escape as a command's, so this is what says
@@ -497,9 +517,11 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  * @param {Record<String, any>} connection
  * @param {String} code
  * @param {{timeout?: Number, command?: String, guard?: String, appName?: String,
- *   appVersion?: String, log?: Object}} [options] `command` is what the session
- *   is started with when the connection names none, and `guard` is what the run
- *   is guarded with: `rollback` for a dry run, `commit` for the same run kept
+ *   appVersion?: String, log?: Object, dataDir?: String}} [options] `command` is
+ *   what the session is started with when the connection names none, `guard` is
+ *   what the run is guarded with: `rollback` for a dry run, `commit` for the
+ *   same run kept, and `dataDir` is where the app's data is — which is where a
+ *   connection's saved password is answered from
  * @return {Promise<{value: any, blocks: Array, error: Object|null,
  *   queries: Array, queriesTotal: Number, imported?: Object,
  *   transaction?: Object, output: String}>}
@@ -511,10 +533,12 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
 const runCode = (connection, code, options = {}) => {
   const {timeout = 30000, guard = null} = options
   // what the session starts with: what the caller asked for, and otherwise what
-  // the connection was saved with. A run with neither would be written into a
-  // bare shell, which answers nothing and ends in a timeout that says nothing
-  // about why
-  const command = options.command || connection.command || null
+  // the connection was saved with — which, for a connection whose project is in
+  // a container, is the container's command rather than a command that assumes
+  // the php is on the machine. A run with neither would be written into a bare
+  // shell, which answers nothing and ends in a timeout that says nothing about
+  // why
+  const command = options.command || sessionCommand(connection) || null
   const session = new Session(connection, options)
   // a session over ssh runs in the remote project, whose composer files are not
   // on this machine to read

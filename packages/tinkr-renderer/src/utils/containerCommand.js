@@ -25,7 +25,7 @@ const word = value => (/^[A-Za-z0-9@%+=:,._/-]+$/.test(value) ? value : `'${valu
  *   `container_name` and `container_command`
  * @return {String} the command, or '' when it names no container
  */
-export const containerCommand = ({container_engine: engine, container_name: name, container_command: command} = {}) => {
+export const containerCommand = ({container_engine: engine, container_name: name, container_command: command, path, container_path: inContainer} = {}) => {
   const container = String(name || '').trim()
 
   if (!ENGINES.includes(engine) || !container) {
@@ -35,14 +35,22 @@ export const containerCommand = ({container_engine: engine, container_name: name
   const inside = String(command || '').trim() || 'php artisan tinker'
   const named = word(container)
 
+  // where the command runs inside the container. `container_path` is the
+  // container's own idea of where the project is, and `path` the machine's,
+  // which is the same thing for a project mounted in at its host path
+  const dir = String((inContainer || path) || '').trim()
+  const where = dir ? ` -w ${word(dir)}` : ''
+
   switch (engine) {
     case 'sail':
-      // laravel's wrapper around docker compose: the container is the service
+      // laravel's wrapper around docker compose: the container is the service,
+      // and the compose file already says where the project is mounted
       return `./vendor/bin/sail ${named} ${inside}`
     case 'kubectl':
+      // kubectl has no working-directory flag: the container's own default
       return `kubectl exec -it ${named} -- ${inside}`
     default:
-      return `${engine} exec -it ${named} ${inside}`
+      return `${engine} exec -it${where} ${named} ${inside}`
   }
 }
 

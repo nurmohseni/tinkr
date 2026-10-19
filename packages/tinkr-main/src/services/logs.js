@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const {phpString} = require('tinkr-core')
+const {phpString, containerRead, containerPath, inContainer} = require('tinkr-core')
 
 const {config} = require('../database/config')
 const {exec, quoted} = require('../remote')
@@ -56,6 +56,21 @@ const levels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'aler
 const dirOf = connection => path.join(connection.path || '', config.get('log_dir', '') || 'storage/logs')
 
 /**
+ * Where a connection's log files are, as the machine that reads them spells it.
+ *
+ * A local project's logs are on this machine, at the path the project has here.
+ * A project in a container has them inside it, at the path the container has:
+ * `container_path` when the connection names one, and otherwise the same path,
+ * which is what a project mounted in at its host path is.
+ *
+ * @param {Record<String, any>} connection
+ * @return {String}
+ */
+const readDirOf = connection => (inContainer(connection)
+  ? path.join(containerPath(connection), config.get('log_dir', '') || 'storage/logs')
+  : dirOf(connection))
+
+/**
  * How wide a window onto a log is: what was asked for, within what a viewer is
  * worth reading.
  *
@@ -80,7 +95,12 @@ const wantedOf = bytes => Math.min(Math.max(Number(bytes) || defaultBytes, 1024)
  * @return {Promise<String|null>}
  */
 const ask = async (connection, code) => {
-  const answer = await exec(connection, `php -r ${quoted(code)}`)
+  const question = `php -r ${quoted(code)}`
+  // a project in a container keeps its logs in the container, and its php with
+  // them: the question is asked in there, from the directory the logs are in
+  const inside = containerRead(connection, question)
+
+  const answer = await exec(connection, inside || question)
 
   return answer.code === 0 ? answer.stdout : null
 }
@@ -97,7 +117,7 @@ const ask = async (connection, code) => {
  * @return {Promise<Object>} `files`, and `dir` for the panel to say where it looked
  */
 const sshFiles = async connection => {
-  const dir = dirOf(connection)
+  const dir = readDirOf(connection)
 
   const listing = await ask(
     connection,
@@ -530,7 +550,7 @@ const windowPhp = (file, wanted, ends, since, until) => [
  * @return {Promise<Object>} `size`, `from`, `to`, `start` and `text`
  */
 const sshWindow = async (connection, name, {bytes, before, since, until} = {}) => {
-  const file = path.join(dirOf(connection), name)
+  const file = path.join(readDirOf(connection), name)
   const wanted = wantedOf(bytes)
   // where the end of the file is is what the other machine knows and this one does
   // not, so a window that ends there is the one thing the php is told to work out

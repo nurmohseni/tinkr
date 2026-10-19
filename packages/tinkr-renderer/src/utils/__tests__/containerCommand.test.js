@@ -14,6 +14,12 @@ describe('the command a container connection starts with', () => {
     {container_engine: 'docker', container_name: 'my app'},
     {container_engine: 'docker', container_name: ''},
     {container_engine: 'nonsense', container_name: 'app'},
+    // the directory is the part the two copies are most likely to drift on: it
+    // is the container's own path, and every engine spells it differently
+    {container_engine: 'docker', container_name: 'app', path: '/var/www/html'},
+    {container_engine: 'podman', container_name: 'app', path: '/srv/app', container_path: '/var/www/html'},
+    {container_engine: 'sail', container_name: 'laravel.test', path: '/srv/app'},
+    {container_engine: 'kubectl', container_name: 'pod/app', path: '/srv/app'},
   ]
 
   test.each(cases)('is the one the main process builds from %o', connection => {

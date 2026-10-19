@@ -15,5 +15,6 @@ module.exports = Object.assign(
   require('./phpScanner'),
   require('./session'),
   require('./parseSSHCommand'),
+  require('./sshAskpass'),
   require('./containerCommand'),
 )

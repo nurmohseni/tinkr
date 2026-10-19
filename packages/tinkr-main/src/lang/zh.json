@@ -19,6 +19,11 @@
     "ssh_key": "秘钥",
     "ssh_key_tooltip": "如果秘钥空着则使用默认的 SSH 配置进行连接",
     "import_ssh_key": "导入秘钥...",
+    "ssh_password": "密码",
+    "ssh_password_placeholder": "服务器的密码",
+    "ssh_password_saved": "已保存",
+    "ssh_password_kept": "密码保存在本机上，之后不会再显示。",
+    "ssh_password_forget": "清除",
     "delete_confirm_title": "确定删除？",
     "delete_confirm_content": "本操作<strong>不能撤销</strong>，将永久删除<strong>{name}</strong>的连接设置。",
     "delete_connection": "删除连接",
@@ -32,10 +37,15 @@
     "tag_production": "生产",
     "kind_production": "生产环境",
     "kind_container": "容器",
+    "kind_ssh_container": "ssh + 容器",
     "container_engine": "引擎",
     "container_name": "容器",
     "container_placeholder": "laravel.test",
-    "container_command": "容器内命令"
+    "container_loading": "正在查找…",
+    "container_none": "没有正在运行的容器响应。如果知道名称，请直接输入。",
+    "container_command": "容器内命令",
+    "container_path": "容器内路径",
+    "container_path_placeholder": "/var/www/html"
   },
   "editor": {
     "ai": "AI",

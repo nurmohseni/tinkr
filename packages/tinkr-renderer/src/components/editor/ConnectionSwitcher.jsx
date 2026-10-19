@@ -10,6 +10,7 @@ import QuickButton from '../connections/QuickButton'
 import {connectConnection, onCloneConnection, popupConnectionContextMenu} from '../../utils/api'
 import {connectionAtom} from '../../stores/editor'
 import {connectionListAtom, createConnectionAtom} from '../../stores/connections'
+import kindOf from '../../utils/connectionKind'
 
 /**
  * The connections of the store, this window's one ringed, and the section's two
@@ -83,9 +84,7 @@ const ConnectionSwitcher = () => {
               {intl.formatMessage({
                 id: item.tag === 'production'
                   ? 'connections.kind_production'
-                  : (item.is_over_ssh
-                    ? 'connections.kind_ssh'
-                    : (item.container_engine ? 'connections.kind_container' : 'connections.kind_local')),
+                  : kindOf(item),
               })}
             </span>
           </button>

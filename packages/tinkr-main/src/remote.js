@@ -1,11 +1,30 @@
 const {spawn} = require('child_process')
+const {app} = require('electron')
 
-const {sshArgs} = require('tinkr-core')
+const {sshArgs, askpassEnvironment, inContainer} = require('tinkr-core')
 
 // how long a connection is given to answer before it is taken as one that
 // cannot: a machine that is there answers in a moment, one that is not never
 // will
 const defaultTimeout = 10000
+
+/**
+ * Where the app's data is, which is where a connection's saved password is.
+ *
+ * It is asked for here rather than passed down: every caller of this file is a
+ * question about a project, and a question is not a place to thread a directory
+ * through. A test that has no electron gets nothing, and a connection without a
+ * password never asks for it.
+ *
+ * @return {String|null}
+ */
+const askpassDir = () => {
+  try {
+    return app.getPath('userData')
+  } catch (e) {
+    return null
+  }
+}
 
 /**
  * A value as one word of a shell reads it.
@@ -43,11 +62,29 @@ const quoted = value => `'${String(value).replace(/'/g, "'\\''")}'`
 const exec = (connection, command, {timeout = defaultTimeout, maxBuffer} = {}) => new Promise(resolve => {
   const project = (connection && connection.path) || ''
   // the command is one word of the shell there, and so is the directory it is
-  // run in: nothing else of the connection goes into the line
-  const remote = project ? `cd ${quoted(project)} && ${command}` : command
+  // run in: nothing else of the connection goes into the line.
+  //
+  // A project in a container is not in the machine's directory: `path` is where
+  // the machine keeps it, and the container sees it somewhere of its own — or
+  // nowhere, when the image holds it. So a container's command carries its own
+  // `cd`, inside the container (see containerRead), and one put outside it would
+  // be a directory that need not exist here and means nothing there
+  const remote = !project || inContainer(connection)
+    ? command
+    : `cd ${quoted(project)} && ${command}`
+
+  // a connection with a saved password is answered by the app's own helper,
+  // which is what makes a one-off question as logged-in as a session is. One
+  // without a password is spawned exactly as it always was, so nothing of the
+  // environment changes under it
+  const askpass = connection && connection.is_over_ssh
+    ? askpassEnvironment(askpassDir(), connection)
+    : null
 
   const child = connection && connection.is_over_ssh
-    ? spawn('ssh', [...sshArgs(connection), remote])
+    ? spawn('ssh', [...sshArgs(connection), remote], ...(askpass
+      ? [{env: Object.assign({}, process.env, askpass.env)}]
+      : []))
     : spawn('/bin/sh', ['-lc', command], {cwd: connection && connection.path})
 
   const cap = maxBuffer === undefined ? Infinity : maxBuffer
