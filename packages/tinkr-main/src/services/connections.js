@@ -14,9 +14,16 @@ const {
   killPtys,
 } = require('../processes')
 const {quickConnection, appName} = require('../constants')
+const {config} = require('../database/config')
 const {createEditorWindow} = require('../createEditorWindow')
 const {createPty} = require('../createPty')
 const {createBackgroundPty} = require('../createBackgroundPty')
+const {watchSnippets} = require('./snippetsWatch')
+
+// the connection whose snippets are watched, which is the window's own: one
+// window, and one connection it is showing
+let snippetsWatcher = null
+const {allSnippets} = require('./snippets')
 
 /**
  * The connections the app lists. The quick connection is the session the
@@ -112,6 +119,7 @@ const connectConnection = async connection => {
 
   setEditorWindow(connection.id, win)
   setEditorConnection(connection.id, connection)
+  watchSnippetsOf(connection.id)
 
   createPty(connection)
   createBackgroundPty(connection)
@@ -125,6 +133,31 @@ const connectConnection = async connection => {
   win.webContents.send('reconnectConnection')
 
   detectPhpVersion(connection, win)
+}
+
+/**
+ * Watch the snippets of a connection, so a change made outside the app — by the
+ * MCP server an agent is using — reaches the window that is showing them.
+ *
+ * One watcher at a time: the app keeps one window, and the connection that
+ * window is on is the only one whose snippets it shows. A watcher for the
+ * connection it left is closed, because nothing is reading what it would send.
+ *
+ * @param {String} id
+ */
+const watchSnippetsOf = id => {
+  if (snippetsWatcher) {
+    snippetsWatcher.close()
+    snippetsWatcher = null
+  }
+
+  const win = getEditorWindow(id)
+
+  if (!win) {
+    return
+  }
+
+  snippetsWatcher = watchSnippets(win, id, () => allSnippets(id))
 }
 
 const reconnectConnection = connection => {
@@ -170,6 +203,21 @@ const inputConnection = (id, code) => {
 }
 
 /**
+ * How long a run may take, from the preference.
+ *
+ * The preference is milliseconds and the field that sets it is text, so what is
+ * stored is read as a number here: a value that is not a positive number is the
+ * default rather than a run that is never given up on.
+ *
+ * @return {Number}
+ */
+const runTimeout = () => {
+  const stored = Number(config.get('run_timeout'))
+
+  return Number.isFinite(stored) && stored > 0 ? stored : 30000
+}
+
+/**
  * Run the code in a session booted from scratch.
  *
  * PHP never reloads a class it has already loaded, so a long lived tinker
@@ -181,8 +229,10 @@ const inputConnection = (id, code) => {
  * @param {String} code
  * @param {String} [guard] `rollback` or `commit`, for a run guarded by a
  *   transaction (see runResult.guardArm)
+ * @param {Number} [timeout] how long the run may take, in milliseconds, or
+ *   nothing for the preference
  */
-const runConnection = (id, code, guard = null) => {
+const runConnection = (id, code, guard = null, timeout = null) => {
   const connection = getEditorConnection(id)
 
   if (!connection) {
@@ -207,7 +257,7 @@ const runConnection = (id, code, guard = null) => {
     win.webContents.send('reconnectConnection')
   }
 
-  createPty(connection, code, guard)
+  createPty(connection, code, guard, timeout === null ? runTimeout() : timeout)
 }
 
 /**
@@ -233,6 +283,12 @@ const stopConnection = id => {
  * @param {String} id
  */
 const closeConnection = async id => {
+  // the window is what the watcher pushes to, and it is going
+  if (snippetsWatcher) {
+    snippetsWatcher.close()
+    snippetsWatcher = null
+  }
+
   const win = getEditorWindow(id)
 
   if (win) {
@@ -251,6 +307,7 @@ module.exports = {
   getConnection,
   inputConnection,
   runConnection,
+  runTimeout,
   stopConnection,
   closeConnection,
   connectConnection,

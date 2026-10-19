@@ -176,6 +176,58 @@ describe('a run of a connection', () => {
     expect(pty.input).not.toHaveBeenCalled()
   })
 
+  // a run that never returns used to leave the pane waiting with no end, and the
+  // session holding its connection: the preference is what gives up on it
+  test('stops a run that outlives the time it was given', async () => {
+    jest.useFakeTimers()
+
+    try {
+      let pty = null
+
+      Pty.mockImplementation(() => {
+        pty = {
+          connect: jest.fn(),
+          input: jest.fn(),
+          kill: jest.fn(),
+          ready: jest.fn(() => new Promise(() => {})),
+          onData: jest.fn(() => ({dispose: jest.fn()})),
+          onExit: jest.fn(),
+        }
+
+        return pty
+      })
+
+      createPty(connection, 'sleep(60);', null, 5000)
+
+      jest.advanceTimersByTime(4999)
+      expect(win.webContents.send).not.toHaveBeenCalledWith('runResult', expect.anything())
+
+      jest.advanceTimersByTime(1)
+
+      const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+      expect(answer[1].timedOut).toBe(true)
+      expect(answer[1].error.class).toBe('Timeout')
+      expect(answer[1].error.message).toContain('5000ms')
+      expect(answer[1].value).toBe(null)
+      // the session is stopped, which is what reaches the php doing the work
+      expect(pty.kill).toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  test('reports how long the run took with its answer', async () => {
+    createPty(connection, 'the snippet')
+
+    printed[0]('the value the session printed')
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(typeof answer[1].duration).toBe('number')
+    expect(answer[1].duration).toBeGreaterThanOrEqual(0)
+  })
+
   // the bug this waits against: a command that never booted left the pane
   // waiting for an answer that could not come, and the reason — a missing
   // artisan, a platform check — was thrown away

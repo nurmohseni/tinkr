@@ -5,8 +5,8 @@ import isArray from 'lodash/isArray'
  * One field of the snippet's form, as a `.form-row` of the design's form grid:
  * the label in the left column, the control in the right one.
  *
- * The field comes from the snippet's code, so its type is whatever php-form
- * read out of the variable's annotation.
+ * The field comes from the snippet's code, so its type is whatever the field
+ * declared for itself in the array it is written as.
  */
 const FormField = ({field, onChange}) => {
   const label = field.label || field.name

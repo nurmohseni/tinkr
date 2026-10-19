@@ -21,16 +21,57 @@ const conn = (fields = {}) => Object.assign({
 
 describe('the session command', () => {
   test('reaches the connection with its port, key and user', () => {
-    expect(parseSSHCommand(conn())).toBe("ssh -- 'root@192.168.1.1'")
-    expect(parseSSHCommand(conn({ssh_port: '2000'}))).toBe("ssh -p '2000' -- 'root@192.168.1.1'")
+    expect(parseSSHCommand(conn()))
+      .toBe("ssh -t -- 'root@192.168.1.1' 'exec bash --login -i'")
+    expect(parseSSHCommand(conn({ssh_port: '2000'})))
+      .toBe("ssh -t -p '2000' -- 'root@192.168.1.1' 'exec bash --login -i'")
     expect(parseSSHCommand(conn({ssh_port: '2000', ssh_key: '/usr/local/id.pem'})))
-      .toBe("ssh -p '2000' -i '/usr/local/id.pem' -- 'root@192.168.1.1'")
+      .toBe("ssh -t -p '2000' -i '/usr/local/id.pem' -- 'root@192.168.1.1' 'exec bash --login -i'")
+  })
+
+  // the bug this waits against: `-t` written after the target is not an option,
+  // because ssh reads the first argument after the destination as the command to
+  // run there. The far shell tried to run a program called `-t`, and the session
+  // came back without a terminal — which is a login that never initializes
+  test('puts every option before the target, where ssh reads them', () => {
+    // bash splits the line exactly as it would for ssh, which is the only reader
+    // that matters here
+    expect(words(parseSSHCommand(conn({path: '/var/www/html', ssh_port: '2000'}))))
+      .toBe('[-t][-p][2000][--][root@192.168.1.1][cd \'/var/www/html\' && exec bash --login -i]')
+
+    // the target is the first word that is not an option — after its `--` — and
+    // nothing after it is read as one, which is what `-t` written there used to
+    // be
+    const split = words(parseSSHCommand(conn({path: '/var/www/html'}))).split('][')
+
+    expect(split.indexOf('root@192.168.1.1')).toBeGreaterThan(split.indexOf('-t'))
+    expect(split.slice(split.indexOf('root@192.168.1.1') + 1).join('')).not.toContain('-t')
   })
 
   test('quotes the directory it lands in, so a path is one word', () => {
     const line = parseSSHCommand(conn({path: '/var/www/html'}))
 
-    expect(line).toContain("-t 'cd '\\''/var/www/html'\\'';bash --login'")
+    expect(line).toContain("'cd '\\''/var/www/html'\\'' && exec bash --login -i'")
+  })
+
+  // psysh draws a prompt only when its stdin is a terminal, so the far side is
+  // given one (`-t`) and an interactive login shell to run in it
+  test('gives the remote side a terminal and an interactive shell', () => {
+    expect(parseSSHCommand(conn())).toMatch(/^ssh -t /)
+    expect(parseSSHCommand(conn({path: '/var/www/html'}))).toContain('exec bash --login -i')
+  })
+
+  // the bug this waits against: the command was typed into the terminal ssh was
+  // started on, so ssh's own questions read it instead. On a first connection
+  // `Are you sure you want to continue connecting?` answered the command, and
+  // the session it was for never began
+  test('carries the command in the ssh line, where ssh questions cannot eat it', () => {
+    const line = parseSSHCommand(conn({path: '/var/www/html'}), 'php artisan tinker')
+
+    // the command is inside the one quoted word ssh is given as its remote
+    // command, and bash reads it back as one argument
+    expect(words(line))
+      .toBe('[-t][--][root@192.168.1.1][cd \'/var/www/html\' && php artisan tinker]')
   })
 
   test('a path with a space stays one word, and a quote cannot open a string', () => {
@@ -41,8 +82,12 @@ describe('the session command', () => {
 
     // the path is inside a single quoted word, so a `;` in it is a character
     // rather than a statement: the shell the session types into reads one word
-    expect(words(parseSSHCommand(conn({path: '/home/qa/app; touch /tmp/pwned'}))))
-      .toBe('[--][root@192.168.1.1][-t][cd \'/home/qa/app; touch /tmp/pwned\';bash --login]')
+    // the path is inside a single quoted word, so a `;` in it is a character
+    // rather than a statement: the shell the session types into reads one word
+    const line = parseSSHCommand(conn({path: '/home/qa/app; touch /tmp/pwned'}))
+
+    expect(line.startsWith("ssh -t -- 'root@192.168.1.1' 'cd '")).toBe(true)
+    expect(line.endsWith("'")).toBe(true)
   })
 
   test('says why a connection ssh cannot be given is not used', () => {

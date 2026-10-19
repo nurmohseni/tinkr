@@ -2,7 +2,7 @@ import {atom} from 'jotai'
 import {atomWithImmer} from 'jotai-immer'
 import {nanoid} from 'nanoid'
 
-import {allSnippets, createSnippet, deleteSnippet, updateSnippet} from '../utils/api'
+import {allSnippets, createSnippet, deleteSnippet, getConnection, updateSnippet} from '../utils/api'
 
 /**
  * A snippet of this connection, as the app holds one: the caller brings what it
@@ -55,6 +55,37 @@ const deleteSnippetAtom = atom(null, (get, set, id) => {
   deleteSnippet(id)
 })
 
+/**
+ * The snippets a connection has, as another process last wrote them.
+ *
+ * The app writes this file too, and it writes it through the main process, so a
+ * change made here is already in the store. What this is for is the other writer:
+ * an MCP server saving or deleting a snippet from a client. The whole file is
+ * what that changes, so the answer replaces the store rather than being applied
+ * to it — a snippet deleted out there has no message of its own, and one merged
+ * in would only ever add.
+ *
+ * A snippet the window has open and another writer deleted is left in the store
+ * as the writer left it: nothing is read back into the editor, and the list stops
+ * offering it.
+ */
+const snippetsConnectionAtom = atom(null, (get, set, {connection, snippets} = {}) => {
+  // a change for a connection the window is not on is not this window's: the
+  // watcher follows the window, and this is what says so if a stale one arrives
+  if (connection !== getConnection()?.id) {
+    return
+  }
+
+  const next = {}
+
+  // the store's shape is the file's: a snippet by its id
+  for (const [id, snippet] of Object.entries(snippets || {})) {
+    next[id] = snippet
+  }
+
+  set(snippetDataAtom, next)
+})
+
 const snippetAtoms = {}
 
 const snippetAtomWithId = id => {
@@ -72,5 +103,6 @@ export {
   updateSnippetAtom,
   deleteSnippetAtom,
   snippetAtomWithId,
+  snippetsConnectionAtom,
   newSnippet,
 }

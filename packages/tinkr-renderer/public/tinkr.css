@@ -354,8 +354,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn--icon { width: var(--control-h); padding: 0; }
 .btn--icon.btn--sm { width: 22px; }
 /* .btn--run: Run carries its label and its shortcut, because both are what the
-   keyboard user is looking for */
+   keyboard user is looking for. While the run is going it also carries the
+   count of the wait, so a run that is taking too long is visible rather than
+   only felt. The count is a value, so it is set in the mono and not in the
+   button's own voice. */
 .btn--run { padding: 0 6px 0 10px; gap: 8px; }
+.btn__timer {
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* .result-summary__duration: the same count once the answer is in, quiet enough
+   to be read as a note and not as part of the answer */
+.result-summary__duration {
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
 
 /* input / textarea / select: a well with a 3:1 edge, focus drawn as a ring on
    the outside so it never disappears into the field's own border */

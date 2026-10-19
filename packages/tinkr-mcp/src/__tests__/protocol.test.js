@@ -112,6 +112,7 @@ describe('the mcp conversation', () => {
       'tinkr_list_connections',
       'tinkr_list_snippets',
       'tinkr_save_snippet',
+      'tinkr_delete_snippet',
     ])
 
     for (const tool of result.tools) {

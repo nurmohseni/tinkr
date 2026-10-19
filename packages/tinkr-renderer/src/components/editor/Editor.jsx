@@ -12,7 +12,7 @@ import {registerPHPSnippetLanguage} from '../../utils/registerPHPSnippetLanguage
 import {registerPHPCompletionProvider} from '../../utils/phpCompletion'
 import {editorFont, watchEditorTheme} from '../../utils/monacoTheme'
 import {documentAtomWithId, isSessionId, writeCodeAtom} from '../../stores/sessions'
-import {applyCodeAtom, outputTabIndexAtom, runAtom, sizesAtom} from '../../stores/editor'
+import {applyCodeAtom, outputTabIndexAtom, runAtom, runningAtom, sizesAtom} from '../../stores/editor'
 import {aiFocusAtom} from '../../stores/ai'
 import {configAtom} from '../../stores/config'
 import {isMatchShortcut} from '../../utils/isMatchShortcut'
@@ -42,6 +42,7 @@ const Editor = () => {
   const writeCode = useSetAtom(writeCodeAtom)
   const sizes = useAtomValue(sizesAtom)
   const run = useSetAtom(runAtom)
+  const running = useAtomValue(runningAtom)
   const setOutputTab = useSetAtom(outputTabIndexAtom)
   const setAiFocus = useSetAtom(aiFocusAtom)
   const config = useAtomValue(configAtom)
@@ -302,6 +303,20 @@ const Editor = () => {
       clearTimeout(layoutTimer)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a run is the code that was in the well when it was sent, so the well is
+  // read-only while it goes: typing into it would be typing into a snippet that
+  // is not the one running, and the pane would show an answer about code the
+  // editor no longer holds
+  useEffect(() => {
+    const editor = editorRef.current
+
+    if (!editor) {
+      return
+    }
+
+    editor.updateOptions({readOnly: running, domReadOnly: running})
+  }, [running])
 
   return useMemo(() => (
     // the well around it is the design's .editor, so monaco fills it

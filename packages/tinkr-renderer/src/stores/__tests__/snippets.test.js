@@ -11,6 +11,7 @@ describe('snippets store', () => {
       createSnippet: jest.fn(),
       updateSnippet: jest.fn(),
       deleteSnippet: jest.fn(),
+      getConnection: jest.fn(() => ({id: 'c1'})),
     }
 
     jest.resetModules()
@@ -58,5 +59,57 @@ describe('snippets store', () => {
 
     expect(store.get(snippets.snippetListAtom)).toEqual([])
     expect(window.api.deleteSnippet).toHaveBeenCalledWith('s1')
+  })
+})
+
+describe('a snippet another process changed', () => {
+  const snippet = {id: 's1', name: 'Magic', code: '1 + 1'}
+
+  const load = allSnippets => {
+    window.api = {
+      allSnippets: jest.fn(() => allSnippets),
+      createSnippet: jest.fn(),
+      updateSnippet: jest.fn(),
+      deleteSnippet: jest.fn(),
+      getConnection: jest.fn(() => ({id: 'c1'})),
+    }
+
+    jest.resetModules()
+
+    return {store: createStore(), snippets: require('../snippets')}
+  }
+
+  // the bug this waits against: an agent saved a snippet through the MCP server
+  // and the app kept showing the list it had until it was restarted
+  test('replaces the list with what the file now holds', () => {
+    const {store, snippets} = load({s1: snippet})
+    const saved = {id: 's2', name: 'Saved by an agent', code: 'User::count();'}
+
+    store.set(snippets.snippetsConnectionAtom, {connection: 'c1', snippets: {s2: saved}})
+
+    expect(store.get(snippets.snippetListAtom)).toEqual([saved])
+  })
+
+  test('a snippet deleted out there stops being listed', () => {
+    const {store, snippets} = load({s1: snippet, s2: {id: 's2', name: 'Two', code: '2'}})
+
+    store.set(snippets.snippetsConnectionAtom, {
+      connection: 'c1',
+      snippets: {s2: {id: 's2', name: 'Two', code: '2'}},
+    })
+
+    expect(store.get(snippets.snippetListAtom).map(one => one.id)).toEqual(['s2'])
+  })
+
+  // the app keeps one window, and the watcher follows the connection it is on
+  test('a change for another connection is not this window\'s', () => {
+    const {store, snippets} = load({s1: snippet})
+
+    store.set(snippets.snippetsConnectionAtom, {
+      connection: 'elsewhere',
+      snippets: {s9: {id: 's9', name: 'Other', code: '9'}},
+    })
+
+    expect(store.get(snippets.snippetListAtom)).toEqual([snippet])
   })
 })

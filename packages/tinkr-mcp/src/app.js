@@ -167,6 +167,50 @@ const saveSnippet = (dir, connectionId, name, code) => {
   return snippet
 }
 
+/**
+ * Delete a snippet of a connection, the way the app's own delete does.
+ *
+ * The snippet is removed from the file under the lock every writer takes, on top
+ * of what the file holds right then, so a snippet another writer saved a moment
+ * ago is not lost with it. A snippet that is not there is not an error — the
+ * answer says it was already gone — because a delete that is asked for twice is
+ * still a delete that happened.
+ *
+ * @param {String} dir
+ * @param {String} connectionId
+ * @param {String} id
+ * @return {{id: String, name: String|null, deleted: Boolean}} what was done
+ */
+const deleteSnippet = (dir, connectionId, id) => {
+  // what the file holds right now, so the answer can say what was removed
+  const held = (read(snippetsFile(dir, connectionId)) || {})[id]
+  let removed = false
+
+  updateJson(
+    snippetsFile(dir, connectionId),
+    stored => {
+      if (!Object.prototype.hasOwnProperty.call(stored, id)) {
+        return stored
+      }
+
+      removed = true
+
+      const rest = Object.assign({}, stored)
+
+      delete rest[id]
+
+      return rest
+    },
+    () => true,
+  )
+
+  return {
+    id,
+    name: held && typeof held.name === 'string' ? held.name : null,
+    deleted: removed,
+  }
+}
+
 module.exports = {
   appDataDir,
   connectionsFile,
@@ -179,4 +223,5 @@ module.exports = {
   command,
   snippets,
   saveSnippet,
+  deleteSnippet,
 }

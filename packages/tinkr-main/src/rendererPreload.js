@@ -155,6 +155,14 @@ contextBridge.exposeInMainWorld('api', {
     }
   },
 
+  onSnippetsConnection: cb => {
+    const listener = (event, arg) => cb(arg)
+    ipcRenderer.on('snippetsConnection', listener)
+    return {
+      dispose: () => ipcRenderer.off('snippetsConnection', listener),
+    }
+  },
+
   onHistoryConnection: cb => {
     const listener = (event, arg) => cb(arg)
     ipcRenderer.on('historyConnection', listener)

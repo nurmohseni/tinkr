@@ -26,11 +26,19 @@ const {refreshIndex} = require('./services/project')
  * A guarded run is wrapped with the transaction it is evaluated inside, so the
  * run's envelope carries how that transaction ended (see runResult.guardArm).
  *
+ * A run is also given the time it may take (see the `run_timeout` preference).
+ * The session is one process among others, and a snippet that never returns —
+ * a `sleep`, a loop, a query on a locked table — used to leave the pane waiting
+ * with no end and the terminal's line discipline holding the session. When the
+ * time is up the session is stopped, which is what reaches the php doing the
+ * work, and the pane is answered with the wait it was.
+ *
  * @param {Record<String, any>} connection
  * @param {String} [code]
  * @param {String} [guard] `rollback` or `commit`
+ * @param {Number} [timeout] how long the run may take, in milliseconds
  */
-const createPty = (connection, code, guard = null) => {
+const createPty = (connection, code, guard = null, timeout = null) => {
   const {id} = connection
 
   const pty = new Pty(connection)
@@ -41,8 +49,69 @@ const createPty = (connection, code, guard = null) => {
     : {}
   const run = code ? wrapRun(code, imports, guard) : null
   const filter = run ? new RunResultFilter(run.marker, run.start) : null
+  const startedAt = Date.now()
+  let timer = null
+
+  /**
+   * The run's answer, out of the envelope: the pane is told what it returned,
+   * what it printed, and how long the whole of it took — the boot of the session
+   * included, because that is the wait the person sat through.
+   *
+   * @param {Object} result
+   */
+  const answered = result => {
+    clearTimeout(timer)
+
+    const win = getEditorWindow(id)
+
+    if (!win) {
+      return
+    }
+
+    // what the run printed is the filter's; a run that never reached the
+    // session brings its own output, because there was no run to print anything
+    const answer = Object.assign({}, result, {
+      output: result.output === undefined ? runOutput(filter) : result.output,
+      duration: Date.now() - startedAt,
+    })
+
+    win.webContents.send('runResult', answer)
+    win.webContents.send('historyConnection', appendHistory(id, code, answer))
+    refreshIndex(connection)
+  }
+
+  /**
+   * Stop a run that took longer than it was given, and say so.
+   *
+   * The result is the shape every failed run has, so the pane and the history
+   * read it the same way: no value, an error, and the wait it reached.
+   */
+  const timedOut = () => {
+    if (getPtyProcess(id) !== pty) {
+      return
+    }
+
+    setPtyProcess(id, null)
+    pty.kill()
+
+    answered({
+      blocks: [],
+      value: null,
+      error: {
+        class: 'Timeout',
+        message: `the run was stopped after ${timeout}ms`,
+      },
+      queries: [],
+      queriesTotal: 0,
+      timedOut: true,
+    })
+  }
 
   pty.connect()
+
+  if (run && timeout > 0) {
+    timer = setTimeout(timedOut, timeout)
+  }
 
   const onData = pty.onData(data => {
     // a session that has been replaced may still print while it goes away
@@ -74,22 +143,11 @@ const createPty = (connection, code, guard = null) => {
       win.webContents.send('runOutput', run)
     }
 
+    // the run is over: what came back, what it printed, and how long it took.
+    // The project on disk may be what it changed, so it is read again now, while
+    // nobody is waiting on it (see services/project)
     if (result) {
-      // the output pane shows what the run printed as well as what it
-      // returned, so the envelope carries both
-      win.webContents.send('runResult', Object.assign({}, result, {
-        output: runOutput(filter),
-      }))
-
-      // the run is over, and it is what the connection's history remembers:
-      // the list comes back pruned, and it is what the sidebar draws
-      win.webContents.send('historyConnection', appendHistory(id, code, result))
-
-      // the project on disk may be what the run changed — a file it wrote, an
-      // autoloader it dumped — and the popup is answered out of what has been
-      // read of it, so the read is set going now, after the run and while nobody
-      // is waiting on it (see services/project)
-      refreshIndex(connection)
+      answered(result)
     }
   })
 
@@ -118,23 +176,14 @@ const createPty = (connection, code, guard = null) => {
         return
       }
 
-      const win = getEditorWindow(id)
-
-      if (!win) {
-        return
-      }
-
-      const result = {
+      answered({
         blocks: [],
         value: null,
         error: {class: 'SessionError', message: error.message},
         queries: [],
         queriesTotal: 0,
         output: error.output || '',
-      }
-
-      win.webContents.send('runResult', result)
-      win.webContents.send('historyConnection', appendHistory(id, code, result))
+      })
     })
   }
 }
