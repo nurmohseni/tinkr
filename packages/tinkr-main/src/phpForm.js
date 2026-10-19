@@ -471,6 +471,12 @@ const readForm = (source, prefix = 'form_') => {
   const depths = depthsOf(code)
   const fields = []
   const seen = new Set()
+  // a variable name is what php accepts, and `\x80-\xff` is not all of it: a
+  // non-breaking space is U+00A0, which is in that byte range and is not a name
+  // character — a snippet holding one between a name and its `=` used to give a
+  // field called `$field_name ` and a write-back that broke the statement it
+  // touched. php's rule, spelled out: ASCII letters, digits, `_` and the bytes
+  // above `\xB0` that a multibyte character's own bytes are — never the spaces
   const assignment = /\$([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\s*=(?!=)/g
 
   let match
@@ -514,7 +520,7 @@ const readForm = (source, prefix = 'form_') => {
       ? {value: keys.value.value, literal: keys.value.literal}
       : valueText(text, commentless, valueFrom, valueTo)
 
-    const field = {name: `$${name}`, value: read.value}
+    const field = {name: `$${name.trim()}`, value: read.value}
 
     // a number written as one is written back as one, and a null is written as
     // `null` rather than as the empty string its field shows. It travels as

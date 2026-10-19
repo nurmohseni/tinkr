@@ -70,3 +70,38 @@ describe('the form the window asks for', () => {
     expect(await stringifyPhpForm(fields)).toBe(code)
   })
 })
+
+describe('a snippet written with the spaces an editor may insert', () => {
+  // the bug this waits against: U+00A0 is inside the byte range php's own
+  // identifier rule names, and it is not a name character. A snippet holding one
+  // between a name and its `=` gave a field called `$field_name ` — a name that
+  // matched no assignment when the form was written back, so the run threw a
+  // ParseError on the statement it had just touched
+  const nbsp = '\u00a0'
+  const code = [
+    '<?php',
+    `$field_name${nbsp}=${nbsp}'bob';`,
+    `$field_qty${nbsp}=${nbsp}3;`,
+    'return [$field_name, $field_qty];',
+  ].join('\n')
+
+  test('reads the name without the space that is not part of it', async () => {
+    const fields = await parsePhpForm('conn', code)
+
+    expect(fields.map(field => field.name)).toEqual(['$field_name', '$field_qty'])
+  })
+
+  test('writes the form back into the statement, and it parses', async () => {
+    const fields = await parsePhpForm('conn', code)
+    const written = await stringifyPhpForm(
+      fields.map(field => (field.name === '$field_name' ? Object.assign({}, field, {value: 'alice'}) : field)),
+      code,
+    )
+
+    // the value is replaced, and the statement still opens with its own name —
+    // the space before the `=` is the snippet's and is left as it was; the one
+    // after it is the writer's, and is a plain space
+    expect(written).toContain('$field_name'.replace(' ', '') + '\u00a0= \'alice\';')
+    expect(written).toContain('$field_qty\u00a0= 3;')
+  })
+})
