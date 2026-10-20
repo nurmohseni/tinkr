@@ -16,6 +16,7 @@ const openSettings = async (app, page) => {
 
   await settings.locator('.app').waitFor({state: 'visible'})
   await expect(settings.locator('aside.rail')).toBeVisible()
+  await settings.bringToFront()
 
   return settings
 }

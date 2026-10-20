@@ -14,6 +14,9 @@ const openSettings = async (app, page) => {
 
   await settings.locator('.app').waitFor({state: 'visible'})
   await expect(settings.locator('aside.rail')).toBeVisible()
+  // the clipboard is written by the focused document, and a window opened
+  // behind the editor is not the focused one
+  await settings.bringToFront()
 
   return settings
 }

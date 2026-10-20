@@ -19,6 +19,7 @@ test.describe('copying and saving a result', () => {
     const file = path.join(os.tmpdir(), `tinkr-e2e-result-${process.pid}-${Date.now()}.csv`)
 
     try {
+      await page.bringToFront()
       await runCode(page, 'Order::all();')
 
       await reading(page, 'organized')
@@ -80,6 +81,7 @@ test.describe('copying and saving a result', () => {
     const {app, page, close} = await launchTinkr()
 
     try {
+      await page.bringToFront()
       await runCode(page, "DB::select('select * from orders where paid = ?', [1]);")
       await chooseOutputView(page, 'Queries')
 
