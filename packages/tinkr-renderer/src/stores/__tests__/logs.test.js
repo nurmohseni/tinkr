@@ -171,6 +171,12 @@ describe('logs store', () => {
     expect(start.read).toBe(logs.defaultBytes)
   })
 
+  test('a level is shown unless the filter left it out', () => {
+    expect(logs.passesLevel([], 'info')).toBe(true)
+    expect(logs.passesLevel(['debug'], 'info')).toBe(true)
+    expect(logs.passesLevel(['debug'], 'debug')).toBe(false)
+  })
+
   test('there is nothing to step through before a file is open', async () => {
     await store.set(logs.olderLogAtom)
     await store.set(logs.newerLogAtom)

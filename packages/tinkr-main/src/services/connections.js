@@ -189,6 +189,15 @@ const watchSnippetsOf = id => {
 const reconnectConnection = connection => {
   connection = sessionConnection(connection)
 
+  // the quick connection's directory is the window's, not the store's: the
+  // window's copy of it carries no path, and a reconnect that used that copy
+  // would boot the session in the home directory
+  const current = getEditorConnection(connection.id)
+
+  if (connection.id === quickConnection.id && current && current.path) {
+    connection = Object.assign({}, connection, {path: current.path})
+  }
+
   const pty = getPtyProcess(connection.id)
   if (pty) {
     pty.kill()
@@ -345,6 +354,7 @@ const closeConnection = async id => {
 }
 
 module.exports = {
+  watchSnippetsOf,
   allConnections,
   firstConnection,
   deleteConnection,

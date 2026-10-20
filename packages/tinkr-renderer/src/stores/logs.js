@@ -56,8 +56,14 @@ const logsLevelAtom = atom('all')
  */
 const logsLevelsAtom = atom([])
 
-/** Whether a level survives the filter's set. */
-const passesLevel = (levels, level) => levels.length === 0 || levels.includes(level)
+/**
+ * Whether a level survives the filter's set.
+ *
+ * The set holds the levels that were left out, so an empty one leaves nothing
+ * out and a level survives unless it is named. See LogsFilter's `on`, which is
+ * the same reading of the same set on the other side.
+ */
+const passesLevel = (levels, level) => levels.length === 0 || !levels.includes(level)
 const logsSearchAtom = atom('')
 const logsFollowAtom = atom(false)
 const logsIntervalAtom = atom(2000)

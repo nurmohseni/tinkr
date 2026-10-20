@@ -23,6 +23,13 @@ const connections = openStore({
  * @return {Record<String, any>}
  */
 const sessionConnection = connection => {
+  // the quick connection is a session, not a stored connection: the store holds
+  // a placeholder for it, and reading it back would drop the directory the
+  // folder button was just given
+  if (connection && connection.id === quickConnection.id) {
+    return connection
+  }
+
   const stored = connection && connection.id ? connections.get(connection.id, null) : null
 
   return stored && stored.id ? stored : connection
