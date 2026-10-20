@@ -429,6 +429,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
    on one line with the control against the right edge. */
 .form-grid { display: grid; grid-template-columns: 128px minmax(0, 1fr); column-gap: var(--s4); row-gap: 10px; align-items: center; }
 .form-row { display: contents; }
+/* a row the form hides for another kind of connection: `display: contents`
+   would otherwise leave the row's controls on screen, since it wins over the
+   user agent's rule for the hidden attribute */
+.form-row[hidden] { display: none; }
 .form-row__label { align-self: center; padding-top: 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text-muted); }
 .form-row__label--required::after { content: " *"; color: var(--error); }
 .form-row__control { min-width: 0; }

@@ -42,7 +42,21 @@ class DynamicPhpForm {
       }
 
       try {
-        field.value = this.parseJsonResult(await pty.jsonResult(field.value))
+        const answer = this.parseJsonResult(await pty.jsonResult(field.value))
+
+        field.value = answer
+
+        // the code the field was written as is gone: what the form holds now is
+        // the answer, so an edit to it is a value and not the closure's code
+        if (typeof answer === 'number') {
+          field.literal = 'number'
+        } else if (typeof answer === 'boolean') {
+          field.literal = 'boolean'
+        } else if (answer === null) {
+          field.literal = 'null'
+        } else {
+          delete field.literal
+        }
       } catch (e) {
         // a closure the session could not answer for is shown as the code it is:
         // the field is still editable, and the run is what says why

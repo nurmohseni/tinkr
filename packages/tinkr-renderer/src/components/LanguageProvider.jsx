@@ -20,8 +20,11 @@ const LanguageProvider = ({children}) => {
   const config = useAtomValue(configAtom)
 
   useEffect(() => {
-    getIntlConfig()
+    // the listener goes on first: the answer is an event, and an answer that
+    // arrives before anyone is listening is a window that stays on Loading
     const onSet = onSetIntlConfig(setIntlConfig)
+
+    getIntlConfig()
 
     return () => {
       onSet.dispose()

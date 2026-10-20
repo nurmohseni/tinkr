@@ -50,9 +50,11 @@ const defaults = {
   // would hold its connection and its transaction open for as long as it ran
   run_timeout: 30000,
   shortcut_run: ['Control', 'r'],
-  shortcut_new_connection: ['Meta', 'Shift', 'n'],
+  // a key pressed with shift reports its upper-case character, and the recorder
+  // stores what it reported: the defaults are written the same way
+  shortcut_new_connection: ['Meta', 'Shift', 'N'],
   // what opens the ai panel and puts the cursor in its prompt
-  shortcut_ai: ['Control', 'Shift', 'l'],
+  shortcut_ai: ['Control', 'Shift', 'L'],
   ai_provider: 'openai',
   ai_endpoint: '',
   ai_token: '',

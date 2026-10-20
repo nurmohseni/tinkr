@@ -5,7 +5,7 @@ const debug = require('electron-debug')
 const contextMenu = require('electron-context-menu')
 
 const {createEditorWindow} = require('./createEditorWindow')
-const {firstConnection} = require('./services/connections')
+const {firstConnection, watchSnippetsOf} = require('./services/connections')
 const {menu, dockMenu} = require('./menu')
 const {checkForUpdates} = require('./updater')
 require('./ipc')
@@ -16,6 +16,9 @@ unhandled({
 })
 debug({
   isEnabled: is.development,
+  // the end-to-end suite drives the window, and a devtools window opened beside
+  // it is a second page the tooling can attach to first
+  showDevTools: process.env.TINKR_E2E !== '1',
   devToolsMode: 'undocked',
 })
 // The app draws its own right-click menus — connection rows, tabs, snippets,
@@ -52,7 +55,10 @@ app.on('activate', async () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length <= 0) {
-    await createEditorWindow(firstConnection())
+    const connection = firstConnection()
+
+    await createEditorWindow(connection)
+    watchSnippetsOf(connection.id)
   }
 })
 
@@ -77,6 +83,12 @@ app.on('ready', async () => {
   // before a window asks for it
   serveRenderer()
 
-  // the app is the editor window of a connection, and there is always one
-  await createEditorWindow(firstConnection())
+  // the app is the editor window of a connection, and there is always one.
+  // Its snippets are watched from here too, not only when the window switches
+  // connection: the MCP server writes the same file, and the window that opens
+  // on a connection has to hear it as much as one that moved to it.
+  const connection = firstConnection()
+
+  await createEditorWindow(connection)
+  watchSnippetsOf(connection.id)
 })
