@@ -78,11 +78,11 @@ test.describe('the MCP section', () => {
 
       await claude.getByRole('button', {name: 'Copy'}).click()
 
-      const copied = await app.evaluate(({clipboard}) => clipboard.readText())
+      const read = () => app.evaluate(({clipboard}) => clipboard.readText())
 
-      expect(copied).toContain('claude mcp add')
-      expect(copied).toContain('tinkr-mcp')
-      expect(copied).toContain('--connection fixture')
+      await expect.poll(read).toContain('claude mcp add')
+      await expect.poll(read).toContain('tinkr-mcp')
+      await expect.poll(read).toContain('--connection fixture')
     } finally {
       await close()
     }

@@ -89,18 +89,16 @@ test.describe('copying and saving a result', () => {
 
       await queries.getByRole('button', {name: 'Copy SQL'}).click()
 
-      const all = await clipboard(app)
-
-      expect(all).toContain('select * from orders where paid = ?')
+      // the write is a promise the renderer does not await; the clipboard is
+      // read once it has landed
+      await expect.poll(() => clipboard(app)).toContain('select * from orders where paid = ?')
 
       await page.getByRole('button', {name: 'Actions for query 1'}).click()
       await page.getByRole('menu', {name: 'Actions for query 1'})
         .getByRole('menuitem', {name: 'Copy SQL'})
         .click()
 
-      const one = await clipboard(app)
-
-      expect(one).toContain('select * from orders where paid = ?')
+      await expect.poll(() => clipboard(app)).toContain('select * from orders where paid = ?')
     } finally {
       await close()
     }
