@@ -55,6 +55,24 @@ system all of it belongs to.
 
 ### Other command
 
+#### yarn e2e
+
+it runs the end-to-end suite: Playwright launches the real app (main process,
+preload bridge and renderer) and drives it the way a person does. Every test
+gets a throwaway profile, and a small tinker-compatible project in
+`e2e/fixtures/app` stands in for a Laravel install, so no `composer install` and
+no network is needed. See [`e2e/README.md`](./e2e/README.md) for what is covered
+and which flows need Docker or a local sshd:
+
+```bash
+yarn e2e
+yarn e2e e2e/specs/04-editor-run.spec.js
+yarn e2e:report
+```
+
+`.github/workflows/tests.yml` runs it, after the packages' own `yarn test`,
+on every push and pull request.
+
 #### yarn rebuild
 
 it will run `electron-rebuild -f -w node-pty` in `packages/tinkr-main`

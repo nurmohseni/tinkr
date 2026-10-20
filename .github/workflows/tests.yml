@@ -1,0 +1,66 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# a second push to the same branch is a run nobody will read: the newer one
+# replaces it
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # the packages' own suites: parsers, stores, services, IPC and components
+  unit:
+    name: Unit and component tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: 'yarn'
+      # the log service's PHP test runs a real php, and the runner's image is
+      # not guaranteed to have one
+      - run: sudo apt-get update && sudo apt-get install -y php-cli
+      - run: yarn bootstrap
+      - run: yarn test
+
+  # the real app: Electron, the preload bridge, the renderer and a real pty.
+  # It waits for the unit suite, so a broken parser does not spend ten minutes
+  # driving a window that cannot work.
+  e2e:
+    name: End-to-end in Electron
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: 'yarn'
+      - run: yarn bootstrap
+      # a display for the real window, and an ssh server for the ssh flow
+      - run: sudo apt-get update && sudo apt-get install -y xvfb openssh-server
+      # the container flow skips itself when no php image is here; a registry
+      # that cannot answer is not a reason to fail the code
+      - run: docker pull php:8.4-cli || true
+      - run: xvfb-run -a yarn e2e
+        env:
+          CI: 'true'
+          TINKR_E2E_LOCAL_SSH: '1'
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            e2e/report/
+            test-results/

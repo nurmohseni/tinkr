@@ -16,10 +16,14 @@
     "prerelease": "run-s package",
     "release": "node ./scripts/release.js",
     "test": "yarn workspaces run test",
-    "lint": "yarn workspaces run lint"
+    "lint": "yarn workspaces run lint",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:report": "playwright show-report e2e/report"
   },
   "devDependencies": {
     "@octokit/rest": "^18.12.0",
+    "@playwright/test": "^1.64.1",
     "electron": "^44.7.2",
     "electron-builder": "^26.17.0",
     "electron-builder-squirrel-windows": "^26.15.3",
