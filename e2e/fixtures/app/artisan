@@ -1,0 +1,349 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * A tinker-compatible session for Tinkr's end-to-end tests.
+ *
+ * The app boots a connection's session by running the connection's command —
+ * `php artisan tinker` by default — and writes a wrapped run into it. psysh is
+ * what a Laravel project answers with, and it is a large dependency to install
+ * for a suite whose subject is the app. This is the part of psysh the app
+ * depends on: a php process that reads one line at a time and evaluates it in a
+ * scope that survives the line. Nothing is stubbed in the app: the real pty, the
+ * real wrapper, the real parser and the real result filter all run.
+ *
+ * Canonical input is turned off before the loop starts. A pty in canonical mode
+ * only hands over a line of up to 4096 bytes; a run wrapper is larger than that,
+ * which is why the app waits for the session to be reading before it writes. A
+ * readline prompt is in raw mode and has no such limit, and neither does this.
+ */
+
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+$root = __DIR__;
+
+require $root . '/vendor/illuminate/database/QueryExecuted.php';
+
+spl_autoload_register(function ($class) use ($root) {
+    $prefix = 'App\\';
+
+    if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+        return;
+    }
+
+    $file = $root . '/app/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+
+    if (is_file($file)) {
+        require $file;
+    }
+});
+
+$config = [
+    'app' => ['name' => 'Tinkr Fixture', 'env' => 'testing', 'debug' => true],
+    'database' => ['default' => 'fixture'],
+    'logging' => ['default' => 'stack'],
+];
+
+/**
+ * Laravel's `config()` for the fixture: dot lookup, and the default when a key
+ * is not there.
+ */
+function config($key = null, $default = null)
+{
+    global $config;
+
+    if ($key === null) {
+        return $config;
+    }
+
+    $value = $config;
+
+    foreach (explode('.', $key) as $segment) {
+        if (!is_array($value) || !array_key_exists($segment, $value)) {
+            return $default;
+        }
+
+        $value = $value[$segment];
+    }
+
+    return $value;
+}
+
+/** One query the fixture's connection ran, shaped like Laravel's event. */
+class TinkrFixtureQuery
+{
+    public $sql;
+    public $bindings;
+    public $time;
+    public $connectionName;
+
+    public function __construct($sql, $bindings, $time, $connectionName)
+    {
+        $this->sql = $sql;
+        $this->bindings = $bindings;
+        $this->time = $time;
+        $this->connectionName = $connectionName;
+    }
+}
+
+/** The event dispatcher the wrapper listens on for query events. */
+class TinkrFixtureEvents
+{
+    private static $listeners = [];
+
+    public static function listen($event, $callback)
+    {
+        self::$listeners[$event][] = $callback;
+    }
+
+    public static function dispatch($event, $payload)
+    {
+        foreach (self::$listeners[$event] ?? [] as $callback) {
+            $callback($payload);
+        }
+    }
+
+    // the sandbox swaps listeners around an event dispatcher; a fixture without
+    // this is asked and cannot answer, which is reported rather than fatal
+    public static function set($event, $payload = null)
+    {
+    }
+
+    public function forget($event)
+    {
+    }
+}
+
+/** A pdo connection with Laravel's connection surface, enough for a guard. */
+class TinkrFixtureConnection
+{
+    private $pdo;
+    private $name;
+    private $level = 0;
+
+    public function __construct($name)
+    {
+        $this->name = $name;
+        $this->pdo = new PDO('sqlite::memory:');
+        $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->pdo->exec('create table orders (id integer primary key, customer text, total real, paid integer)');
+        $this->pdo->exec("insert into orders (customer, total, paid) values ('Ada', 42.5, 1), ('Grace', 18.0, 0), ('Linus', 7.25, 1)");
+    }
+
+    public function getName()
+    {
+        return $this->name;
+    }
+
+    public function beginTransaction()
+    {
+        if ($this->level === 0) {
+            $this->pdo->beginTransaction();
+        }
+
+        $this->level++;
+    }
+
+    public function commit()
+    {
+        if ($this->level === 1) {
+            $this->pdo->commit();
+        }
+
+        $this->level = max(0, $this->level - 1);
+    }
+
+    public function rollBack()
+    {
+        if ($this->level === 1) {
+            $this->pdo->rollBack();
+        }
+
+        $this->level = max(0, $this->level - 1);
+    }
+
+    public function transactionLevel()
+    {
+        return $this->level;
+    }
+
+    private function run($sql, $bindings, $fetch)
+    {
+        $started = microtime(true);
+        $statement = $this->pdo->prepare($sql);
+        $statement->execute(array_values($bindings));
+        $elapsed = (microtime(true) - $started) * 1000;
+
+        TinkrFixtureEvents::dispatch(
+            'Illuminate\\Database\\Events\\QueryExecuted',
+            new \Illuminate\Database\Events\QueryExecuted($sql, array_values($bindings), $elapsed, $this->name)
+        );
+
+        return $fetch ? $statement->fetchAll(PDO::FETCH_ASSOC) : $statement->rowCount();
+    }
+
+    public function select($sql, $bindings = [])
+    {
+        return $this->run($sql, $bindings, true);
+    }
+
+    public function statement($sql, $bindings = [])
+    {
+        return $this->run($sql, $bindings, false);
+    }
+
+    public function insert($sql, $bindings = [])
+    {
+        return $this->run($sql, $bindings, false);
+    }
+
+    public function update($sql, $bindings = [])
+    {
+        return $this->run($sql, $bindings, false);
+    }
+
+    public function delete($sql, $bindings = [])
+    {
+        return $this->run($sql, $bindings, false);
+    }
+}
+
+/** `DB::` as the fixture spells it. */
+class DB
+{
+    public static function connection($name = null)
+    {
+        return TinkrFixture::connection($name);
+    }
+
+    public static function select($sql, $bindings = [])
+    {
+        return self::connection()->select($sql, $bindings);
+    }
+
+    public static function statement($sql, $bindings = [])
+    {
+        return self::connection()->statement($sql, $bindings);
+    }
+
+    public static function insert($sql, $bindings = [])
+    {
+        return self::connection()->insert($sql, $bindings);
+    }
+
+    public static function update($sql, $bindings = [])
+    {
+        return self::connection()->update($sql, $bindings);
+    }
+
+    public static function delete($sql, $bindings = [])
+    {
+        return self::connection()->delete($sql, $bindings);
+    }
+}
+
+/** Laravel's database manager, which is what `app('db')` is. */
+class TinkrFixtureDbManager
+{
+    public function connection($name = null)
+    {
+        return TinkrFixture::connection($name);
+    }
+
+    public function table($name)
+    {
+        return $this->connection();
+    }
+}
+
+/** The container the app's `app()` helper answers from. */
+class TinkrFixture
+{
+    private static $connection;
+    private static $events;
+
+    public static function connection($name = null)
+    {
+        if (!self::$connection) {
+            self::$connection = new TinkrFixtureConnection($name ?: 'fixture');
+        }
+
+        return self::$connection;
+    }
+
+    public static function events()
+    {
+        if (!self::$events) {
+            self::$events = new TinkrFixtureEvents();
+        }
+
+        return self::$events;
+    }
+
+    public static function bound($key)
+    {
+        return in_array($key, ['db', 'events'], true);
+    }
+
+    public static function make($key)
+    {
+        if ($key === 'db') {
+            return new TinkrFixtureDbManager();
+        }
+
+        return self::events();
+    }
+}
+
+function app($key = null)
+{
+    if ($key === null) {
+        return new class {
+            public function bound($key)
+            {
+                return TinkrFixture::bound($key);
+            }
+        };
+    }
+
+    return TinkrFixture::make($key);
+}
+
+/** psysh's dump, near enough: print and keep the value. */
+function dump(...$values)
+{
+    foreach ($values as $value) {
+        echo var_export($value, true), PHP_EOL;
+    }
+
+    return count($values) === 1 ? $values[0] : $values;
+}
+
+function dd(...$values)
+{
+    dump(...$values);
+    exit(1);
+}
+
+// icanon off is what lifts the 4096-byte line limit; echo off keeps the wrapper
+// out of the output pane, which the app's filter would otherwise have to strip
+@shell_exec('stty -F /dev/tty -icanon -echo 2>/dev/null');
+
+$stdin = fopen('php://stdin', 'r');
+
+while (($line = fgets($stdin)) !== false) {
+    $code = rtrim($line, "\r\n");
+
+    if (trim($code) === '') {
+        continue;
+    }
+
+    try {
+        eval($code);
+    } catch (Throwable $e) {
+        // a run that broke the wrapper itself cannot answer through it; say what
+        // happened rather than leaving the app waiting for an envelope
+        echo PHP_EOL, 'PHP ', get_class($e), ': ', $e->getMessage(), PHP_EOL;
+    }
+}

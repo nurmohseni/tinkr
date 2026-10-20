@@ -1,0 +1,10 @@
+{
+  "name": "tinkr/e2e-fixture",
+  "description": "A Tinkr-shaped project the end-to-end suite drives, with no framework to install",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/"
+    }
+  }
+}

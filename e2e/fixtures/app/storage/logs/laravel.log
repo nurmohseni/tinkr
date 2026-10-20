@@ -1,0 +1,9 @@
+[2026-10-18 09:00:01] local.INFO: fixture booted {"env":"testing"}
+[2026-10-18 09:00:02] local.DEBUG: cache warmed {"keys":3}
+[2026-10-18 12:30:00] local.INFO: invoice 41 paid {"invoice":41}
+[2026-10-19 10:00:00] local.WARNING: slow query detected {"ms":900}
+[2026-10-19 10:00:01] local.ERROR: fixture failure {"exception":"RuntimeException: boom"}
+[stacktrace]
+#0 /app/Models/Order.php(42): App\\Models\\Order::all()
+#1 {main}
+[2026-10-20 08:00:00] local.INFO: daily job finished {"jobs":2}

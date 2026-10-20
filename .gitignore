@@ -19,3 +19,8 @@ codedb.snapshot
 # Switzer and Sentient: the ITF Free Font License lets the app embed them but
 # not redistribute them, so `node scripts/fetch-fonts.js` puts them here
 packages/tinkr-renderer/public/fonts/itf/
+# end-to-end runs: the report, the traces and the screenshots a failure leaves
+e2e/report/
+test-results/
+blob-report/
+playwright-report/

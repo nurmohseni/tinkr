@@ -182,6 +182,20 @@ yarn start
 
 `yarn start` fetches the interface fonts (Switzer and Sentient from Fontshare, not redistributable) and starts the main and renderer processes. Offline, it falls back to system fonts. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the rest.
 
+### Tests
+
+```sh
+yarn test    # unit and component tests, in every package
+yarn e2e     # end-to-end: Playwright launches the real app and drives it
+```
+
+The end-to-end suite runs the real main process, preload bridge and renderer,
+with a real pty behind every run, against a small tinker-compatible project in
+`e2e/fixtures/app`. Every test gets a throwaway profile. Container and SSH
+flows run where Docker or a local sshd is available. [e2e/README.md](./e2e/README.md)
+has the coverage and the details; [`.github/workflows/tests.yml`](./.github/workflows/tests.yml)
+runs both suites on every push and pull request.
+
 <details>
 <summary><strong>Tech stack</strong></summary>
 
