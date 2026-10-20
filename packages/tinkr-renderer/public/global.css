@@ -529,6 +529,21 @@ button.tree-nav__row {
     padding: var(--s1) 0;
 }
 
+/* the pages are kept as separate blocks so a page prepended above the reader
+   can be measured and the scroll moved by its height */
+.logs__page {
+    display: block;
+}
+
+/* a row that is off screen is not laid out until it is near: the page cap keeps
+   the number of rows bounded, and this keeps the cost of the ones in the list
+   but out of sight near zero. The remembered size is the row it was last drawn
+   at, so an opened entry does not make the scroll jump. */
+.log {
+    content-visibility: auto;
+    contain-intrinsic-size: auto var(--tree-row-h, 2rem);
+}
+
 .logs__note {
     padding: var(--s3);
     font-size: var(--fs-sm);

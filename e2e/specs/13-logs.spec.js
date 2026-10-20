@@ -128,7 +128,7 @@ test.describe('the log viewer', () => {
     }
   })
 
-  test('pages back and forward through a file larger than one window', async () => {
+  test('loads older pages as the list scrolls, and newer ones on the way back', async () => {
     const project = copyFixture()
     const large = path.join(project, 'storage', 'logs', 'large.log')
     const line = index => `[2026-10-20 10:${String(Math.floor(index / 60) % 60).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}] local.INFO: entry ${index}\n`
@@ -144,21 +144,33 @@ test.describe('the log viewer', () => {
 
       await pickFile(logs, 'large.log')
 
+      const body = logs.locator('.logs__body')
+
       await expect(logs.locator('.logs__foot')).toContainText('read the last')
-      await expect(logs.locator('.logs__body')).toContainText('entry 4999')
+      await expect(body).toContainText('entry 4999')
 
-      const older = logs.getByRole('button', {name: 'Older'})
+      const lowest = async () => Math.min(...((await body.innerText()).match(/entry \d+/g) || [])
+        .map(number => Number(number.slice(6))))
 
-      await expect(older).toBeEnabled()
-      await older.click()
+      let low = await lowest()
 
+      // the top edge is the trigger; the page it reads is joined above, and the
+      // entry that was under the eye stays where it was
+      for (let at = 0; at < 5; at++) {
+        await body.evaluate(list => { list.scrollTop = 0 })
+        await expect.poll(lowest).toBeLessThan(low)
+        low = await lowest()
+      }
+
+      // the cap has dropped the newest page by now, so the list is not at the end
       await expect(logs.locator('.logs__foot')).toContainText('before the end')
+      await expect(body).not.toContainText('entry 4999')
 
-      const newer = logs.getByRole('button', {name: 'Newer'})
-
-      await expect(newer).toBeEnabled()
-      await newer.click()
-      await expect(logs.locator('.logs__foot')).toContainText('read the last')
+      // the bottom edge reads the page after the held end, and the newest entry
+      // comes back
+      await body.evaluate(list => { list.scrollTop = list.scrollHeight })
+      await expect(logs.locator('.logs__foot')).toContainText('read the last', {timeout: 15_000})
+      await expect(body).toContainText('entry 4999')
     } finally {
       await close()
       fs.rmSync(project, {recursive: true, force: true})

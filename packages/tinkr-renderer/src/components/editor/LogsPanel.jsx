@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react'
+import {useEffect, useLayoutEffect, useRef, useState} from 'react'
 import {useAtom, useAtomValue, useSetAtom} from 'jotai'
 import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
@@ -7,12 +7,14 @@ import LogsFilter from './LogsFilter'
 import {
   atEnd,
   atStart,
+  followLogAtom,
   logsAtom,
   logsFollowAtom,
   logsIntervalAtom,
   logsLevelsAtom,
   logsRangedAtom,
   logsSearchAtom,
+  maxPages,
   newerLogAtom,
   olderLogAtom,
   passesLevel,
@@ -22,9 +24,8 @@ import {
 // what the intervals the viewer offers are, in the order it offers them
 const intervals = [1000, 2000, 5000, 10000]
 
-// how far from the foot a list counts as being at the foot: a tail keeps its end
-// in view while new entries arrive, until someone scrolls away from it
-const atFoot = 24
+// how close to an edge the list has to be before it reads the next page
+const edge = 160
 
 // kilobytes as the footer says them: a window is a whole number of them, near enough
 const kb = bytes => Math.max(1, Math.round(bytes / 1024))
@@ -77,9 +78,15 @@ Entry.propTypes = {
  *
  * Which file is read is the sidebar's to say — its list is the picker — and the
  * viewer fills the editor pane, because a log line is as wide as it is and a
- * third of a window is where it wraps. It opens on the end of the file, which is
- * where the newest entries are, and steps back and forward through it a window at
- * a time, so a file too big to hold is read as cheaply as a small one.
+ * third of a window is where it wraps. It opens on the end of the file and reads
+ * a page at a time as the reader scrolls, so a file too big to hold costs a page
+ * and a bounded set of pages rather than the file.
+ *
+ * A page is a contiguous byte window with a list of entries. The pages are kept
+ * in order and the list is their concatenation, so scrolling is one list, not a
+ * page that replaces another. Loading older entries at the top drops the newest
+ * pages when the cap is reached, and loading newer ones at the bottom drops the
+ * oldest; the side that went is read again when the reader comes back to it.
  */
 const LogsPanel = () => {
   const intl = useIntl()
@@ -87,6 +94,7 @@ const LogsPanel = () => {
   const read = useSetAtom(readLogAtom)
   const older = useSetAtom(olderLogAtom)
   const newer = useSetAtom(newerLogAtom)
+  const followNow = useSetAtom(followLogAtom)
   const levels = useAtomValue(logsLevelsAtom)
   const ranged = useAtomValue(logsRangedAtom)
   const [filtering, setFiltering] = useState(false)
@@ -97,50 +105,153 @@ const LogsPanel = () => {
   const [interval, setPollInterval] = useAtom(logsIntervalAtom)
   const listRef = useRef()
   const pinned = useRef(true)
-  const landing = useRef(null)
+  const firstLoad = useRef(true)
+  // what the layout should do after a page lands: 'older' keeps the entry that
+  // was under the eye where it was, 'newer' holds the foot
+  const intent = useRef(null)
+  const priorFrom = useRef(null)
+  const loading = useRef({older: false, newer: false})
 
-  // following: the file is being appended to, so the same read is made again
+  // a level or a search term is applied to the entries in hand. Paging older
+  // pages under it would drop the newest page — and the matches that may be the
+  // only reason the list is not empty — so the filtered view stays on what is
+  // loaded. A range is the service's, and pages inside it are still read.
+  const filtered = levels.length > 0 || search.trim() !== ''
+
+  // another file opens on its end, as the first one did, whatever the reader
+  // had scrolled to in the file they left
+  useEffect(() => {
+    pinned.current = true
+    firstLoad.current = true
+    intent.current = null
+  }, [logs.file])
+
+  // following: the file is being appended to, so the end is read again
   useEffect(() => {
     if (!follow || logs.file === '') {
       return undefined
     }
 
-    const timer = setInterval(() => read(), interval)
+    const timer = setInterval(() => followNow(), interval)
 
     return () => clearInterval(timer)
-  }, [follow, interval, logs.file])
+  }, [follow, interval, logs.file, followNow])
 
-  // where the eye lands: a window that was stepped back to lands on its bottom,
-  // because it continues from the top of what was just being read, and one that
-  // was stepped forward to lands on its top for the same reason. A window that
-  // arrives on its own keeps the foot in view, unless it has been scrolled away
-  // from.
-  useEffect(() => {
+  const loadOlder = async () => {
+    if (filtered || loading.current.older || atStart(logs) || logs.pages.length === 0) {
+      return
+    }
+
+    loading.current.older = true
+    intent.current = 'older'
+    priorFrom.current = logs.pages[0].from
+
+    await older()
+
+    loading.current.older = false
+  }
+
+  const loadNewer = async () => {
+    if (loading.current.newer || atEnd(logs) || logs.pages.length === 0) {
+      return
+    }
+
+    loading.current.newer = true
+    intent.current = 'newer'
+
+    await newer()
+
+    loading.current.newer = false
+  }
+
+  const handleScroll = () => {
     const list = listRef.current
 
     if (!list) {
       return
     }
 
-    if (landing.current === 'top') {
-      list.scrollTop = 0
-    } else if (landing.current === 'bottom' || pinned.current) {
-      list.scrollTop = list.scrollHeight
+    const top = list.scrollTop <= edge
+    const bottom = list.scrollHeight - list.scrollTop - list.clientHeight <= edge
+
+    pinned.current = bottom
+
+    // following is watching the tail; a reader who has left it is not following
+    // any more, and the switch says so rather than pulling them back
+    if (follow && !bottom) {
+      setFollow(false)
     }
 
-    landing.current = null
-  }, [logs.entries, levels, search])
+    if (top) {
+      loadOlder()
+    }
 
-  const handleScroll = () => {
-    const list = listRef.current
-
-    if (list) {
-      pinned.current = list.scrollHeight - list.scrollTop - list.clientHeight < atFoot
+    if (bottom) {
+      loadNewer()
     }
   }
 
+  // a page that lands above the one under the eye must not move it: the pages
+  // that were prepended are measured, and the scroll is moved by their height.
+  // A page that lands below keeps the foot in view, which is where a reader
+  // loading newer entries is.
+  useLayoutEffect(() => {
+    const list = listRef.current
+
+    if (!list) {
+      return
+    }
+
+    if (intent.current === 'older') {
+      let added = 0
+
+      for (const page of list.querySelectorAll('[data-page]')) {
+        if (priorFrom.current !== null && Number(page.dataset.page) < priorFrom.current) {
+          added += page.offsetHeight
+        }
+      }
+
+      if (added > 0) {
+        list.scrollTop += added
+      }
+    } else if (intent.current === 'newer') {
+      list.scrollTop = list.scrollHeight
+    } else if (firstLoad.current || pinned.current) {
+      list.scrollTop = list.scrollHeight
+    }
+
+    firstLoad.current = false
+    intent.current = null
+    priorFrom.current = null
+  }, [logs.pages])
+
+  // a filter that leaves a shorter list is read under the eye, not moved to the
+  // foot unless the reader was at the foot
+  useEffect(() => {
+    const list = listRef.current
+
+    if (list && pinned.current) {
+      list.scrollTop = list.scrollHeight
+    }
+  }, [levels, search])
+
+  // a page can be shorter than the pane — a file with long lines, or a filter
+  // that hides most of it. Fill the pane before waiting for a scroll that cannot
+  // happen, up to the same page cap the rest of the viewer uses.
+  useEffect(() => {
+    const list = listRef.current
+
+    if (!list || logs.loading || logs.loadingOlder || logs.pages.length === 0) {
+      return
+    }
+
+    if (!filtered && logs.pages.length < maxPages && !atStart(logs) && list.scrollHeight <= list.clientHeight + edge) {
+      loadOlder()
+    }
+  }, [logs.pages, logs.loading, logs.loadingOlder, levels, search])
+
   const term = search.trim().toLowerCase()
-  const shown = logs.entries.filter(entry => {
+  const visible = entry => {
     if (entry.level !== null && !passesLevel(levels, entry.level)) {
       return false
     }
@@ -150,7 +261,15 @@ const LogsPanel = () => {
     }
 
     return `${entry.at} ${entry.level} ${entry.message} ${entry.details}`.toLowerCase().includes(term)
-  })
+  }
+
+  const shown = logs.entries.filter(visible)
+
+  const again = () => {
+    pinned.current = true
+    intent.current = null
+    read()
+  }
 
   return (
     <div className='logs'>
@@ -181,30 +300,6 @@ const LogsPanel = () => {
 
           <span className='grow'/>
 
-          <button
-            className='btn btn--secondary btn--sm'
-            type='button'
-            disabled={logs.file === '' || atStart(logs)}
-            onClick={() => {
-              landing.current = 'bottom'
-              older()
-            }}
-          >
-            {intl.formatMessage({id: 'editor.logs_older'})}
-          </button>
-
-          <button
-            className='btn btn--secondary btn--sm'
-            type='button'
-            disabled={logs.file === '' || atEnd(logs)}
-            onClick={() => {
-              landing.current = 'top'
-              newer()
-            }}
-          >
-            {intl.formatMessage({id: 'editor.logs_newer'})}
-          </button>
-
           <label
             className='logs__follow'
             title={intl.formatMessage({id: 'editor.logs_follow_description'}, {seconds: interval / 1000})}
@@ -219,7 +314,18 @@ const LogsPanel = () => {
                 type='checkbox'
                 checked={follow}
                 aria-label={intl.formatMessage({id: 'editor.logs_follow'})}
-                onChange={event => setFollow(event.target.checked)}
+                onChange={event => {
+                  const on = event.target.checked
+
+                  setFollow(on)
+
+                  // following is watching the tail; turning it on away from the
+                  // tail goes there rather than waiting for a read of a file
+                  // whose end is not on screen
+                  if (on && !atEnd(logs)) {
+                    again()
+                  }
+                }}
               />
               <span className='switch__track'/>
             </span>
@@ -241,10 +347,7 @@ const LogsPanel = () => {
             className='btn btn--secondary btn--sm'
             type='button'
             disabled={logs.file === ''}
-            onClick={() => {
-              pinned.current = true
-              read()
-            }}
+            onClick={again}
           >
             {intl.formatMessage({id: 'editor.logs_read'})}
           </button>
@@ -266,31 +369,60 @@ const LogsPanel = () => {
           </p>
         )}
 
-        {shown.map((entry, index) => (
-          <Entry key={`${entry.at}-${index}`} entry={entry}/>
-        ))}
+        {logs.pages.map(page => {
+          const entries = page.entries.filter(visible)
+
+          if (entries.length === 0) {
+            return null
+          }
+
+          return (
+            <div className='logs__page' data-page={page.from} key={page.from}>
+              {entries.map((entry, index) => (
+                <Entry key={`${page.from}-${index}`} entry={entry}/>
+              ))}
+            </div>
+          )
+        })}
       </div>
 
       <div className='logs__foot'>
         <span className='logs__read faint truncate'>
-          {atEnd(logs)
-            ? (
-              <FormattedMessage
-                id='editor.logs_read_of'
-                values={{read: kb(logs.read), size: kb(logs.size)}}
-              />
-            )
-            : (
-              <FormattedMessage
-                id='editor.logs_read_of_before'
-                values={{
-                  read: kb(logs.read),
-                  back: kb(logs.size - logs.from - logs.read),
-                  size: kb(logs.size),
-                }}
-              />
-            )}
+          {logs.loadingOlder
+            ? <FormattedMessage id='editor.logs_loading_older'/>
+            : logs.loadingNewer
+              ? <FormattedMessage id='editor.logs_loading_newer'/>
+              : atEnd(logs)
+                ? (
+                  <FormattedMessage
+                    id='editor.logs_read_of'
+                    values={{read: kb(logs.read), size: kb(logs.size)}}
+                  />
+                )
+                : (
+                  <FormattedMessage
+                    id='editor.logs_read_of_before'
+                    values={{
+                      read: kb(logs.read),
+                      back: kb(logs.size - logs.from - logs.read),
+                      size: kb(logs.size),
+                    }}
+                  />
+                )}
         </span>
+
+        {logs.file !== '' && atStart(logs) && !atEnd(logs) && (
+          <span className='logs__read faint'>
+            <FormattedMessage id='editor.logs_start'/>
+          </span>
+        )}
+
+        {logs.file !== '' && atEnd(logs) && !atStart(logs) && (
+          <span className='logs__read faint'>
+            <FormattedMessage id='editor.logs_end'/>
+          </span>
+        )}
+
         <span className='logs__dir faint truncate' title={logs.dir}>{logs.dir}</span>
       </div>
     </div>

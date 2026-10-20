@@ -49,7 +49,7 @@ variables and classes persisting for the line — plus:
   Laravel's `QueryExecuted` event, so the query log and the transaction guard
   have real queries to watch;
 - `storage/logs/laravel.log` and `worker.log`, with fixed timestamps for the
-  log viewer's level, search, range and paging tests.
+  log viewer's level, search, range and scrolling tests.
 
 It exists so the suite needs no `composer install` and no network. A test that
 writes to the project uses `copyFixture()` instead, so the committed fixture
@@ -74,7 +74,7 @@ stays untouched.
 | `10-production-gate` | a write held behind the production question, cancel, run anyway, unguardable dry run, guarded ordinary write |
 | `11-preferences` | theme, layout, statements, timeout, close prompt, command and log defaults, shortcut recorder, locale switch, lab form switch/prefix |
 | `12-ai` | the panel against a local OpenAI-shaped server, apply and discard, `@` project files, the two context switches, settings check |
-| `13-logs` | file rail, entries and details, level/search/time filters, follow, paging a file larger than one window |
+| `13-logs` | file rail, entries and details, level/search/time filters, follow, bounded infinite scrolling over a file larger than one window |
 | `14-update` | available and downloaded update prompts, the missing-php warning |
 | `15-container-ssh` | container discovery and a run inside a real container; a real sshd with key auth and a run over ssh; the log viewer over both |
 | `16-mcp` | the bundled server, the connection a client runs in, the entry, a client configuration written, the tools, copy |

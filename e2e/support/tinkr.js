@@ -1,6 +1,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const {execFileSync} = require('child_process')
 const {_electron: electron} = require('playwright')
 
 const repo = path.resolve(__dirname, '../..')
@@ -189,6 +190,17 @@ const launchTinkr = async (seed = {}, {timeout = 60_000, keepProfile = false, pr
         child.once('exit', resolve)
         setTimeout(resolve, 2000).unref()
       })
+    }
+
+    // an Electron that was taken down hard can leave its gpu and network
+    // processes behind; they carry the profile on their command line, so the
+    // profile is what finds them
+    if (process.platform === 'linux') {
+      try {
+        execFileSync('pkill', ['-9', '-f', `--user-data-dir=${profile}`], {stdio: 'ignore'})
+      } catch (error) {
+        // none left to take down is the answer we wanted
+      }
     }
 
     if (owned && !keepProfile) {

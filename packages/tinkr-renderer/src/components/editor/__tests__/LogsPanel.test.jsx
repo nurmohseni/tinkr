@@ -23,8 +23,6 @@ const LogsPanel = require('../LogsPanel').default
 
 // the words this window adds, which the message files are given separately
 const added = {
-  'editor.logs_older': 'Older',
-  'editor.logs_newer': 'Newer',
   'editor.logs_read_of_before': 'read {read} KB ending {back} KB before the end of {size} KB',
 }
 
@@ -37,11 +35,15 @@ const render = logs => {
     dir: '/app/storage/logs',
     files: [],
     file: 'laravel.log',
+    pages: [{from: 256 * 1024, read: 128 * 1024, entries: []}],
     entries: [],
     size: 384 * 1024,
     read: 128 * 1024,
     from: 256 * 1024,
+    range: {from: 0, to: 384 * 1024},
     loading: false,
+    loadingOlder: false,
+    loadingNewer: false,
     error: '',
   }, logs))
 
@@ -58,35 +60,35 @@ const render = logs => {
 const button = (markup, label) => markup.match(new RegExp(`<button[^>]*>${label}</button>`))[0]
 
 describe('the log viewer', () => {
-  test('says it read the end of the file when that is where the window is', () => {
+  test('says it read the end of the file when that is where the pages are', () => {
     const markup = render({})
 
     expect(markup).toContain('read the last 128 KB of 384 KB')
-    expect(button(markup, 'Older')).not.toContain('disabled')
-    // nothing newer than the end of the file
-    expect(button(markup, 'Newer')).toContain('disabled')
+    expect(markup).toContain('End of the file')
+    expect(markup).not.toContain('Start of the file')
   })
 
-  test('says how far before the end a window away from it ends', () => {
-    const markup = render({from: 128 * 1024})
+  test('says how far before the end pages away from it end', () => {
+    const markup = render({from: 128 * 1024, pages: [{from: 128 * 1024, read: 128 * 1024, entries: []}]})
 
     expect(markup).toContain('read 128 KB ending 128 KB before the end of 384 KB')
-    expect(button(markup, 'Older')).not.toContain('disabled')
-    expect(button(markup, 'Newer')).not.toContain('disabled')
+    expect(markup).not.toContain('Start of the file')
+    expect(markup).not.toContain('End of the file')
   })
 
-  test('has nothing older to offer at the start of the file', () => {
-    const markup = render({from: 0})
+  test('says the start of the file is the start', () => {
+    const markup = render({from: 0, pages: [{from: 0, read: 128 * 1024, entries: []}]})
 
-    expect(button(markup, 'Older')).toContain('disabled')
-    expect(button(markup, 'Newer')).not.toContain('disabled')
+    expect(markup).toContain('Start of the file')
+    expect(markup).not.toContain('End of the file')
   })
 
   test('has nothing to step through until a file is open', () => {
-    const markup = render({file: '', from: 0, size: 0, read: 0})
+    const markup = render({file: '', from: 0, size: 0, read: 0, pages: []})
 
-    expect(button(markup, 'Older')).toContain('disabled')
-    expect(button(markup, 'Newer')).toContain('disabled')
+    expect(markup).toContain('Pick a log file in the sidebar.')
+    expect(markup).not.toContain('Start of the file')
+    expect(markup).not.toContain('End of the file')
   })
 })
 
@@ -98,13 +100,15 @@ describe('following a log', () => {
 
   afterEach(() => jest.useRealTimers())
 
-  test('reads the file again on its own while the switch is on', () => {
+  test('reads the file again on its own while the switch is on', async () => {
     const store = createStore()
     const host = document.createElement('div')
 
     store.set(logsAtom, {
-      dir: '/app/storage/logs', files: [], file: 'laravel.log', entries: [],
-      size: 10, read: 10, from: 0, loading: false, error: '',
+      dir: '/app/storage/logs', files: [], file: 'laravel.log',
+      pages: [{from: 0, read: 10, entries: []}], entries: [],
+      size: 10, read: 10, from: 0, range: {from: 0, to: 10},
+      loading: false, loadingOlder: false, loadingNewer: false, error: '',
     })
     store.set(logsFollowAtom, true)
 
@@ -122,21 +126,33 @@ describe('following a log', () => {
 
     expect(logRead).not.toHaveBeenCalled()
 
-    act(() => {
-      jest.advanceTimersByTime(4100)
+    await act(async () => {
+      jest.advanceTimersByTime(2100)
+      await Promise.resolve()
     })
 
-    // the default is every two seconds: twice in a little over four. Every read
-    // carries the range, which is empty until one is set
+    // the first tick read the file, and the read has landed
+    expect(logRead).toHaveBeenCalledTimes(1)
+    expect(logRead).toHaveBeenCalledWith('laravel.log', {bytes: 32 * 1024, after: 10, since: '', until: ''})
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000)
+      await Promise.resolve()
+    })
+
+    // the next one is a read of its own, not one stacked on a read still going
     expect(logRead).toHaveBeenCalledTimes(2)
-    expect(logRead).toHaveBeenCalledWith('laravel.log', {since: '', until: ''})
 
-    // and turning it off stops it
-    act(() => {
+    // and turning it off stops it: the effect's cleanup is a render of its own,
+    // so the switch is set before the clock is moved again
+    await act(async () => {
       store.set(logsFollowAtom, false)
+      await Promise.resolve()
     })
-    act(() => {
+
+    await act(async () => {
       jest.advanceTimersByTime(6000)
+      await Promise.resolve()
     })
 
     expect(logRead).toHaveBeenCalledTimes(2)

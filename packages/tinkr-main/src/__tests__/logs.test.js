@@ -202,6 +202,23 @@ describe('the log files of a connection', () => {
     expect(answer.entries.length).toBeLessThan(400)
   })
 
+  test('are read forward from a byte too, which is how the viewer walks back down', () => {
+    const root = project([])
+    const file = path.join(root, 'storage', 'logs', 'big.log')
+    const many = Array.from({length: 400}, (unused, at) => line('2026-08-27 11:10:52', 'local', 'INFO', `entry ${at} `.padEnd(60, '.')))
+    const whole = many.join('\n')
+
+    fs.writeFileSync(file, whole)
+
+    const connection = {path: root, is_over_ssh: false}
+    const answer = read(connection, 'big.log', {bytes: 2048, after: 2048})
+
+    expect(answer.from).toBe(2048)
+    expect(answer.read).toBe(2048)
+    expect(answer.entries[0].message).toBe('entry 22 '.padEnd(60, '.'))
+    expect(answer.entries[answer.entries.length - 1].message.startsWith('entry 4')).toBe(true)
+  })
+
   test('cannot be read by a name that is a path', () => {
     const root = project(['laravel.log'])
     const connection = {path: root, is_over_ssh: false}
@@ -475,8 +492,28 @@ describe('the log files of a connection that keeps them on another machine', () 
     const [command, args] = spawn.mock.calls[0]
 
     expect(command).toBe('ssh')
-    expect(args[args.length - 1]).toContain('$end=min(4096,$to);')
+    expect(args[args.length - 1]).toContain('$end=$after===null?min(4096,$to):min($start+2048,$to);')
     expect(args[args.length - 1]).toContain('stream_get_contents($h,$end-$start)')
+  })
+
+  test('are asked for forward from a byte as well', async () => {
+    const many = Array.from({length: 400}, (unused, at) => line('2026-08-27 11:10:52', 'local', 'INFO', `entry ${at} `.padEnd(60, '.')))
+    const whole = many.join('\n')
+
+    spawn.mockImplementation(() => answering(JSON.stringify({
+      size: Buffer.byteLength(whole), from: 0, to: Buffer.byteLength(whole), start: 2048, text: whole.slice(2048, 4096),
+    })))
+
+    const answer = await read(connection, 'big.log', {bytes: 2048, after: 2048})
+
+    expect(answer.from).toBe(2048)
+    expect(answer.read).toBe(2048)
+
+    const [command, args] = spawn.mock.calls[0]
+
+    expect(command).toBe('ssh')
+    expect(args[args.length - 1]).toContain('$after=2048;')
+    expect(args[args.length - 1]).toContain('$end=$after===null?min($n,$to):min($start+2048,$to);')
   })
 
   test('cannot be read by a name that is a path, over ssh either', () => {

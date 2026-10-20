@@ -6,10 +6,10 @@ describe('logs store', () => {
   let api
   let store
   let logs
+  let total
 
-  // what the service answers: a window of one size, three of them long, so the
-  // middle window is away from both ends
-  const size = root => 3 * root.defaultBytes
+  // six pages, which is more than the viewer holds, so the caps are exercised
+  const pages = root => 6 * root.defaultBytes
 
   beforeEach(() => {
     api = {
@@ -22,153 +22,248 @@ describe('logs store', () => {
 
     logs = require('../logs')
     store = createStore()
+    total = pages(logs)
 
     api.logFiles.mockImplementation(() => ({
       dir: '/app/storage/logs',
-      files: [{name: 'laravel.log', size: size(logs), at: 1}],
+      files: [{name: 'laravel.log', size: total, at: 1}],
     }))
 
     api.logRead.mockImplementation((name, options = {}) => {
       const bytes = options.bytes || logs.defaultBytes
-      const to = options.before == null ? size(logs) : Math.min(options.before, size(logs))
-      const from = Math.max(to - bytes, 0)
+      let start
 
-      return {file: name, size: size(logs), read: to - from, from, entries: []}
+      if (options.after != null) {
+        start = Math.min(options.after, total)
+      } else {
+        const end = options.before == null ? total : Math.min(options.before, total)
+
+        start = Math.max(end - bytes, 0)
+      }
+
+      const end = Math.min(start + bytes, total)
+
+      return {
+        file: name,
+        size: total,
+        read: end - start,
+        from: start,
+        range: {from: 0, to: total},
+        entries: start < end ? [{page: start / logs.defaultBytes}] : [],
+      }
     })
   })
 
-  test('a window opens on the end of the file, and says that is where it is', async () => {
+  test('opens on the end of the file, with one page', async () => {
     await store.set(logs.loadLogsAtom)
 
     const state = store.get(logs.logsAtom)
 
     expect(state.file).toBe('laravel.log')
-    expect(state.from).toBe(2 * logs.defaultBytes)
+    expect(state.pages).toHaveLength(1)
+    expect(state.from).toBe(5 * logs.defaultBytes)
     expect(state.read).toBe(logs.defaultBytes)
-    expect(state.size).toBe(3 * logs.defaultBytes)
+    expect(state.size).toBe(total)
+    expect(state.entries).toHaveLength(1)
     expect(logs.atEnd(state)).toBe(true)
     expect(logs.atStart(state)).toBe(false)
   })
 
-  test('a range is found in the file, and paging stops at its edges rather than the file\'s', async () => {
-    // the service finds the range and answers with where it sits, which is the
-    // whole of what the store needs: the window it returned ends at the range's
-    // own end, and paging then stops at the range's own start
-    const from = 0
-    const to = 2 * logs.defaultBytes
+  test('loading older pages prepends them, and the joined window still reaches the end', async () => {
+    await store.set(logs.loadLogsAtom)
+    await store.set(logs.olderLogAtom)
 
+    const state = store.get(logs.logsAtom)
+
+    expect(state.pages).toHaveLength(2)
+    expect(state.from).toBe(4 * logs.defaultBytes)
+    expect(state.read).toBe(2 * logs.defaultBytes)
+    expect(state.entries.map(entry => entry.page)).toEqual([4, 5])
+    expect(logs.atEnd(state)).toBe(true)
+    expect(logs.atStart(state)).toBe(false)
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {
+      bytes: logs.defaultBytes,
+      before: 5 * logs.defaultBytes,
+      since: '',
+      until: '',
+    })
+  })
+
+  test('the page cap drops the newest pages as the reader walks back, and stops at the start', async () => {
+    await store.set(logs.loadLogsAtom)
+
+    // page 5 is the first page; four more walks back reach the oldest page and
+    // the cap has dropped the pages the reader left behind
+    for (let at = 0; at < 5; at++) {
+      await store.set(logs.olderLogAtom)
+    }
+
+    const state = store.get(logs.logsAtom)
+
+    expect(state.pages).toHaveLength(logs.maxPages)
+    expect(state.from).toBe(0)
+    expect(logs.atStart(state)).toBe(true)
+    expect(logs.atEnd(state)).toBe(false)
+    expect(state.entries.length).toBeLessThanOrEqual(logs.maxEntries)
+
+    // a page that made no progress is not kept
+    const pagesHeld = state.pages.length
+    await store.set(logs.olderLogAtom)
+
+    expect(store.get(logs.logsAtom).pages).toHaveLength(pagesHeld)
+  })
+
+  test('loading newer pages appends from where the held window ends, and the cap drops the oldest', async () => {
+    await store.set(logs.loadLogsAtom)
+
+    // walk back until the newest page has been dropped
+    for (let at = 0; at < 4; at++) {
+      await store.set(logs.olderLogAtom)
+    }
+
+    const back = store.get(logs.logsAtom)
+
+    expect(logs.atEnd(back)).toBe(false)
+
+    const last = back.pages[back.pages.length - 1]
+
+    await store.set(logs.newerLogAtom)
+
+    const forward = store.get(logs.logsAtom)
+
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {
+      bytes: logs.defaultBytes,
+      after: last.from + last.read,
+      since: '',
+      until: '',
+    })
+    expect(forward.pages).toHaveLength(logs.maxPages)
+    expect(logs.atEnd(forward)).toBe(true)
+    expect(forward.from).toBeGreaterThan(back.from)
+  })
+
+  test('the page cap also holds by entries, not only by pages', async () => {
+    const entries = Array.from({length: 1200}, (unused, at) => ({at}))
+
+    total = 4 * 100
+    api.logFiles.mockImplementation(() => ({
+      dir: '/app/storage/logs',
+      files: [{name: 'laravel.log', size: total, at: 1}],
+    }))
+    api.logRead.mockImplementation((name, options = {}) => {
+      const from = options.before == null
+        ? total - 100
+        : Math.max(Math.min(options.before, total) - 100, 0)
+
+      return {file: name, size: total, read: 100, from, range: {from: 0, to: total}, entries}
+    })
+
+    await store.set(logs.loadLogsAtom)
+    await store.set(logs.olderLogAtom)
+    await store.set(logs.olderLogAtom)
+
+    const state = store.get(logs.logsAtom)
+
+    expect(state.pages.length).toBeLessThan(logs.maxPages)
+    expect(state.entries.length).toBeLessThanOrEqual(logs.maxEntries)
+  })
+
+  test('a range is found in the file, and paging stops at its edges', async () => {
+    const from = 0
+    const to = 4 * logs.defaultBytes
+
+    total = 6 * logs.defaultBytes
     api.logRead.mockImplementation((name, options = {}) => {
       const bytes = options.bytes || logs.defaultBytes
-      const end = options.before == null ? to : Math.min(options.before, to)
-      const start = Math.max(end - bytes, from)
+      const at = options.after != null
+        ? Math.min(Math.max(options.after, from), to)
+        : Math.max(Math.min(options.before == null ? to : options.before, to) - bytes, from)
+      const end = Math.min(at + bytes, to)
 
-      return {file: name, size: size(logs), read: end - start, from: start, range: {from, to}, entries: []}
+      return {
+        file: name,
+        size: total,
+        read: end - at,
+        from: at,
+        range: {from, to},
+        entries: at < end ? [{page: at / logs.defaultBytes}] : [],
+      }
     })
 
     await store.set(logs.loadLogsAtom)
 
     const state = store.get(logs.logsAtom)
 
-    // it opened on the end of the range, not the end of the file
     expect(state.from).toBe(to - logs.defaultBytes)
     expect(logs.atEnd(state)).toBe(true)
-    expect(logs.atStart(state)).toBe(false)
-
-    // stepping back reaches the range's own start and stops there
-    await store.set(logs.olderLogAtom)
-
-    expect(store.get(logs.logsAtom).from).toBe(from)
-    expect(logs.atStart(store.get(logs.logsAtom))).toBe(true)
-    expect(logs.atEnd(store.get(logs.logsAtom))).toBe(false)
 
     await store.set(logs.olderLogAtom)
 
-    expect(store.get(logs.logsAtom).from).toBe(from)
-    // the step back asked for the window before the one in view, which starts
-    // where the range's second window does
-    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: logs.defaultBytes, since: '', until: ''})
+    expect(store.get(logs.logsAtom).from).toBe(to - 2 * logs.defaultBytes)
+
+    await store.set(logs.olderLogAtom)
+    await store.set(logs.olderLogAtom)
+    await store.set(logs.olderLogAtom)
+
+    const start = store.get(logs.logsAtom)
+
+    expect(start.from).toBe(from)
+    expect(logs.atStart(start)).toBe(true)
+    // the range is exactly the pages held, so its two edges are both here
+    expect(logs.atEnd(start)).toBe(true)
   })
 
-  test('setting a range asks the service for it, and clearing it asks for the whole file again', async () => {
+  test('a range is asked for with every page, and clearing it reads the whole file again', async () => {
     await store.set(logs.loadLogsAtom)
     await store.set(logs.setLogRangeAtom, {since: '2026-08-27 06:00:00', until: '2026-08-27 08:30:00'})
 
-    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {since: '2026-08-27 06:00:00', until: '2026-08-27 08:30:00'})
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {
+      bytes: logs.defaultBytes,
+      since: '2026-08-27 06:00:00',
+      until: '2026-08-27 08:30:00',
+    })
     expect(store.get(logs.logsRangedAtom)).toBe(true)
 
     await store.set(logs.clearLogRangeAtom)
 
-    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {since: '', until: ''})
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, since: '', until: ''})
     expect(store.get(logs.logsRangedAtom)).toBe(false)
   })
 
-  test('a step back reads the window before this one, and a step forward reads it again', async () => {
+  test('following reads after the held end and keeps the pages the reader has', async () => {
     await store.set(logs.loadLogsAtom)
-    await store.set(logs.olderLogAtom)
+    store.set(logs.logsFollowAtom, true)
 
-    const back = store.get(logs.logsAtom)
+    await store.set(logs.followLogAtom)
 
-    expect(back.from).toBe(logs.defaultBytes)
-    expect(back.read).toBe(logs.defaultBytes)
-    // every read carries the range, which is empty until one is set
-    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: 2 * logs.defaultBytes, since: '', until: ''})
-    expect(logs.atEnd(back)).toBe(false)
-    expect(logs.atStart(back)).toBe(false)
+    // nothing was appended, but following is still on the end
+    expect(store.get(logs.logsFollowAtom)).toBe(true)
+    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {
+      bytes: logs.defaultBytes,
+      after: total,
+      since: '',
+      until: '',
+    })
 
-    // once more lands on the start of the file, and it does not step past it
-    await store.set(logs.olderLogAtom)
+    // the file grew: the new page is joined below what was held
+    total = 7 * logs.defaultBytes
+    await store.set(logs.followLogAtom)
 
-    const start = store.get(logs.logsAtom)
-
-    expect(start.from).toBe(0)
-    expect(start.read).toBe(logs.defaultBytes)
-    expect(logs.atStart(start)).toBe(true)
-    expect(logs.atEnd(start)).toBe(false)
-
-    await store.set(logs.olderLogAtom)
-
-    expect(store.get(logs.logsAtom)).toEqual(start)
-
-    // and stepping forward again lands on the middle window, then back at the end
-    await store.set(logs.newerLogAtom)
-
-    expect(store.get(logs.logsAtom).from).toBe(logs.defaultBytes)
-    // every read carries the range, which is empty until one is set
-    expect(api.logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: logs.defaultBytes, before: 2 * logs.defaultBytes, since: '', until: ''})
-
-    await store.set(logs.newerLogAtom)
-
-    expect(store.get(logs.logsAtom).from).toBe(2 * logs.defaultBytes)
+    expect(store.get(logs.logsAtom).pages).toHaveLength(2)
+    expect(store.get(logs.logsAtom).from).toBe(5 * logs.defaultBytes)
     expect(logs.atEnd(store.get(logs.logsAtom))).toBe(true)
   })
 
-  test('a window that has left the end of the file is not one being followed', async () => {
+  test('a page that has left the end of the file turns following off', async () => {
     await store.set(logs.loadLogsAtom)
     store.set(logs.logsFollowAtom, true)
 
-    await store.set(logs.olderLogAtom)
+    // enough walks back to drop the newest page
+    for (let at = 0; at < 4; at++) {
+      await store.set(logs.olderLogAtom)
+    }
 
     expect(store.get(logs.logsFollowAtom)).toBe(false)
-  })
-
-  test('a window at the end of the file goes on being followed', async () => {
-    await store.set(logs.loadLogsAtom)
-    store.set(logs.logsFollowAtom, true)
-
-    await store.set(logs.readLogAtom)
-
-    expect(store.get(logs.logsFollowAtom)).toBe(true)
-  })
-
-  test('a window that has left the start of the file can be stepped back to it', async () => {
-    store.set(logs.logsAtom, {file: 'laravel.log', entries: [], size: 3 * logs.defaultBytes, read: logs.defaultBytes, from: logs.defaultBytes})
-
-    await store.set(logs.olderLogAtom)
-
-    const start = store.get(logs.logsAtom)
-
-    expect(start.from).toBe(0)
-    expect(start.read).toBe(logs.defaultBytes)
   })
 
   test('a level is shown unless the filter left it out', () => {
@@ -177,9 +272,10 @@ describe('logs store', () => {
     expect(logs.passesLevel(['debug'], 'debug')).toBe(false)
   })
 
-  test('there is nothing to step through before a file is open', async () => {
+  test('there is nothing to read before a file is open', async () => {
     await store.set(logs.olderLogAtom)
     await store.set(logs.newerLogAtom)
+    await store.set(logs.followLogAtom)
 
     expect(api.logRead).not.toHaveBeenCalled()
     expect(store.get(logs.logsAtom)).toEqual(logs.emptyLogs())

@@ -507,7 +507,7 @@ const boundsOf = (size, at, {since, until} = {}) => {
  * @param {String} until the moment it ends at, or ''
  * @return {String}
  */
-const windowPhp = (file, wanted, ends, since, until) => [
+const windowPhp = (file, wanted, ends, since, until, after = null) => [
   '$f=' + phpString(file) + ';',
   '$n=@filesize($f);',
   'if($n===false){exit(1);}',
@@ -533,11 +533,18 @@ const windowPhp = (file, wanted, ends, since, until) => [
   'if($stop>=0){$to=$stop;}',
   '}',
   'if($to<$from){$to=$from;}',
-  '$end=min(' + ends + ',$to);',
-  '$start=max($end-' + wanted + ',$from);',
+  // a page can be asked for from where the previous one ended, which is how the
+  // viewer walks towards the newest entries after it has walked back
+  '$after=' + (after == null ? 'null' : String(Math.max(Number(after) || 0, 0))) + ';',
+  '$start=$after===null?max(min(' + ends + ',$to)-' + wanted + ',$from):min(max($after,$from),$to);',
+  '$end=$after===null?min(' + ends + ',$to):min($start+' + wanted + ',$to);',
+  // a page that starts after the first byte is whole only when the byte before
+  // it is a newline; otherwise its first line is the tail of one already read
+  '$whole=($start===$from);',
+  'if(!$whole&&$start>0){$h=fopen($f,\'r\');fseek($h,$start-1);$whole=(fread($h,1)==="\n");fclose($h);}',
   '$h=fopen($f,\'r\');',
   'fseek($h,$start);',
-  "echo json_encode(['size'=>$n,'from'=>$from,'to'=>$to,'start'=>$start," +
+  "echo json_encode(['size'=>$n,'from'=>$from,'to'=>$to,'start'=>$start,'whole'=>$whole," +
     "'text'=>stream_get_contents($h,$end-$start)],JSON_INVALID_UTF8_SUBSTITUTE);",
 ].join('')
 
@@ -549,7 +556,7 @@ const windowPhp = (file, wanted, ends, since, until) => [
  * @param {Object} [options] `bytes`, `before`, and the `since`/`until` of a range
  * @return {Promise<Object>} `size`, `from`, `to`, `start` and `text`
  */
-const sshWindow = async (connection, name, {bytes, before, since, until} = {}) => {
+const sshWindow = async (connection, name, {bytes, before, since, until, after} = {}) => {
   const file = path.join(readDirOf(connection), name)
   const wanted = wantedOf(bytes)
   // where the end of the file is is what the other machine knows and this one does
@@ -559,7 +566,7 @@ const sshWindow = async (connection, name, {bytes, before, since, until} = {}) =
   let described = null
 
   try {
-    described = JSON.parse(await ask(connection, windowPhp(file, wanted, ends, since, until)))
+    described = JSON.parse(await ask(connection, windowPhp(file, wanted, ends, since, until, after)))
   } catch (e) {
     // an answer that is not a size and three offsets is no answer
     described = null
@@ -575,7 +582,7 @@ const sshWindow = async (connection, name, {bytes, before, since, until} = {}) =
   const start = Math.min(Math.max(Number(described.start) || 0, from), to)
   const read = Buffer.byteLength(described.text)
 
-  return windowOf(name, size, start, start + read, described.text, {from, to}, start === from)
+  return windowOf(name, size, start, start + read, described.text, {from, to}, Boolean(described.whole))
 }
 
 /**
@@ -593,17 +600,18 @@ const sshWindow = async (connection, name, {bytes, before, since, until} = {}) =
  *
  * @param {Record<String, any>} connection
  * @param {String} name a file in the connection's log directory, by name
- * @param {Object} [options] `bytes`, `before`, and the `since`/`until` of a range
+ * @param {Object} [options] `bytes`, `before` for a page ending at a byte,
+ *   `after` for a page starting at one, and the `since`/`until` of a range
  * @return {Object|Promise<Object>} `text`, `entries`, and what was read of what there is
  */
-const read = (connection, name, {bytes, before, since, until} = {}) => {
+const read = (connection, name, {bytes, before, since, until, after} = {}) => {
   // the name comes from a window, and a window has no business naming a path
   if (name !== path.basename(name) || !name.endsWith('.log')) {
     throw new Error(`${name} is not a log file of this connection.`)
   }
 
   if (connection && connection.is_over_ssh) {
-    return sshWindow(connection, name, {bytes, before, since, until})
+    return sshWindow(connection, name, {bytes, before, since, until, after})
   }
 
   const file = path.join(dirOf(connection), name)
@@ -617,27 +625,40 @@ const read = (connection, name, {bytes, before, since, until} = {}) => {
     throw new Error(`${name} is not there any more.`)
   }
 
-  const range = boundsOf(size, (stamp, after) => seekLocal(file, stamp, after), {since, until})
+  const range = boundsOf(size, (stamp, beyond) => seekLocal(file, stamp, beyond), {since, until})
   const from = range ? range.from : 0
   const to = range ? range.to : size
-  const end = Math.min(endOf(before, size), to)
-  const start = Math.max(end - wanted, from)
+  // a page after a byte is read forward from it; a page before a byte is read
+  // back from it. The viewer uses the first after it has walked back, and the
+  // second to walk back.
+  const at = after == null ? null : Math.min(Math.max(Number(after) || 0, from), to)
+  const end = at === null ? Math.min(endOf(before, size), to) : Math.min(at + wanted, to)
+  const start = at === null ? Math.max(end - wanted, from) : at
   const descriptor = fs.openSync(file, 'r')
 
   let text = ''
+  let whole = start === from
 
   try {
     const buffer = Buffer.alloc(end - start)
 
     fs.readSync(descriptor, buffer, 0, buffer.length, start)
     text = buffer.toString('utf8')
+
+    // a page that starts after the range's first byte is whole only when the
+    // byte before it is a newline; otherwise its first line is the tail of one
+    // the page before it already holds
+    if (!whole && start > 0) {
+      const before = Buffer.alloc(1)
+
+      fs.readSync(descriptor, before, 0, 1, start - 1)
+      whole = before[0] === 10
+    }
   } finally {
     fs.closeSync(descriptor)
   }
 
-  // a window that starts where the range does starts on a line the seek found,
-  // so the first line of it is whole and must not be dropped
-  return windowOf(name, size, start, end, text, {from, to}, start === from)
+  return windowOf(name, size, start, end, text, {from, to}, whole)
 }
 
 module.exports = {
