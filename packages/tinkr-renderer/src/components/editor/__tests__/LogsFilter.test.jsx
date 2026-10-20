@@ -163,7 +163,7 @@ describe('the filter over a log', () => {
 
     // the read is the service's, with the range on it: what comes back is the
     // end of the range, found in the file
-    expect(logRead).toHaveBeenCalledWith('laravel.log', {since: '2026-08-27 06:00:00', until: '2026-08-27 08:30:00'})
+    expect(logRead).toHaveBeenCalledWith('laravel.log', {bytes: 32 * 1024, since: '2026-08-27 06:00:00', until: '2026-08-27 08:30:00'})
     expect(onClose).toHaveBeenCalled()
     expect(store.get(logsRangedAtom)).toBe(true)
   })
@@ -196,7 +196,7 @@ describe('the filter over a log', () => {
       button(host, 'logs_filter_clear').click()
     })
 
-    expect(logRead).toHaveBeenLastCalledWith('laravel.log', {since: '', until: ''})
+    expect(logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: 32 * 1024, since: '', until: ''})
     expect(store.get(logsRangedAtom)).toBe(false)
   })
 

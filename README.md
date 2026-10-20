@@ -75,7 +75,7 @@ You need `php` on the machine (or server) where your project lives. That's it.
 | **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
 | **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. |
 | **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. It also gives up on its own after the **run timeout** you set in Settings, so a snippet that never returns cannot hold the session. While a run is going the editor is read-only, the button counts the wait, and the answer reports how long the whole of it took. |
-| **Log viewer** | Your app's logs (`storage/logs` or anywhere) in a window of their own, so the editor keeps its width. Filter by any of monolog's eight levels, by a term, and by a span of time. Follow a file live, or step back through it a window at a time. |
+| **Log viewer** | Your app's logs (`storage/logs` or anywhere) in a window of their own, so the editor keeps its width. Filter by any of monolog's eight levels, by a term, and by a span of time. Follow a file live, or scroll back through it: pages load as you reach the edges, and only a bounded window is held. |
 
 ### Ask
 
