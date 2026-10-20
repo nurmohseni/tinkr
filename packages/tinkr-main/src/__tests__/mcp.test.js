@@ -24,7 +24,9 @@ describe('where a client is pointed at the server', () => {
 
   test('each client keeps its servers where its platform keeps them', () => {
     const linux = clients({platform: 'linux', home: '/home/dev', configHome: '/home/dev/.config'})
-    const mac = clients({platform: 'darwin', home: '/Users/dev'})
+    // a fake home carries its config home too: the real one is read from the
+    // environment when a caller does not name it
+    const mac = clients({platform: 'darwin', home: '/Users/dev', configHome: '/Users/dev/.config'})
     const windows = clients({
       platform: 'win32',
       home: 'C:\\Users\\dev',
