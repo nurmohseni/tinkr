@@ -46,8 +46,8 @@ describe('a password a connection was given', () => {
     expect(kept()).toEqual({c1: 'hunter2'})
   })
 
-  // the form autosaves, and a save that never touched the field must not read as
-  // the field having been cleared
+  // a save carries every field of the form, and one that never touched this one
+  // must not read as the field having been cleared
   test('survives a save that does not touch it, and is replaced by one that does', () => {
     const first = secrets.keptConnection(dir, form({password: 'hunter2'}), {})
 

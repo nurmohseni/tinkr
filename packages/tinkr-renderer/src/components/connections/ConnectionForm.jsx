@@ -1,8 +1,7 @@
 import PropTypes from 'prop-types'
-import {useCallback, useEffect} from 'react'
+import {useEffect} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 import {useFormContext} from 'react-hook-form'
-import debounce from 'lodash/debounce'
 
 import ConnectButton from './ConnectButton'
 import ConnectionType from './ConnectionType'
@@ -17,43 +16,28 @@ import {containerCommand} from '../../utils/containerCommand'
  * its name, typed where a title would be, and under it the route a session
  * takes to the project, read live from the fields. The body pairs the rail that
  * says where the code runs with the sections that kind needs, in the order the
- * session reaches them. The foot says how the form keeps what is typed, and
- * holds Connect.
+ * session reaches them. The foot says what an edit waits for, and holds Save
+ * and Connect.
  *
- * Nothing has to be saved by hand — every change to a stored connection is
- * written back after a pause. The form itself never navigates: Enter is
- * swallowed, and Connect is what hands the values to the main process. The
- * close in the head, with Esc beside it, is the way out of the dialog without
- * connecting.
+ * An edit to a stored connection is written when Save is pressed, and not
+ * before: closing the dialog — the close in the head, or Esc — leaves the
+ * connection as it was. Save is offered once something changed. Connect is
+ * also a save, because the session it starts reads the stored connection. The
+ * form itself never navigates: Enter is swallowed.
  */
 const ConnectionForm = ({onSubmit, onClose, draft}) => {
-  const {watch, register} = useFormContext()
+  const {register, handleSubmit, formState: {isDirty}} = useFormContext()
   const intl = useIntl()
 
-  const data = watch()
+  // a container's command is built from what it runs in, so what is saved is
+  // the connection with the command it would start with — which is also what a
+  // run reads
+  const save = handleSubmit(data => {
+    const built = data.container_engine ? containerCommand(data) : data.command
 
-  // debounce the update
-  // https://www.synthace.com/autosave-with-react-hooks/
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const debouncedSave = useCallback(
-    debounce(dataNew => {
-      onSubmit(dataNew)
-    }, 500),
-    [],
-  )
-
-  // auto save connections. A container's command is built from what it runs in,
-  // so what is saved is the connection with the command it would start with —
-  // which is also what a run reads
-  useEffect(() => {
-    if (data.id) {
-      const built = data.container_engine
-        ? containerCommand(data)
-        : data.command
-
-      debouncedSave(built === data.command ? data : Object.assign({}, data, {command: built}))
-    }
-  }, [data])
+    onSubmit(built === data.command ? data : Object.assign({}, data, {command: built}))
+    onClose()
+  })
 
   useEffect(() => {
     const onKeyDown = event => {
@@ -128,11 +112,27 @@ const ConnectionForm = ({onSubmit, onClose, draft}) => {
       </div>
 
       <footer className='cdialog__foot'>
-        <span className='cdialog__note'>
-          <FormattedMessage id={draft ? 'connections.saved_on_connect' : 'connections.saved_as_you_type'}/>
+        <span className='cdialog__note' role='status'>
+          <FormattedMessage id={draft
+            ? 'connections.saved_on_connect'
+            : isDirty ? 'connections.unsaved_changes' : 'connections.saved_on_save'}
+          />
         </span>
 
-        <ConnectButton/>
+        <div className='cdialog__actions'>
+          {!draft && (
+            <button
+              className='btn btn--secondary'
+              type='button'
+              disabled={!isDirty}
+              onClick={save}
+            >
+              <FormattedMessage id='connections.save'/>
+            </button>
+          )}
+
+          <ConnectButton/>
+        </div>
       </footer>
     </div>
   )

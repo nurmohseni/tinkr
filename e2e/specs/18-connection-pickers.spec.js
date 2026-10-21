@@ -60,11 +60,10 @@ test.describe('the platform file pickers', () => {
       await dialog.locator('#connection-ssh-key').click()
 
       await expect(dialog.locator('#connection-ssh-key')).toContainText('composer.json')
-      await page.waitForTimeout(900)
+      await dialog.getByRole('button', {name: 'Save', exact: true}).click()
 
-      const stored = JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8'))
-
-      expect(stored.remote.ssh_key).toBe(key)
+      await expect.poll(() => JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8')).remote.ssh_key)
+        .toBe(key)
     } finally {
       await close()
     }

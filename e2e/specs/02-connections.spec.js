@@ -118,27 +118,45 @@ test.describe('the connection dialog', () => {
     }
   })
 
-  test('autosaves an edited connection and shows its tag in the sidebar', async () => {
+  test('keeps an edit only when Save is pressed, and shows its tag in the sidebar', async () => {
     const {page, profile, close} = await launchTinkr()
+    const read = () => JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8')).fixture
 
     try {
       // a row only connects; the pencil on it is what opens its settings
       await editConnection(page, 'Fixture')
 
-      const dialog = page.getByRole('dialog')
+      let dialog = page.getByRole('dialog')
+      const save = dialog.getByRole('button', {name: 'Save', exact: true})
 
-      await dialog.locator('#connection-name').fill('Renamed')
-      // the form writes back after a pause
+      // nothing to save until something changed
+      await expect(save).toBeDisabled()
+
+      await dialog.locator('#connection-name').fill('Discarded')
+      await expect(save).toBeEnabled()
+      await expect(dialog).toContainText('Unsaved changes')
+
+      // an edit is not written while it is typed, and closing throws it away
       await page.waitForTimeout(900)
-      await dialog.getByRole('radiogroup', {name: 'Tag'}).getByText('production', {exact: true}).click()
-      await page.waitForTimeout(900)
-
-      const stored = JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8'))
-
-      expect(stored.fixture.name).toBe('Renamed')
-      expect(stored.fixture.tag).toBe('production')
+      expect(read().name).toBe('Fixture')
 
       await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+      expect(read().name).toBe('Fixture')
+
+      await editConnection(page, 'Fixture')
+      dialog = page.getByRole('dialog')
+
+      await expect(dialog.locator('#connection-name')).toHaveValue('Fixture')
+      await dialog.locator('#connection-name').fill('Renamed')
+      await dialog.getByRole('radiogroup', {name: 'Tag'}).getByText('production', {exact: true}).click()
+      await dialog.getByRole('button', {name: 'Save', exact: true}).click()
+
+      // Save writes the connection and closes the dialog
+      await expect(dialog).toBeHidden()
+      await expect.poll(() => read().name).toBe('Renamed')
+      expect(read().tag).toBe('production')
+
       await expect(page.getByRole('navigation', {name: 'Connections'})).toContainText('Renamed')
       await expect(page.getByRole('navigation', {name: 'Connections'})).toContainText('production')
     } finally {

@@ -63,7 +63,7 @@ stays untouched.
 | --- | --- |
 | `00-smoke` | the harness itself: the real app opens on the fixture connection and a run comes back through a real pty |
 | `01-app-shell` | real window, titlebar, sidebar, status bar, output views, theme, maximize/minimize/restore, Ctrl+K, the AI and new-connection shortcuts, the quick connection and its directory picker |
-| `02-connections` | four connection kinds, field visibility, drafts vs. Connect, autosave, tags, clone event, delete confirmation |
+| `02-connections` | four connection kinds, field visibility, drafts vs. Connect, Save vs. discard on close, tags, clone event, delete confirmation |
 | `03-password` | SSH password kept in a 0600 file, never rendered back, forget, cleared when the connection becomes local, port persisted |
 | `04-editor-run` | a run in a real session, duration, multi-statement blocks, a thrown exception, printed output, no value, Ctrl+R, stop, timeout |
 | `05-tabs` | per-tab code and answers, the edited-since-run dot, close confirmation, the standing answer, snippet tabs |

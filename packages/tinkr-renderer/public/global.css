@@ -1092,6 +1092,10 @@ button.tree-nav__row {
     font-size: var(--fs-sm);
     color: var(--text-faint);
 }
+.cdialog__actions {
+    display: flex;
+    gap: var(--s2);
+}
 
 /* a window too narrow for the rail beside the sections lays it across the top,
    its four kinds in one row and their hints left to the marks */
