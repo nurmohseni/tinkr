@@ -44,6 +44,7 @@ export const onHistoryConnection = api.onHistoryConnection
 export const onSnippetsConnection = api.onSnippetsConnection
 export const onReconnectConnection = api.onReconnectConnection
 export const onCloneConnection = api.onCloneConnection
+export const onEditConnection = api.onEditConnection
 
 export const createSnippet = api.createSnippet
 export const updateSnippet = api.updateSnippet

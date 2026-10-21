@@ -31,18 +31,12 @@ const render = values => {
     host,
   )
 
-  const checked = () => host.querySelector('input[type=radio]:checked')
-  const labels = [...host.querySelectorAll('.segmented__item')].map(one => one.textContent.trim())
+  const radios = () => [...host.querySelectorAll('input[name=connection-type]')]
 
   return {
-    labels,
-    checked: () => checked().closest('label').textContent.trim(),
-    choose: name => {
-      const label = [...host.querySelectorAll('.segmented__item')]
-        .find(one => one.textContent.trim() === name)
-
-      label.querySelector('input').click()
-    },
+    kinds: radios().map(one => one.value),
+    checked: () => radios().find(one => one.checked).value,
+    choose: kind => radios().find(one => one.value === kind).click(),
     values: () => form.getValues(),
     done: () => { ReactDOM.unmountComponentAtNode(host); host.remove() },
   }
@@ -50,11 +44,11 @@ const render = values => {
 
 describe('the type of a connection', () => {
   // the two answers are not exclusive any more: a project deployed by a compose
-  // file on a server is a container on that server, and the tab has to say so
+  // file on a server is a container on that server, and the rail has to say so
   test('offers the four, including a container that lives on a server', () => {
     const view = render({is_over_ssh: false})
 
-    expect(view.labels).toEqual(['local', 'container', 'ssh', 'ssh + container'])
+    expect(view.kinds).toEqual(['local', 'container', 'ssh', 'ssh-container'])
     expect(view.checked()).toBe('local')
 
     view.done()
@@ -62,7 +56,7 @@ describe('the type of a connection', () => {
 
   test('opens on the state a saved connection already has', () => {
     const both = render({is_over_ssh: true, container_engine: 'podman'})
-    expect(both.checked()).toBe('ssh + container')
+    expect(both.checked()).toBe('ssh-container')
     both.done()
 
     const ssh = render({is_over_ssh: true})
@@ -74,8 +68,8 @@ describe('the type of a connection', () => {
     container.done()
   })
 
-  // the tab sets both fields, and clears what it no longer owns: leaving the
-  // container tabs behind drops the engine, and coming back starts at the
+  // a kind sets both fields, and clears what it no longer owns: leaving the
+  // container kinds behind drops the engine, and coming back starts at the
   // default rather than at something nobody chose
   test('picks both answers, and clears the one it no longer holds', () => {
     const view = render({is_over_ssh: true, container_engine: 'podman'})
@@ -84,7 +78,7 @@ describe('the type of a connection', () => {
     expect(view.values().is_over_ssh).toBe(false)
     expect(view.values().container_engine).toBe('')
 
-    view.choose('ssh + container')
+    view.choose('ssh-container')
     expect(view.values().is_over_ssh).toBe(true)
     expect(view.values().container_engine).toBe('docker')
 

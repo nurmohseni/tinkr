@@ -1,66 +1,59 @@
 import {useFormContext} from 'react-hook-form'
 import {useIntl} from 'react-intl'
+import {useAtomValue} from 'jotai'
 
 import Field from '../Field'
+import Section from './Section'
 import TagSelector from './TagSelector'
 import PathField from './PathField'
+import {configAtom} from '../../stores/config'
 
 /**
- * The connection's own fields, as the dialog's form rows: name, project path,
- * command and tag. The rows are direct children of ConnectionForm's grid.
+ * The project, the route's last stop: where it is, the command that starts
+ * tinker in it, and the tag that says what kind of data it holds. The name is
+ * not here: it is the dialog's title.
  */
 const BasicForm = () => {
   const intl = useIntl()
   const {register, watch} = useFormContext()
+  const config = useAtomValue(configAtom)
 
   return (
-    <>
-      <Field
-        label={intl.formatMessage({id: 'connections.name'})}
-        htmlFor='connection-name'
-      >
-        <input
-          className='input'
-          id='connection-name'
-          name='name'
-          type='text'
-          placeholder={intl.formatMessage({id: 'connections.name_default'})}
-          spellCheck={false}
-          autoComplete='off'
-          {...register('name')}
-        />
-      </Field>
-
+    <Section
+      id='connection-project'
+      title={intl.formatMessage({id: 'connections.section_project'})}
+    >
       <PathField/>
 
       {/* a container's command is built from what it runs in, so the field only
           shows for a connection that is not one: a command typed here for a
-          container would be replaced the moment a container field changed */}
+          container would be replaced the moment a container field changed.
+          Left empty, it is the default command from the settings, which is
+          what the placeholder shows */}
       <Field
         label={intl.formatMessage({id: 'connections.command'})}
         htmlFor='connection-command'
         hidden={Boolean(watch('container_engine'))}
       >
         <input
-          className='input'
+          className='input input--mono'
           id='connection-command'
           name='command'
           type='text'
-          placeholder='php artisan tinker'
+          placeholder={config.command_default}
           spellCheck={false}
           autoComplete='off'
-          style={{fontFamily: 'var(--font-mono)'}}
           {...register('command')}
         />
       </Field>
 
       <Field
         label={intl.formatMessage({id: 'connections.tag'})}
-        htmlFor='connection-tag'
+        labelId='connection-tag-label'
       >
         <TagSelector/>
       </Field>
-    </>
+    </Section>
   )
 }
 

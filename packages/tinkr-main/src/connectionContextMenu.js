@@ -6,6 +6,7 @@ const {
   getConnection,
   connectConnection,
   cloneConnection,
+  editConnection,
 } = require('./services/connections')
 
 const connectionContextMenu = id => {
@@ -14,6 +15,11 @@ const connectionContextMenu = id => {
   menu.append(new MenuItem({
     label: getIntl().formatMessage({id: 'connections.connect'}),
     click: () => connectConnection(getConnection(id)),
+  }))
+
+  menu.append(new MenuItem({
+    label: getIntl().formatMessage({id: 'connections.edit'}),
+    click: () => editConnection(id),
   }))
 
   menu.append(new MenuItem({

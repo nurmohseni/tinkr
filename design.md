@@ -18,13 +18,14 @@ Geometry (12x12 viewBox, used at 12px; bars are parallelograms whose ends are cu
 - threw: the returned bars + `M8.6 1.4L3.4 10.6` stroked 1.3, round caps
 - brand mark (16x16): `M4.6 4.5H14L12.6 7H3.2Z` in `--text` over `M3.4 9H12.8L11.4 11.5H2Z` in `--accent` (the lower bar is where the value lands)
 
-Where it appears: titlebar brand, History rows (first column, the run ledger), result summary head (with the outcome word in Sentient), Output tab marker, statusbar failure, MCP "configured", empty states (`−` at 20px), and the split grip (`=` for stacked panes, `‖` for side-by-side). The same 29° skew (`--bar-skew`) cuts the active output-tab bar. Nothing else on screen is ornament.
+Where it appears: titlebar brand, History rows (first column, the run ledger), result summary head (with the outcome word in Sentient), Output tab marker, statusbar failure, MCP "configured", empty states (`−` at 20px), the split grip (`=` for stacked panes, `‖` for side-by-side), the connection dialog's route (a 9x2.5px bar joins each stop to the next) and its kind marks (28x12 viewBox drawn at 42x18: a bar is a machine that runs PHP, three dots are a network hop, brackets around a bar are a container). The same 29° skew (`--bar-skew`) cuts the active output-tab bar. Nothing else on screen is ornament.
 
 Rule: an outcome is never a pill, never a coloured dot, never colour alone. The glyph always carries its word, visibly or in `.sr-only`.
 
 ## Macrostructure family
 - Editor window: floor (`.app` on `--bg` with grain; `.titlebar`, `.sidebar`, `.statusbar` are transparent on it) around a desk (`.main`, `--panel`, top corners `--r-panel`, inset 6px from the right edge, self-coloured edge). The desk holds the editor pane (tabbar 34px + monaco well) and the output pane (output tabs 34px + body well), separated by a 9px gutter on `--panel` carrying the `=` grip. The active document tab merges into the editor well (same `--panel-inset`): the merge is the indicator. The output pane opens on Output, the value tree.
 - Preferences window (880x660): the same floor; `.sidebar.rail` (184px) on the floor; `.settings` is the desk (all four corners rounded, 6px from right and bottom). Each `.sgroup` opens with a Sentient title, no kicker; settings are rows inside one `.scard` per group, controls on one shared 240px column.
+- Connection dialog (760px, hung from 9vh so the rail never moves when the kind changes, height following the kind up to the window): the head is the name, editable in place in Sentient 18, over the route in Commit Mono 12 (server, container, directory, command; a stop not filled in reads as its field's name in `--text-faint`, a default command in `--text-muted`). The body is a 212px rail on `--panel` (an inset island with `--edge`, "Runs on" plus the four kinds as one radio group; selected is the selected-row fill) beside the sections the kind needs, in the order a session reaches them: Server, Container, Project, each opening on a Sentient 15 title, rows on a 112px label column. Fields that hold several parts are one `.well` (the address `user@host:port`, a path with its picker, the key with its clear). Engine and tag are full-width segmented rows; a checked production tag is set in `--warning` with the line it changes under it. The foot says how the form keeps what is typed (saved as you type, or nothing until Connect) beside Connect.
 
 ## Theme
 Neutrals: hue 150, chroma 0.004 to 0.014. Accent: hue 172. Error: hue 30. Warning: hue 70 to 80. Full contract in Exports › tokens.css.
@@ -46,6 +47,8 @@ Light
 
 Accent budget: `--accent` is the value channel only (returned glyph, caret, links, highlight in completion lists). `--primary` fills exactly: Run, checked switch/checkbox/radio, the primary modal action. `--focus` is the ring. Nothing else is green.
 
+Stages: a connection's tag is a 7px light, `--stage-local` (the faint ink), `--stage-testing` (straw, hue 105), `--stage-development` (sky, hue 235), `--stage-staging` (ochre, hue 70), `--stage-production` (vermilion, hue 30); light-theme values are darker so they hold on paper. The light sits on every sidebar connection row (a ring on the row of the window's own connection, a filled dot on the rest), before the name in the titlebar, and on each of the dialog's tag choices. It is never alone: the stage's word is the light's title and is read out after the row's name, and production also writes its word in vermilion where the kind would be. Pressing a connection row only connects (the window's own row does nothing); its settings open from the pencil that replaces the kind on hover and focus, or from Edit in the right-click menu.
+
 ## Typography
 | Face | Source | Use | Fallback stack |
 |---|---|---|---|
@@ -62,6 +65,8 @@ Roles (each role has its own treatment; there is no shared label costume, no upp
 | Wordmark "Tinkr" | Sentient | 15 / 600, -0.01em | `--text` |
 | Outcome word in result summary | Sentient | 14 / 500 | `--text` |
 | Modal title | Sentient | 15 / 500 | `--text` |
+| Connection name (the connection dialog's editable title) | Sentient | 18 / 500 | `--text` |
+| Connection dialog section title | Sentient | 15 / 500 | `--text` |
 | Settings group title | Sentient | 18 / 500 | `--text` |
 | Empty-state line | Sentient | 15 / 400 | `--text-muted` |
 | Body, rows, menus | Switzer | 13 / 400 (active 500) | `--text` |

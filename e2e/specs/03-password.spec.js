@@ -3,7 +3,7 @@ const path = require('path')
 const {test, expect} = require('@playwright/test')
 
 const {launchTinkr} = require('../support/tinkr')
-const {chooseKind} = require('../support/actions')
+const {chooseKind, editConnection} = require('../support/actions')
 
 const appFile = (profile, name) => path.join(profile, 'Electron', 'app', name)
 
@@ -20,10 +20,7 @@ const remote = {
   tag: 'staging',
 }
 
-const openSettings = async page => {
-  await page.getByRole('navigation', {name: 'Connections'}).getByRole('button', {name: /^Remote/}).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-}
+const openSettings = page => editConnection(page, 'Remote')
 
 test.describe('the ssh password', () => {
   test('is kept out of the connection store, never shown back, and can be forgotten', async () => {

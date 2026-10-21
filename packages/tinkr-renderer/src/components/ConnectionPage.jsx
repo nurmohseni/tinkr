@@ -52,9 +52,10 @@ const ConnectionPage = ({params}) => {
   }
 
   return useMemo(() => (
-    <div className='modal-overlay'>
+    <div className='modal-overlay modal-overlay--top'>
       <ConnectionFormProvider defaultValues={connection}>
         <ConnectionForm
+          draft={isDraft}
           onSubmit={handleSubmit}
           onClose={handleClose}
         />

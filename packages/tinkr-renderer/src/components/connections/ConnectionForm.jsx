@@ -6,22 +6,27 @@ import debounce from 'lodash/debounce'
 
 import ConnectButton from './ConnectButton'
 import ConnectionType from './ConnectionType'
+import ConnectionRoute from './ConnectionRoute'
 import SSHForm from './SSHForm'
 import BasicForm from './BasicForm'
 import ContainerForm from './ContainerForm'
 import {containerCommand} from '../../utils/containerCommand'
 
 /**
- * The connection as the design's dialog: the type row, the fields on one shared
- * label column, and the window's one gradient control in the footer.
+ * The connection as a two-part dialog. The head is the connection's identity:
+ * its name, typed where a title would be, and under it the route a session
+ * takes to the project, read live from the fields. The body pairs the rail that
+ * says where the code runs with the sections that kind needs, in the order the
+ * session reaches them. The foot says how the form keeps what is typed, and
+ * holds Connect.
  *
- * Nothing has to be saved by hand — every change is written back after a pause,
- * so the footer holds only Connect. The form itself never navigates: Enter is
+ * Nothing has to be saved by hand — every change to a stored connection is
+ * written back after a pause. The form itself never navigates: Enter is
  * swallowed, and Connect is what hands the values to the main process. The
- * header's close, which the design draws with Esc beside it, is the way out of
- * the dialog without connecting.
+ * close in the head, with Esc beside it, is the way out of the dialog without
+ * connecting.
  */
-const ConnectionForm = ({onSubmit, onClose}) => {
+const ConnectionForm = ({onSubmit, onClose, draft}) => {
   const {watch, register} = useFormContext()
   const intl = useIntl()
 
@@ -64,43 +69,48 @@ const ConnectionForm = ({onSubmit, onClose}) => {
 
   return (
     <div
-      className='modal'
+      className='modal cdialog'
       role='dialog'
       aria-modal='true'
-      aria-labelledby='connection-title'
-      style={{display: 'flex', flexDirection: 'column', maxHeight: '100%'}}
+      aria-labelledby='connection-name'
     >
-      <header className='modal__header row'>
-        <h2
-          id='connection-title'
-          className='grow'
-          style={{fontSize: 'var(--fs-lg)'}}
-        >
-          {data.name || <FormattedMessage id='connections.create'/>}
-        </h2>
+      <header className='cdialog__head'>
+        <div className='cdialog__title'>
+          <input
+            className='cdialog__name'
+            id='connection-name'
+            name='name'
+            type='text'
+            aria-label={intl.formatMessage({id: 'connections.name'})}
+            placeholder={intl.formatMessage({id: 'connections.name_default'})}
+            spellCheck={false}
+            autoComplete='off'
+            {...register('name')}
+          />
 
-        <button
-          className='btn btn--ghost btn--icon btn--sm'
-          type='button'
-          title={intl.formatMessage({id: 'close'})}
-          aria-label={intl.formatMessage({id: 'close'})}
-          onClick={onClose}
-        >
-          <svg width='10' height='10' viewBox='0 0 10 10' aria-hidden='true'>
-            <path d='M2 2l6 6M8 2l-6 6' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round'/>
-          </svg>
-        </button>
+          <kbd className='keycap' aria-hidden='true'>Esc</kbd>
+
+          <button
+            className='btn btn--ghost btn--icon btn--sm'
+            type='button'
+            title={intl.formatMessage({id: 'close'})}
+            aria-label={intl.formatMessage({id: 'close'})}
+            onClick={onClose}
+          >
+            <svg width='10' height='10' viewBox='0 0 10 10' aria-hidden='true'>
+              <path d='M2 2l6 6M8 2l-6 6' stroke='currentColor' strokeWidth='1.3' strokeLinecap='round'/>
+            </svg>
+          </button>
+        </div>
+
+        <ConnectionRoute/>
       </header>
 
-      <div
-        className='modal__body'
-        style={{overflowY: 'auto'}}
-      >
+      <div className='cdialog__body'>
         <ConnectionType/>
 
         <form
-          className='form-grid'
-          style={{marginTop: 'var(--s4)'}}
+          className='cdialog__fields'
           onSubmit={event => event.preventDefault()}
         >
           <input
@@ -109,13 +119,19 @@ const ConnectionForm = ({onSubmit, onClose}) => {
             {...register('id')}
           />
 
-          <BasicForm/>
-          <ContainerForm/>
+          {/* in the order a session reaches them: the server, then the
+              container on it, then the project the container holds */}
           <SSHForm/>
+          <ContainerForm/>
+          <BasicForm/>
         </form>
       </div>
 
-      <footer className='modal__footer'>
+      <footer className='cdialog__foot'>
+        <span className='cdialog__note'>
+          <FormattedMessage id={draft ? 'connections.saved_on_connect' : 'connections.saved_as_you_type'}/>
+        </span>
+
         <ConnectButton/>
       </footer>
     </div>
@@ -125,6 +141,9 @@ const ConnectionForm = ({onSubmit, onClose}) => {
 ConnectionForm.propTypes = {
   onSubmit: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
+  // a connection the dialog is still drafting: nothing of it is written until
+  // Connect, and the foot says so
+  draft: PropTypes.bool,
 }
 
 export default ConnectionForm
