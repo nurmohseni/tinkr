@@ -10,6 +10,7 @@ const {importsFor} = require('./classIndex')
 const {parseSSHCommand} = require('./parseSSHCommand')
 const {askpassEnvironment} = require('./sshAskpass')
 const {sessionCommand} = require('./containerCommand')
+const {isCloud, runCloud, cloudTokenOf} = require('./cloud')
 
 /**
  * The keys a kill sends before it gives up on the session, and how long each is
@@ -514,17 +515,26 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  * (see runResult.wrapRun), and the marker is new for every run, so an answer
  * that arrives late can never be read as this run's.
  *
+ * A connection whose code runs on Laravel Cloud has no session to run it in: it
+ * goes through the API instead (see cloud.runCloud), and answers with the same
+ * shape plus the id of the command that ran it.
+ *
  * @param {Record<String, any>} connection
  * @param {String} code
  * @param {{timeout?: Number, command?: String, guard?: String, appName?: String,
- *   appVersion?: String, log?: Object, dataDir?: String}} [options] `command` is
+ *   appVersion?: String, log?: Object, dataDir?: String, token?: String,
+ *   signal?: AbortSignal, fetch?: Function, interval?: Number}} [options] `command` is
  *   what the session is started with when the connection names none, `guard` is
  *   what the run is guarded with: `rollback` for a dry run, `commit` for the
- *   same run kept, and `dataDir` is where the app's data is — which is where a
- *   connection's saved password is answered from
+ *   same run kept, `dataDir` is where the app's data is — which is where a
+ *   connection's saved password is answered from — and `token` is a Laravel
+ *   Cloud token for a cloud connection, which is read from that same data
+ *   directory when the caller has none. `signal` stops a run, `fetch` replaces
+ *   the one a cloud run talks to the API with, and `interval` is how often it
+ *   asks how the command is going
  * @return {Promise<{value: any, blocks: Array, error: Object|null,
  *   queries: Array, queriesTotal: Number, imported?: Object,
- *   transaction?: Object, output: String}>}
+ *   transaction?: Object, output: String, commandId?: String}>}
  *   `queries` is what the run sent to its connections (see runResult.QUERY_BLOCK),
  *   and `queriesTotal` counts every query the run sent, stored or not.
  *   `transaction` is what a guarded run did with the transaction it was sent
@@ -532,6 +542,24 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  */
 const runCode = (connection, code, options = {}) => {
   const {timeout = 30000, guard = null} = options
+
+  // a connection on Laravel Cloud has no shell to reach: its run is a command
+  // sent to the API, and nothing of the session below — a pty, a boot, a kill —
+  // exists there. Its own imports are read from the local checkout when the
+  // connection names one, which is the only way a cloud run knows this project's
+  // classes: the environment cannot be read from here
+  if (isCloud(connection)) {
+    return runCloud(connection, code, {
+      token: options.token || cloudTokenOf(options.dataDir),
+      guard,
+      timeout,
+      signal: options.signal,
+      fetch: options.fetch,
+      interval: options.interval,
+      imports: connection.path ? importsFor(connection.path, code) : {},
+    })
+  }
+
   // what the session starts with: what the caller asked for, and otherwise what
   // the connection was saved with — which, for a connection whose project is in
   // a container, is the container's command rather than a command that assumes

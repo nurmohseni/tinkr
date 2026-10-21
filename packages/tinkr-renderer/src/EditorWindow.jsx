@@ -3,6 +3,7 @@ import Split from 'react-split'
 import {Route} from 'wouter'
 import {useAtomValue, useSetAtom, useStore} from 'jotai'
 import throttle from 'lodash/throttle'
+import {FormattedMessage} from 'react-intl'
 import useHashLocation from './utils/useHashLocation'
 
 import EditorPage from './components/EditorPage'
@@ -20,6 +21,7 @@ import ConnectionPage from './components/ConnectionPage'
 import DeleteConnectionConfirm from './components/connections/DeleteConnectionConfirm'
 import StageLight from './components/connections/StageLight'
 import useSplit from './hooks/useSplit'
+import kindOf from './utils/connectionKind'
 import DocumentScope from './components/editor/DocumentScope'
 import {sizesAtom, connectionAtom, settledRunAtom, setAnswer, inFlightDocumentAtom, inFlightAtom} from './stores/editor'
 import {configAtom} from './stores/config'
@@ -146,11 +148,16 @@ const EditorWindow = () => {
   return (
     <WindowContainer>
       <div className='app'>
-        <Titlebar>
+        {/* the logs are files on the machine the project runs on, and a Laravel
+            Cloud connection has none the app can read: the viewer is not offered
+            for one, rather than opening a window that would only say so */}
+        <Titlebar logs={!connection.is_cloud}>
           <StageLight tag={connection.tag}/>
           <span className='mono'>{connection.name}</span>
           <span className='titlebar__sep'>·</span>
-          <span className='muted'>{connection.is_over_ssh ? 'ssh' : 'local'}</span>
+          {/* a message component rather than useIntl(): this window is what mounts
+              the IntlProvider (see WindowContainer), so a hook up here has none */}
+          <span className='muted'><FormattedMessage id={kindOf(connection)}/></span>
         </Titlebar>
 
         <div className='app__body'>

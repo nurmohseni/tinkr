@@ -293,13 +293,24 @@ const dismissMutationsAtom = atom(null, (get, set) => {
  * a stopped run costs nothing but the answer it will not give. What is in the
  * pane stays as it was: the run did not answer, and pretending it did would be
  * worse than an empty pane.
+ *
+ * A run on Laravel Cloud is the exception: there is no session of ours to end,
+ * and Laravel Cloud cannot cancel a command it was given, so the stop only ends
+ * the wait. That is worth saying, and the main process answers with it at once
+ * (see services/connections stopConnection), so the run stays the one in flight
+ * and its answer is written like any other.
  */
 const stopRunAtom = atom(null, (get, set) => {
   if (!get(inFlightAtom)) {
     return
   }
 
-  set(inFlightAtom, null)
+  const connection = get(connectionAtom)
+
+  if (!(connection && connection.is_cloud)) {
+    set(inFlightAtom, null)
+  }
+
   stopConnection()
 })
 

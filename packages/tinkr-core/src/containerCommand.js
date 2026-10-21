@@ -371,9 +371,16 @@ const sessionCommand = connection => {
  * in a container, whichever machine the container is on.
  *
  * @param {Record<String, any>} connection
- * @return {String} `local`, `ssh`, `container` or `ssh-container`
+ * @return {String} `local`, `ssh`, `container`, `ssh-container` or `cloud`
  */
 const connectionKind = connection => {
+  // a cloud connection runs nowhere this machine can reach: it is its own kind
+  // whatever else it was saved with, because the php runs inside an environment
+  // Laravel Cloud owns
+  if (connection && connection.is_cloud) {
+    return 'cloud'
+  }
+
   const container = inContainer(connection)
   const ssh = Boolean(connection && connection.is_over_ssh)
 

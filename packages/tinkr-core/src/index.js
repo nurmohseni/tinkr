@@ -17,4 +17,5 @@ module.exports = Object.assign(
   require('./parseSSHCommand'),
   require('./sshAskpass'),
   require('./containerCommand'),
+  require('./cloud'),
 )

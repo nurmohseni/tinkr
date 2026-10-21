@@ -1,3 +1,5 @@
+const {isCloud} = require('tinkr-core')
+
 const {BackgroundPty} = require('./pty/BackgroundPty')
 
 const {prefetchIndex} = require('./services/project')
@@ -10,6 +12,13 @@ const {
 
 const createBackgroundPty = connection => {
   const {id} = connection
+
+  // a connection on Laravel Cloud has no session anything could be asked of,
+  // and no background one either: a second command is a second command in the
+  // environment's history, on production, for a popup
+  if (isCloud(connection)) {
+    return
+  }
 
   const pty = new BackgroundPty(connection)
   pty.connect()
@@ -30,6 +39,10 @@ const createBackgroundPty = connection => {
  * the first time it needs to resolve a value. Booting it lazily keeps a run
  * from paying for a session it may never use.
  *
+ * A connection on Laravel Cloud never has one: there is no session to ask, and
+ * what a cloud connection offers instead is read from the local checkout it
+ * names, if it names one.
+ *
  * @param {String} id
  */
 const ensureBackgroundPty = id => {
@@ -38,9 +51,12 @@ const ensureBackgroundPty = id => {
   }
 
   const connection = getEditorConnection(id)
-  if (connection) {
-    createBackgroundPty(connection)
+
+  if (!connection || isCloud(connection)) {
+    return
   }
+
+  createBackgroundPty(connection)
 }
 
 module.exports = {

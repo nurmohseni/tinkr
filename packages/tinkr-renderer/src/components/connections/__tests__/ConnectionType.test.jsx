@@ -45,10 +45,10 @@ const render = values => {
 describe('the type of a connection', () => {
   // the two answers are not exclusive any more: a project deployed by a compose
   // file on a server is a container on that server, and the rail has to say so
-  test('offers the four, including a container that lives on a server', () => {
+  test('offers the five, including a container on a server and Laravel Cloud', () => {
     const view = render({is_over_ssh: false})
 
-    expect(view.kinds).toEqual(['local', 'container', 'ssh', 'ssh-container'])
+    expect(view.kinds).toEqual(['local', 'container', 'ssh', 'ssh-container', 'cloud'])
     expect(view.checked()).toBe('local')
 
     view.done()
@@ -66,6 +66,12 @@ describe('the type of a connection', () => {
     const container = render({is_over_ssh: false, container_engine: 'docker'})
     expect(container.checked()).toBe('container')
     container.done()
+
+    // a cloud connection is read from its own field, and it outranks the two
+    // that describe a machine: it has neither
+    const cloud = render({is_cloud: true})
+    expect(cloud.checked()).toBe('cloud')
+    cloud.done()
   })
 
   // a kind sets both fields, and clears what it no longer owns: leaving the
@@ -86,6 +92,35 @@ describe('the type of a connection', () => {
     expect(view.values().is_over_ssh).toBe(true)
     expect(view.values().container_engine).toBe('')
 
+    view.done()
+  })
+
+  // a cloud connection reaches no machine and no container, so choosing it is
+  // the one choice that clears both of the answers the other kinds set
+  test('choosing Laravel Cloud clears the ssh and container fields', () => {
+    const view = render({
+      is_over_ssh: true,
+      container_engine: 'podman',
+      container_path: '/var/www/html',
+      container_name: 'app',
+    })
+
+    view.choose('cloud')
+
+    expect(view.values().is_cloud).toBe(true)
+    expect(view.values().is_over_ssh).toBe(false)
+    expect(view.values().container_engine).toBe('')
+    expect(view.values().container_path).toBe('')
+
+    view.done()
+  })
+
+  test('choosing any other kind stops being a cloud connection', () => {
+    const view = render({is_cloud: true, cloud_environment_id: 'env-1'})
+
+    view.choose('local')
+
+    expect(view.values().is_cloud).toBe(false)
     view.done()
   })
 })

@@ -1,5 +1,7 @@
-const {app} = require('electron')
+const {isCloud} = require('tinkr-core')
 
+const {dataDir} = require('../utils/dataDir')
+const {connectCloud} = require('./cloudConnection')
 const {detectPhpVersion} = require('./phpVersion')
 const {connections, sessionConnection} = require('../database/connections')
 const {
@@ -27,19 +29,6 @@ const {watchSnippets} = require('./snippetsWatch')
 // window, and one connection it is showing
 let snippetsWatcher = null
 const {allSnippets} = require('./snippets')
-
-/**
- * Where the app keeps its files, and therefore where a connection's password is.
- *
- * @return {String|null}
- */
-const dataDir = () => {
-  try {
-    return app.getPath('userData')
-  } catch (e) {
-    return null
-  }
-}
 
 /**
  * The connections the app lists. The quick connection is the session the
@@ -161,8 +150,15 @@ const connectConnection = async connection => {
   setEditorConnection(connection.id, connection)
   watchSnippetsOf(connection.id)
 
-  createPty(connection)
-  createBackgroundPty(connection)
+  // a connection on Laravel Cloud has no session to boot and no php here to
+  // ask: what it runs is a command sent to its environment, and what the window
+  // is told about it comes from that environment instead (see connectCloud)
+  const cloud = isCloud(connection)
+
+  if (!cloud) {
+    createPty(connection)
+    createBackgroundPty(connection)
+  }
 
   win.setTitle(`${appName} - ${connection.name}`)
 
@@ -171,6 +167,12 @@ const connectConnection = async connection => {
   // the one that was just booted
   win.webContents.send('setConnection', connection.id)
   win.webContents.send('reconnectConnection')
+
+  if (cloud) {
+    await connectCloud(connection, win)
+
+    return
+  }
 
   detectPhpVersion(connection, win)
 }
@@ -215,11 +217,29 @@ const reconnectConnection = connection => {
   const pty = getPtyProcess(connection.id)
   if (pty) {
     pty.kill()
+    setPtyProcess(connection.id, null)
   }
-  createPty(connection)
-  getEditorWindow(connection.id).webContents.send('reconnectConnection')
 
-  detectPhpVersion(connection, getEditorWindow(connection.id))
+  const win = getEditorWindow(connection.id)
+
+  if (!win) {
+    return
+  }
+
+  win.webContents.send('reconnectConnection')
+
+  // a cloud connection has nothing to boot: a reconnect is the question put to
+  // its environment again, which is what notices an application that was
+  // redeployed onto another php
+  if (isCloud(connection)) {
+    connectCloud(connection, win)
+
+    return
+  }
+
+  createPty(connection)
+
+  detectPhpVersion(connection, win)
 }
 
 /**
@@ -265,12 +285,27 @@ const forgetPassword = id => {
 const getConnection = id => connections.get(id, {})
 
 /**
+ * Write what was typed in the terminal into the connection's session.
+ *
+ * A connection on Laravel Cloud has no session the typing could reach — its runs
+ * are commands sent to the API — so what is typed into the terminal is dropped
+ * there rather than written into a handle that is not a shell.
  *
  * @param {String} id
  * @param {String } code
  */
 const inputConnection = (id, code) => {
-  getPtyProcess(id).input(code)
+  const connection = getEditorConnection(id)
+
+  if (connection && isCloud(connection)) {
+    return
+  }
+
+  const pty = getPtyProcess(id)
+
+  if (pty) {
+    pty.input(code)
+  }
 }
 
 /**
@@ -310,6 +345,8 @@ const runConnection = (id, code, guard = null, timeout = null) => {
     return
   }
 
+  const cloud = isCloud(connection)
+
   const pty = getPtyProcess(id)
   if (pty) {
     pty.kill()
@@ -323,7 +360,9 @@ const runConnection = (id, code, guard = null, timeout = null) => {
   }
 
   const win = getEditorWindow(id)
-  if (win) {
+  // a connection on Laravel Cloud has no terminal to reset: nothing of it is a
+  // session, and the line it was given when it opened is the only thing in it
+  if (win && !cloud) {
     // the terminal shows a brand new session now
     win.webContents.send('reconnectConnection')
   }
@@ -339,15 +378,30 @@ const runConnection = (id, code, guard = null, timeout = null) => {
  * quit, then the signal. So stopping a run is ending the session it is in, and
  * the next run boots its own — which is what a run does anyway.
  *
+ * A run on Laravel Cloud is a command Laravel Cloud is already running, and the
+ * API has no way to cancel one. What is stopped is this app's wait for it: the
+ * run's own answer then says that Laravel Cloud keeps running the command, which
+ * is the truth the pane has to show rather than an interrupted run. The handle
+ * is left in place so that answer reaches the window it belongs to.
+ *
  * @param {String} id
  */
 const stopConnection = id => {
   const pty = getPtyProcess(id)
 
-  if (pty) {
-    pty.kill()
-    setPtyProcess(id, null)
+  if (!pty) {
+    return
   }
+
+  pty.kill()
+
+  const connection = getEditorConnection(id)
+
+  if (connection && isCloud(connection)) {
+    return
+  }
+
+  setPtyProcess(id, null)
 }
 
 /**

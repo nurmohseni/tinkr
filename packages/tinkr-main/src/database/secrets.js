@@ -2,7 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const log = require('electron-log')
 
-const {secretsFile} = require('tinkr-core')
+const {secretsFile, CLOUD_SECRET_KEY} = require('tinkr-core')
 
 /**
  * What a connection that logs in with a password needs kept, and where.
@@ -16,6 +16,12 @@ const {secretsFile} = require('tinkr-core')
  * Nothing hands the password back. A session's helper reads this file itself
  * (see tinkr-core's sshAskpass), so the password is never in a connection
  * object, never in an ipc message, and never in the window's memory.
+ *
+ * The Laravel Cloud API token is kept in the same file, under a key of its own
+ * (`CLOUD_SECRET_KEY`, which no connection id can be). It is one token for the
+ * whole app rather than one per connection: it names who is asking Laravel
+ * Cloud, and every cloud connection asks as that one person. Nothing hands it
+ * back either — the window is told whether there is one, never what it is.
  *
  * It is written 0600: the same protection ssh's own files have, against the same
  * person the session already runs as.
@@ -81,7 +87,10 @@ const write = (dir, secrets) => {
  * @param {String} password
  */
 const set = (dir, id, password) => {
-  if (!dir || !id) {
+  // the key the Cloud token lives under is not a connection's: one written
+  // through here would be a password replacing the token, and forgetting one
+  // would be the app forgetting who it asks Laravel Cloud as
+  if (!dir || !id || id === CLOUD_SECRET_KEY) {
     return
   }
 
@@ -118,7 +127,80 @@ const forget = (dir, id) => set(dir, id, '')
  * @param {String} id
  * @return {Boolean}
  */
-const has = (dir, id) => typeof read(dir)[id] === 'string'
+const has = (dir, id) => Boolean(id) && id !== CLOUD_SECRET_KEY && typeof read(dir)[id] === 'string'
+
+/**
+ * The Laravel Cloud API token, or nothing when none is saved.
+ *
+ * It is handed back here because the main process is what asks Laravel Cloud
+ * anything: the window checks it, lists applications with it, but never holds a
+ * token of its own to ask with. A file that has gone, or one written by an
+ * older version, is no token rather than an error — the app says a token is
+ * needed and the settings screen is where one goes.
+ *
+ * @param {String} dir
+ * @return {String}
+ */
+const cloudToken = dir => {
+  const token = read(dir)[CLOUD_SECRET_KEY]
+
+  return typeof token === 'string' ? token : ''
+}
+
+/**
+ * Keep the Laravel Cloud API token.
+ *
+ * The token is written only once something has answered with it (see
+ * ipc.setCloudToken): a token that Laravel Cloud refuses is one to say so
+ * about, not one to keep and fail every run with afterwards. An empty token is
+ * a token removed, the same way an empty password is.
+ *
+ * @param {String} dir
+ * @param {String} token
+ * @return {Boolean} whether it was written
+ */
+const setCloudToken = (dir, token) => {
+  if (!dir) {
+    return false
+  }
+
+  const secrets = read(dir)
+  const worth = typeof token === 'string' ? token.trim() : ''
+
+  if (worth === '') {
+    delete secrets[CLOUD_SECRET_KEY]
+  } else {
+    secrets[CLOUD_SECRET_KEY] = worth
+  }
+
+  try {
+    write(dir, secrets)
+  } catch (e) {
+    // nothing of the token reaches the log: a write that failed is a token the
+    // settings screen is told did not save
+    log.error('[secrets] the Laravel Cloud token could not be kept:', e.message)
+
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Forget the Laravel Cloud API token.
+ *
+ * @param {String} dir
+ */
+const forgetCloudToken = dir => setCloudToken(dir, '')
+
+/**
+ * Whether a Laravel Cloud API token is saved. This is the only thing about the
+ * token the window is ever told.
+ *
+ * @param {String} dir
+ * @return {Boolean}
+ */
+const hasCloudToken = dir => cloudToken(dir) !== ''
 
 /**
  * What the app keeps of a connection that was just saved.
@@ -170,5 +252,9 @@ module.exports = {
   set,
   forget,
   has,
+  cloudToken,
+  setCloudToken,
+  forgetCloudToken,
+  hasCloudToken,
   keptConnection,
 }

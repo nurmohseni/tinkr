@@ -97,6 +97,34 @@ const parseArguments = argv => {
   return options
 }
 
+/**
+ * Where a connection runs, as the line the server logs says it.
+ *
+ * It is three different sentences, because they answer three different
+ * questions: a path is a directory here, an ssh connection is an account on a
+ * server, and a Laravel Cloud connection is an application and environment
+ * inside an environment Laravel Cloud owns — nowhere on this machine and nowhere
+ * to ssh to. Saying "in <path>" for the last one names the local checkout, which
+ * is where the classes are read from and not where anything runs.
+ *
+ * @param {Record<String, any>} connection
+ * @return {{where: String, name: String}}
+ */
+const whereOf = connection => {
+  if (connection.is_cloud) {
+    const application = connection.cloud_application_name || 'an application'
+    const environment = connection.cloud_environment_name || 'an environment'
+
+    return {where: 'in Laravel Cloud app', name: `${application} / ${environment}`}
+  }
+
+  if (connection.is_over_ssh) {
+    return {where: 'over ssh as', name: connection.ssh_server}
+  }
+
+  return {where: 'in', name: connection.path}
+}
+
 const main = () => {
   let options
 
@@ -145,10 +173,13 @@ const main = () => {
   })
 
   // the client's stderr is the log: what the server is running in is the first
-  // thing to look at when a call comes back wrong
+  // thing to look at when a call comes back wrong. A cloud connection runs in an
+  // environment Laravel Cloud owns, which is neither a directory here nor a
+  // server over ssh, so it is named by its application and environment instead
+  const place = whereOf(resolved.connection)
+
   process.stderr.write(
-    `tinkr-mcp ${version}: ${resolved.connection.is_over_ssh ? 'over ssh as' : 'in'} ` +
-    `${resolved.connection.is_over_ssh ? resolved.connection.ssh_server : resolved.connection.path}` +
+    `tinkr-mcp ${version}: ${place.where} ${place.name}` +
     `${resolved.saved ? ` (${resolved.connection.name})` : ''}\n`,
   )
 

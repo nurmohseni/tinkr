@@ -61,7 +61,8 @@ You need `php` on the machine (or server) where your project lives. That's it.
 
 | | |
 | --- | --- |
-| **Connections** | Local projects; Docker, Podman, Sail and Kubernetes containers; any server over SSH, with a key or a password; and a container on a server, which is what a Dokploy, Coolify or compose deploy is. The container and the project inside it are picked from what is running rather than typed. A password is kept in a file only you can read, never shown back, and answered by the app itself. Tag a connection as production and Tinkr asks before it writes. |
+| **Connections** | Local projects; Docker, Podman, Sail and Kubernetes containers; any server over SSH, with a key or a password; a container on a server, which is what a Dokploy, Coolify or compose deploy is; and a **Laravel Cloud** environment. The container and the project inside it are picked from what is running rather than typed. A password is kept in a file only you can read, never shown back, and answered by the app itself. Tag a connection as production and Tinkr asks before it writes. |
+| **Laravel Cloud** | Paste an API token in **Settings → Laravel Cloud** and Tinkr checks it before keeping it. Then pick an application and one of its environments; the code runs inside that environment through Laravel Cloud's API, with the same readings, queries and dry runs as any other connection. The token needs **Applications:** View applications and **Environments:** View environments, View environment instances, Create environment commands, View environment logs; everything else can stay at None. Point the connection at a local checkout of the same app if you want class names completed. Logs and live method completion are not available on Laravel Cloud. |
 | **Editor** | Monaco, with class names and `::` method suggestions read straight from your project, local or remote. |
 | **Snippet forms** | Turn a snippet's variables into a form and run it like a tiny admin panel. |
 | **Snippets & history** | Save the code you reuse. Every run is kept across restarts; one click puts it back in the editor. |
@@ -74,7 +75,7 @@ You need `php` on the machine (or server) where your project lives. That's it.
 | **Readings** | The returned value as a tree, a table, a graph, or rendered markup, next to the raw output. Copy any table or save it as CSV. |
 | **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
 | **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. |
-| **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. It also gives up on its own after the **run timeout** you set in Settings, so a snippet that never returns cannot hold the session. While a run is going the editor is read-only, the button counts the wait, and the answer reports how long the whole of it took. |
+| **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. Laravel Cloud cannot cancel a command it was given, so stopping a Cloud run ends the wait and says the command keeps running there. A run also gives up on its own after the **run timeout** you set in Settings, so a snippet that never returns cannot hold the session. While a run is going the editor is read-only, the button counts the wait, and the answer reports how long the whole of it took. |
 | **Log viewer** | Your app's logs (`storage/logs` or anywhere) in a window of their own, so the editor keeps its width. Filter by any of monolog's eight levels, by a term, and by a span of time. Follow a file live, or scroll back through it: pages load as you reach the edges, and only a bounded window is held. |
 
 ### Ask
@@ -123,7 +124,7 @@ The directory the client starts it in is the project code runs in. No API token,
 | Tool | What it does |
 | --- | --- |
 | `tinkr_documentation` | How Tinkr works and how to use these tools: the guards, connections, every tool, how to read an answer |
-| `tinkr_run_php` | Run PHP in a local project: what every statement returned, and what the code printed |
+| `tinkr_run_php` | Run PHP in a local project or a Laravel Cloud environment: what every statement returned, and what the code printed |
 | `tinkr_run_php_over_ssh` | The same, on a server, through one of Tinkr's SSH connections |
 | `tinkr_list_history` | The runs the app kept for a connection: the code, when it ran, how it ended |
 | `tinkr_read_run` | One kept run in full: what it returned, printed and threw |
