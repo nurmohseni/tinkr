@@ -1,3 +1,5 @@
+const {inContainer, containerRead} = require('tinkr-core')
+
 const {Pty} = require('../pty/Pty')
 const {phpVersionOf} = require('../utils/phpVersion')
 
@@ -112,7 +114,11 @@ const detectPhpVersion = (connection, win) => {
   // tinker` or `docker exec app php artisan tinker` runs that php, and a
   // connection whose ssh never came up used to answer with this machine's php.
   // The binary is the first word of the command, and it keeps its own flags
-  pty.connect(`${phpBinaryOf(connection)} -v`)
+  // A container's php is inside the container, not on the machine the shell
+  // reaches: the question goes through the same exec a run does
+  const question = `${phpBinaryOf(connection)} -v`
+
+  pty.connect(inContainer(connection) ? containerRead(connection, question) : question)
 
   const onData = pty.onData(data => {
     output += data

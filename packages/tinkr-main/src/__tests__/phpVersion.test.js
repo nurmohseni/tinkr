@@ -3,7 +3,16 @@ jest.mock('electron-store', () => class Store {
   get(key, fallback) { return fallback }
 })
 
-const {phpBinaryOf} = require('../services/phpVersion')
+const mockConnect = jest.fn()
+jest.mock('../pty/Pty', () => ({
+  Pty: class {
+    connect(command) { mockConnect(command) }
+    onData() { return {dispose() {}} }
+    kill() {}
+  },
+}))
+
+const {phpBinaryOf, detectPhpVersion} = require('../services/phpVersion')
 
 describe('the php a connection runs', () => {
   test('is the one its own command names, not whatever php is on the path', () => {
@@ -25,5 +34,19 @@ describe('the php a connection runs', () => {
     expect(phpBinaryOf({})).toBe('php')
     expect(phpBinaryOf({command: ''})).toBe('php')
     expect(phpBinaryOf({command: 'tail -f storage/logs/laravel.log'})).toBe('php')
+  })
+
+  // a deployed container's host need not have php at all: asking the host
+  // reported "no php" while tinker ran fine inside the container
+  test('is asked inside the container, not on the machine that runs it', () => {
+    const win = {isDestroyed: () => false, webContents: {send: jest.fn()}}
+
+    detectPhpVersion({is_over_ssh: true, container_engine: 'docker', container_name: 'app-1', container_path: '/app', command: 'php artisan tinker'}, win)
+    detectPhpVersion({command: 'php artisan tinker'}, win)
+
+    expect(mockConnect.mock.calls).toEqual([
+      ["docker exec -i app-1 sh -c 'cd /app && php -v'"],
+      ['php -v'],
+    ])
   })
 })
