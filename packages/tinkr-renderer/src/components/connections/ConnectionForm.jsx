@@ -8,6 +8,7 @@ import ConnectionType from './ConnectionType'
 import ConnectionRoute from './ConnectionRoute'
 import SSHForm from './SSHForm'
 import BasicForm from './BasicForm'
+import CloudForm from './CloudForm'
 import ContainerForm from './ContainerForm'
 import {containerCommand} from '../../utils/containerCommand'
 
@@ -31,9 +32,13 @@ const ConnectionForm = ({onSubmit, onClose, draft}) => {
 
   // a container's command is built from what it runs in, so what is saved is
   // the connection with the command it would start with — which is also what a
-  // run reads
+  // run reads. A Laravel Cloud connection starts no command of its own: the app
+  // sends one per run, so the field is stored empty rather than as a leftover
+  // from the kind the connection had before
   const save = handleSubmit(data => {
-    const built = data.container_engine ? containerCommand(data) : data.command
+    const built = data.is_cloud
+      ? ''
+      : (data.container_engine ? containerCommand(data) : data.command)
 
     onSubmit(built === data.command ? data : Object.assign({}, data, {command: built}))
     onClose()
@@ -104,9 +109,12 @@ const ConnectionForm = ({onSubmit, onClose, draft}) => {
           />
 
           {/* in the order a session reaches them: the server, then the
-              container on it, then the project the container holds */}
+              container on it, then the project the container holds. A Laravel
+              Cloud connection reaches an environment instead, which is the one
+              section that says where its code goes */}
           <SSHForm/>
           <ContainerForm/>
+          <CloudForm/>
           <BasicForm/>
         </form>
       </div>

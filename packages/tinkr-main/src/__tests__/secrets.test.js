@@ -17,6 +17,8 @@ jest.mock('electron', () => ({
 
 global.TINKR_TEST_DIR = dir
 
+const {CLOUD_SECRET_KEY} = require('tinkr-core')
+
 const secrets = require('../database/secrets')
 const {connections, sessionConnection} = require('../database/connections')
 
@@ -87,6 +89,56 @@ describe('a password a connection was given', () => {
       : fs.statSync(path.join(dir, 'app', 'secrets.json')).mode & 0o777
 
     expect(mode).toBe(process.platform === 'win32' ? null : 0o600)
+  })
+})
+
+describe('the Laravel Cloud token', () => {
+  // the file is one file for the whole run, so each case starts from an empty
+  // one: what a case is about is the token, not what the case before it kept
+  beforeEach(() => {
+    secrets.write(dir, {})
+  })
+
+  test('is kept in the secrets file, and never in a connection', () => {
+    expect(secrets.setCloudToken(dir, '  cloud-token  ')).toBe(true)
+    expect(kept()).toEqual({[CLOUD_SECRET_KEY]: 'cloud-token'})
+
+    expect(secrets.cloudToken(dir)).toBe('cloud-token')
+    expect(secrets.hasCloudToken(dir)).toBe(true)
+
+    // a connection saved with that id is not one whose password is the token
+    const stored = secrets.keptConnection(dir, form({id: CLOUD_SECRET_KEY, password: 'hunter2'}), {})
+
+    expect(stored.ssh_password).toBe(false)
+    expect(secrets.cloudToken(dir)).toBe('cloud-token')
+    expect(kept()).toEqual({[CLOUD_SECRET_KEY]: 'cloud-token'})
+  })
+
+  // a connection that goes is a password that goes with it; the token names who
+  // the whole app asks Laravel Cloud as, and it is not that connection's
+  test('survives a connection being forgotten', () => {
+    secrets.setCloudToken(dir, 'cloud-token')
+    secrets.keptConnection(dir, form({password: 'hunter2'}), {})
+
+    secrets.forget(dir, 'c1')
+
+    expect(kept()).toEqual({[CLOUD_SECRET_KEY]: 'cloud-token'})
+
+    // and a password kept under the token's own key never replaces it
+    secrets.set(dir, CLOUD_SECRET_KEY, 'a password')
+    expect(secrets.cloudToken(dir)).toBe('cloud-token')
+
+    // the reverse holds too: the token is not a connection's password
+    expect(secrets.has(dir, CLOUD_SECRET_KEY)).toBe(false)
+  })
+
+  test('is forgotten only when it is forgotten', () => {
+    secrets.setCloudToken(dir, 'cloud-token')
+
+    expect(secrets.forgetCloudToken(dir)).toBe(true)
+    expect(secrets.cloudToken(dir)).toBe('')
+    expect(secrets.hasCloudToken(dir)).toBe(false)
+    expect(kept()).toEqual({})
   })
 })
 

@@ -14,6 +14,11 @@ describe('newConnection', () => {
       is_over_ssh: false,
       path: '',
       command: '',
+      is_cloud: false,
+      cloud_application_id: '',
+      cloud_application_name: '',
+      cloud_environment_id: '',
+      cloud_environment_name: '',
     })
   })
 

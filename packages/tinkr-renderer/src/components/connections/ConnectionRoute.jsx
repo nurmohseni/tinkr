@@ -14,13 +14,18 @@ import {configAtom} from '../../stores/config'
  * It follows what the session does rather than what the form shows: a project
  * in a container runs in the container's directory, and a command left empty is
  * the default command from the settings.
+ *
+ * A Laravel Cloud connection's route is two stops and no command: this machine
+ * sends the code, and the environment runs it. The command is the app's own, so
+ * there is nothing of the connection's to print in its place.
  */
 const ConnectionRoute = () => {
   const intl = useIntl()
   const {watch} = useFormContext()
   const config = useAtomValue(configAtom)
 
-  const [ssh, server, port, user, engine, name, inContainer, path, command, inside] = watch([
+  const [cloud, application, environment, ssh, server, port, user, engine, name, inContainer, path, command, inside] = watch([
+    'is_cloud', 'cloud_application_name', 'cloud_environment_name',
     'is_over_ssh', 'ssh_server', 'ssh_port', 'ssh_user',
     'container_engine', 'container_name', 'container_path',
     'path', 'command', 'container_command',
@@ -31,35 +36,48 @@ const ConnectionRoute = () => {
 
   const stops = []
 
-  if (ssh) {
-    const host = text(server)
-    const at = text(user)
+  if (cloud) {
+    stops.push({value: say('connections.route_this_machine')})
 
-    stops.push(host
-      ? {value: `${at ? `${at}@` : ''}${host}${text(port) ? `:${text(port)}` : ''}`}
-      : {missing: say('connections.ssh_server')})
+    const app = text(application)
+    const env = text(environment)
+
+    stops.push(app ? {value: app} : {missing: say('connections.cloud_application')})
+
+    stops.push(env ? {value: env, last: true} : {missing: say('connections.cloud_environment'), last: true})
   }
 
-  if (engine) {
-    stops.push(text(name)
-      ? {value: `${engine} ${text(name)}`}
-      : {missing: say('connections.container_name')})
+  if (!cloud) {
+    if (ssh) {
+      const host = text(server)
+      const at = text(user)
+
+      stops.push(host
+        ? {value: `${at ? `${at}@` : ''}${host}${text(port) ? `:${text(port)}` : ''}`}
+        : {missing: say('connections.ssh_server')})
+    }
+
+    if (engine) {
+      stops.push(text(name)
+        ? {value: `${engine} ${text(name)}`}
+        : {missing: say('connections.container_name')})
+    }
+
+    // docker and podman are told where to run with -w; sail runs from the
+    // project on the machine, where its compose file is; kubectl has no working
+    // directory of its own to be given, so the pod's is the one there is
+    if (engine !== 'kubectl') {
+      const dir = engine && engine !== 'sail' ? (text(inContainer) || text(path)) : text(path)
+
+      stops.push(dir ? {value: dir} : {missing: say('connections.path')})
+    }
+
+    const run = engine ? text(inside) : text(command)
+
+    stops.push(run
+      ? {value: run, last: true}
+      : {value: engine ? 'php artisan tinker' : config.command_default, implied: true, last: true})
   }
-
-  // docker and podman are told where to run with -w; sail runs from the project
-  // on the machine, where its compose file is; kubectl has no working directory
-  // of its own to be given, so the pod's is the one there is
-  if (engine !== 'kubectl') {
-    const dir = engine && engine !== 'sail' ? (text(inContainer) || text(path)) : text(path)
-
-    stops.push(dir ? {value: dir} : {missing: say('connections.path')})
-  }
-
-  const run = engine ? text(inside) : text(command)
-
-  stops.push(run
-    ? {value: run, last: true}
-    : {value: engine ? 'php artisan tinker' : config.command_default, implied: true, last: true})
 
   return (
     <ol

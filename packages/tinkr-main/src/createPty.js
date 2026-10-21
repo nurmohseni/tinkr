@@ -1,10 +1,19 @@
-const {wrapRun, RunResultFilter, importsFor, runOutput} = require('tinkr-core')
+const {
+  wrapRun,
+  RunResultFilter,
+  importsFor,
+  runOutput,
+  isCloud,
+  runCloud,
+} = require('tinkr-core')
 
 const {Pty} = require('./pty/Pty')
 
 const {getEditorWindow, getPtyProcess, setPtyProcess} = require('./processes')
 const {appendHistory} = require('./services/history')
 const {refreshIndex} = require('./services/project')
+const secrets = require('./database/secrets')
+const {dataDir} = require('./utils/dataDir')
 
 /**
  * Boot a session for the connection, and optionally run `code` in it.
@@ -33,12 +42,21 @@ const {refreshIndex} = require('./services/project')
  * time is up the session is stopped, which is what reaches the php doing the
  * work, and the pane is answered with the wait it was.
  *
+ * A connection on Laravel Cloud has no session at all: nothing here is booted
+ * for it, and its run is a command sent to Laravel Cloud (see runInCloud).
+ *
  * @param {Record<String, any>} connection
  * @param {String} [code]
  * @param {String} [guard] `rollback` or `commit`
  * @param {Number} [timeout] how long the run may take, in milliseconds
  */
 const createPty = (connection, code, guard = null, timeout = null) => {
+  if (isCloud(connection)) {
+    runInCloud(connection, code, guard, timeout)
+
+    return
+  }
+
   const {id} = connection
 
   const pty = new Pty(connection)
@@ -186,6 +204,118 @@ const createPty = (connection, code, guard = null, timeout = null) => {
       })
     })
   }
+}
+
+/**
+ * Run a snippet inside a Laravel Cloud environment.
+ *
+ * A cloud connection has no session to boot and nothing on this machine to
+ * start: the run is one command sent to Laravel Cloud, which runs it in the
+ * environment's own container and answers when it ends (see tinkr-core's
+ * runCloud). What a session's run answers through — the window, the history,
+ * the project index — is answered the same way here, so nothing that reads a
+ * result has to know which kind of connection it came from.
+ *
+ * The handle kept for the connection is what stop, replace and close act on. A
+ * pty's kill reaches the php doing the work; a cloud run has no process of ours
+ * to reach, so the handle's kill ends this wait only, and the answer says so —
+ * Laravel Cloud has no way to cancel a command it was given.
+ *
+ * A cloud connection has no terminal, so a call without code boots nothing: the
+ * connection is a place runs are sent to, and the status line the window shows
+ * is written where the connection is opened (see services/connections).
+ *
+ * @param {Record<String, any>} connection
+ * @param {String} [code]
+ * @param {String} [guard]
+ * @param {Number} [timeout]
+ */
+const runInCloud = (connection, code, guard, timeout) => {
+  if (!code) {
+    return
+  }
+
+  const {id} = connection
+  const startedAt = Date.now()
+  const stop = new AbortController()
+  const handle = {kill: () => stop.abort()}
+
+  setPtyProcess(id, handle)
+
+  const options = {
+    token: secrets.cloudToken(dataDir()),
+    guard,
+    signal: stop.signal,
+    // a cloud connection's project is inside Laravel Cloud, where this machine
+    // cannot read composer's files: the classes a snippet names are read from
+    // the local checkout the connection names, if it names one, which is the
+    // only copy of the project this side has (see classIndex.importsFor)
+    imports: connection.path ? importsFor(connection.path, code) : {},
+  }
+
+  // nothing given is Laravel Cloud's own default rather than a run with no end
+  if (timeout > 0) {
+    options.timeout = timeout
+  }
+
+  /**
+   * The run's answer, as the pane, the history and the index read it.
+   *
+   * A run that was replaced or that went away with its window answers nobody:
+   * the handle is what says whether anyone is still waiting for this one.
+   *
+   * @param {Object} answer
+   */
+  const settled = answer => {
+    if (getPtyProcess(id) !== handle) {
+      return
+    }
+
+    setPtyProcess(id, null)
+
+    const win = getEditorWindow(id)
+
+    if (!win) {
+      return
+    }
+
+    const result = Object.assign({}, answer, {
+      output: answer.output === undefined ? '' : answer.output,
+      duration: Date.now() - startedAt,
+    })
+
+    // the output pane is the run's own output, on the channel a session's run
+    // prints to, so the two kinds of run read the same in the pane
+    if (result.output) {
+      win.webContents.send('runOutput', result.output)
+    }
+
+    win.webContents.send('runResult', result)
+    win.webContents.send('historyConnection', appendHistory(id, code, result))
+    refreshIndex(connection)
+  }
+
+  runCloud(connection, code, options).then(result => settled(result), error => {
+    // a timeout, a stop and a command Laravel Cloud refused all arrive here, and
+    // each says its own reason in its message: the shape is the one every failed
+    // run has, so the pane and the history read it the same way. What a failed
+    // command printed is already the message's own words (see tinkr-core's
+    // runCloud), so the run's output is nothing of its own here
+    settled({
+      blocks: [],
+      value: null,
+      error: {
+        // the error's own name is what it says it is: a CloudError names itself,
+        // and reading the name rather than the constructor keeps that true even
+        // when the core module is loaded twice
+        class: (error && error.name) || 'Error',
+        message: error && error.message ? error.message : String(error),
+      },
+      queries: [],
+      queriesTotal: 0,
+      output: '',
+    })
+  })
 }
 
 module.exports = {

@@ -2,7 +2,10 @@ jest.mock('electron', () => ({app: {getLocale: () => 'en', getPath: () => '/tmp'
 jest.mock('electron-store', () => class Store {
   get(key, fallback) { return fallback }
 })
-jest.mock('../processes', () => ({getBackgroundPtyProcess: () => null}))
+jest.mock('../processes', () => ({
+  getBackgroundPtyProcess: () => null,
+  getEditorConnection: () => undefined,
+}))
 
 const {phpLiteral, writeFields} = require('../phpLiteral')
 const {readForm} = require('../phpForm')

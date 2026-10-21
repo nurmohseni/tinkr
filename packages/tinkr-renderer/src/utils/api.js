@@ -68,3 +68,10 @@ export const aiCheck = api.aiCheck
 export const parsePhpForm = api.parsePhpForm
 export const stringifyPhpForm = api.stringifyPhpForm
 export const phpCompletions = api.phpCompletions
+
+export const cloudStatus = api.cloudStatus
+export const setCloudToken = api.setCloudToken
+export const forgetCloudToken = api.forgetCloudToken
+export const listCloudApplications = api.listCloudApplications
+export const openExternal = api.openExternal
+export const onPreferenceSection = api.onPreferenceSection

@@ -3,6 +3,7 @@ const {
   importedClasses,
   phpString,
   matchingIn,
+  isCloud,
 } = require('tinkr-core')
 
 const {getEditorConnection, getBackgroundPtyProcess} = require('./processes')
@@ -29,7 +30,11 @@ const {readyIndex} = require('./services/project')
  * Two questions the popup never answers: a name that stands for two classes, and
  * the member of a `->`. Nothing knows which of the two classes a snippet means,
  * and nothing knows the type of a variable before the snippet runs, so both are
- * an empty popup rather than a list that could be wrong.
+ * an empty popup rather than a list that could be wrong. A third is a member on
+ * Laravel Cloud: there is no session there to reflect, and asking the API would
+ * be a command in a production environment's history on every keystroke (see
+ * methodItems). What a cloud connection does offer is its class names, read from
+ * the local checkout it names, if it names one (see services/project).
  */
 
 // what php lets a class, a method and a namespace segment be called
@@ -122,6 +127,15 @@ const classNameItems = (connection, typed, triggerCharacter) => {
 }
 
 /**
+ * What a class's public methods are, as the session reflects them.
+ *
+ * A connection on Laravel Cloud has no session to ask: reflection would be a
+ * command in the environment's history on production, answered seconds later,
+ * for a popup that arrives with a keystroke. Class names still come from the
+ * project index (see services/project), which is this machine's checkout of the
+ * project and costs a keystroke nothing; a method list on a cloud connection is
+ * an empty popup rather than a command sent somewhere.
+ *
  * @param {Object} connection
  * @param {String} before the code before the cursor, stripped
  * @param {String} written the class name as it is written
@@ -129,6 +143,10 @@ const classNameItems = (connection, typed, triggerCharacter) => {
  * @return {Promise<Array<Object>>}
  */
 const methodItems = async (connection, before, written, typed) => {
+  if (isCloud(connection)) {
+    return []
+  }
+
   const qualifiedName = resolveClass(connection, before, written)
 
   if (qualifiedName === null) {

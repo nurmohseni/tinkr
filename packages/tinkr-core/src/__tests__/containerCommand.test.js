@@ -38,6 +38,11 @@ describe('a container connection', () => {
     expect(connectionKind({is_over_ssh: true, container_engine: 'docker'})).toBe('ssh-container')
     expect(connectionKind({is_over_ssh: true})).toBe('ssh')
     expect(connectionKind({})).toBe('local')
+    // a cloud connection runs in an environment Laravel Cloud owns, whatever
+    // else the connection was saved with: its own kind is what says so
+    expect(connectionKind({is_cloud: true})).toBe('cloud')
+    expect(connectionKind({is_cloud: true, is_over_ssh: true, container_engine: 'docker'})).toBe('cloud')
+    expect(connectionKind({is_cloud: false, is_over_ssh: true})).toBe('ssh')
   })
 
   // the engine on a server is the server's: the command is the same words, and

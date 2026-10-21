@@ -13,11 +13,19 @@ jest.mock('tinkr-core', () => {
     wrapRun: jest.fn(() => ({code: 'the snippet', marker: 'MARKER', start: 'START'})),
     RunResultFilter: jest.fn(() => ({push: jest.fn(() => ({result: {value: 1}}))})),
     runOutput: jest.fn(() => ''),
+    // a cloud run is the API's, and the tests that override this are about what
+    // the window is told of it; the rest of them answer with the real protocol,
+    // which rejects for a connection with no token before it reaches the network
+    runCloud: jest.fn((...args) => actual.runCloud(...args)),
   }
 })
 
 // the history of a connection is the database's, which is not what this is about
 jest.mock('../services/history', () => ({appendHistory: jest.fn(() => [])}))
+
+// the token a cloud run is given is the main process's secret, and a test has no
+// secrets file: what the app would have saved is what this answers with
+jest.mock('../database/secrets', () => ({cloudToken: () => 'a-cloud-token'}))
 
 // the project of a connection over ssh is read by a command of its own, and a
 // test has no machine to reach: what another machine would answer is what this
@@ -27,6 +35,8 @@ jest.mock('../remote', () => ({
   quoted: jest.requireActual('../remote').quoted,
 }))
 
+const {runCloud} = require('tinkr-core')
+
 const {Pty} = require('../pty/Pty')
 const {exec} = require('../remote')
 const {createPty} = require('../createPty')
@@ -34,6 +44,7 @@ const {readyIndex, clearRemoteIndexes} = require('../services/project')
 const {
   setEditorWindow,
   setPtyProcess,
+  getPtyProcess,
   setBackgroundPtyProcess,
 } = require('../processes')
 
@@ -259,5 +270,144 @@ describe('a run of a connection', () => {
     // it the way the terminal would have
     expect(answer[1].output).toBe('Could not open input file: artisan')
     expect(answer[1].value).toBe(null)
+  })
+})
+
+/**
+ * A connection on Laravel Cloud: no shell to boot anywhere, and a run that is a
+ * command the API is sent.
+ *
+ * What is checked here is that nothing of a session is started for it — a cloud
+ * connection that booted a pty would be a shell on this machine running code
+ * that was supposed to run in the environment — and that the answer reaches the
+ * window in the shape a session's run answers in.
+ */
+describe('a run of a connection on Laravel Cloud', () => {
+  const cloud = {
+    id: 'cloud',
+    is_cloud: true,
+    path: '',
+    cloud_application_id: 'app-1',
+    cloud_environment_id: 'env-1',
+  }
+
+  beforeEach(() => {
+    Pty.mockClear()
+    runCloud.mockReset()
+  })
+
+  afterEach(() => {
+    setEditorWindow('cloud', null)
+    setPtyProcess('cloud', null)
+  })
+
+  test('is the API\'s, and never a session booted on this machine', async () => {
+    const win = {webContents: {send: jest.fn()}}
+
+    setEditorWindow('cloud', win)
+
+    runCloud.mockResolvedValue({
+      blocks: [{type: 'text', value: 'hello'}],
+      value: "it's",
+      error: null,
+      queries: [],
+      queriesTotal: 0,
+      output: 'hello',
+      commandId: 'cmd-1',
+    })
+
+    createPty(cloud, 'the snippet', null, 45000)
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    // nothing of a session exists for a cloud connection
+    expect(Pty).not.toHaveBeenCalled()
+
+    const [connection, code, options] = runCloud.mock.calls[0]
+
+    expect(connection).toBe(cloud)
+    expect(code).toBe('the snippet')
+    // the run is given the token the app holds and the time it may take, which
+    // is the preference's own number of milliseconds
+    expect(options.token).toBe('a-cloud-token')
+    expect(options.timeout).toBe(45000)
+    expect(options.signal.aborted).toBe(false)
+
+    const result = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(result[1].value).toBe("it's")
+    expect(result[1].output).toBe('hello')
+    expect(result[1].duration).toBeGreaterThanOrEqual(0)
+    expect(win.webContents.send).toHaveBeenCalledWith('runOutput', 'hello')
+    expect(win.webContents.send).toHaveBeenCalledWith('historyConnection', [])
+
+    // the run is over, so nothing is left for stop to kill
+    expect(getPtyProcess('cloud')).toBe(null)
+  })
+
+  // the handle a cloud run leaves behind is what stop, replace and close act on,
+  // and a pty's kill is what they call: a handle without one is a stop that
+  // threw where the panel's button is
+  test('leaves a handle whose kill stops waiting for it', () => {
+    setEditorWindow('cloud', {webContents: {send: jest.fn()}})
+
+    let signal = null
+
+    runCloud.mockImplementation((connection, code, options) => {
+      signal = options.signal
+
+      return new Promise(() => {})
+    })
+
+    createPty(cloud, 'the snippet')
+
+    const handle = getPtyProcess('cloud')
+
+    expect(typeof handle.kill).toBe('function')
+
+    handle.kill()
+
+    expect(signal.aborted).toBe(true)
+  })
+
+  test('answers a refused run with the error\'s own words, in the shape a failed run has', async () => {
+    const win = {webContents: {send: jest.fn()}}
+
+    setEditorWindow('cloud', win)
+
+    runCloud.mockRejectedValue(Object.assign(
+      new Error('Laravel Cloud keeps running command cmd-1 until it ends.'),
+      {name: 'CloudError', code: 'timeout'},
+    ))
+
+    createPty(cloud, 'the snippet')
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer[1]).toEqual(expect.objectContaining({
+      blocks: [],
+      value: null,
+      queries: [],
+      queriesTotal: 0,
+      output: '',
+    }))
+    expect(answer[1].error).toEqual({
+      class: 'CloudError',
+      message: 'Laravel Cloud keeps running command cmd-1 until it ends.',
+    })
+    expect(getPtyProcess('cloud')).toBe(null)
+  })
+
+  // a cloud connection is a place runs are sent to, not a shell that a session
+  // can be booted in: opening one must not start anything
+  test('boots nothing when the window opens it without code', () => {
+    setEditorWindow('cloud', {webContents: {send: jest.fn()}})
+
+    createPty(cloud)
+
+    expect(runCloud).not.toHaveBeenCalled()
+    expect(Pty).not.toHaveBeenCalled()
   })
 })

@@ -3,6 +3,7 @@ import ShortcutsForm from './ShortcutsForm'
 import LabForm from './LabForm'
 import AiForm from './AiForm'
 import McpForm from './McpForm'
+import CloudForm from './CloudForm'
 
 /* The rail's icons, drawn the way the rest of the interface is: a bar whose
    ends are cut at the same 29 degrees as the return bars, and nothing else. A
@@ -58,6 +59,15 @@ const PlugIcon = () => (
   </Icon>
 )
 
+/* the cloud is two bars in a step, the same pair the connection dialog's rail
+   draws for it: an application over the environment its code is sent to */
+const CloudIcon = () => (
+  <Icon>
+    <path d={bar(3, 3.5, 7)}/>
+    <path d={bar(3, 8, 10)}/>
+  </Icon>
+)
+
 /**
  * The settings the app has, in the order the rail lists them. The index is what
  * `preferenceTabIndexAtom` holds, so the rail and the column read one list.
@@ -92,6 +102,12 @@ const sections = [
     labelId: 'preference.mcp',
     Icon: PlugIcon,
     Form: McpForm,
+  },
+  {
+    id: 'cloud',
+    labelId: 'preference.cloud',
+    Icon: CloudIcon,
+    Form: CloudForm,
   },
 ]
 

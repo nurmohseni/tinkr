@@ -48,6 +48,16 @@ contextBridge.exposeInMainWorld('api', {
     }
   },
 
+  // a section the settings screen is asked to open on, sent after the page has
+  // loaded and when the window is already open
+  onPreferenceSection: cb => {
+    const listener = (event, section) => cb(section)
+    ipcRenderer.on('preferenceSection', listener)
+    return {
+      dispose: () => ipcRenderer.off('preferenceSection', listener),
+    }
+  },
+
   onUpdateState: channel => cb => {
     const listener = (event, payload) => cb(payload)
     ipcRenderer.on(channel, listener)
@@ -68,8 +78,18 @@ contextBridge.exposeInMainWorld('api', {
   connectConnection: connection => ipcRenderer.send('connectConnection', connection),
   reconnectConnection: connection => ipcRenderer.send('reconnectConnection', connection),
   quickConnect: () => ipcRenderer.send('quickConnect'),
-  openPreference: () => ipcRenderer.send('openPreference'),
+  // the section is what a settings link in the editor asks for — "add a Laravel
+  // Cloud token" is the Laravel Cloud section of the settings, not the first one
+  openPreference: section => ipcRenderer.send('openPreference', section),
+  openExternal: url => ipcRenderer.send('openExternal', url),
   openLogs: () => ipcRenderer.send('openLogs'),
+
+  // the Laravel Cloud token is the main process's, and this window is told only
+  // whether there is one: every call that needs it is made there
+  cloudStatus: () => invoke('cloudStatus'),
+  setCloudToken: token => invoke('setCloudToken', token),
+  forgetCloudToken: () => invoke('forgetCloudToken'),
+  listCloudApplications: () => invoke('listCloudApplications'),
   logFiles: () => invoke('logFiles', connectionId()),
   logRead: (name, options) => invoke('logRead', connectionId(), name, options),
   mcpInfo: () => ipcRenderer.sendSync('mcpInfo'),

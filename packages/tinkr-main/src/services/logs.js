@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const {phpString, containerRead, containerPath, inContainer} = require('tinkr-core')
+const {phpString, containerRead, containerPath, inContainer, isCloud} = require('tinkr-core')
 
 const {config} = require('../database/config')
 const {exec, quoted} = require('../remote')
@@ -43,6 +43,11 @@ const jsonLine = /^\s*\{.*"level_name"\s*:.*\}\s*$/
 
 // the levels monolog knows, which is what a filter offers
 const levels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency']
+
+// what a Laravel Cloud connection answers about its logs: the app has no
+// filesystem in that environment to read, and the API's own log endpoint is not
+// something this viewer is written against (see the plan's own scope note)
+const cloudUnavailable = 'Logs are not available for Laravel Cloud connections.'
 
 /**
  * Where a connection's log files are.
@@ -158,6 +163,13 @@ const sshFiles = async connection => {
  * @return {Object|Promise<Object>} `files`, and `dir` for the panel to say where it looked
  */
 const files = connection => {
+  // a cloud connection has no project on this machine to read, and no log
+  // directory of its own here: its path is a local checkout that is not the
+  // environment's, so reading it would be showing the wrong machine's logs
+  if (isCloud(connection)) {
+    throw new Error(cloudUnavailable)
+  }
+
   if (connection && connection.is_over_ssh) {
     return sshFiles(connection)
   }
@@ -605,6 +617,12 @@ const sshWindow = async (connection, name, {bytes, before, since, until, after} 
  * @return {Object|Promise<Object>} `text`, `entries`, and what was read of what there is
  */
 const read = (connection, name, {bytes, before, since, until, after} = {}) => {
+  // a cloud connection's logs are inside Laravel Cloud, and this reads files:
+  // answering with a local checkout's log would be another machine's file
+  if (isCloud(connection)) {
+    throw new Error(cloudUnavailable)
+  }
+
   // the name comes from a window, and a window has no business naming a path
   if (name !== path.basename(name) || !name.endsWith('.log')) {
     throw new Error(`${name} is not a log file of this connection.`)

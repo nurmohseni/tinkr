@@ -34,7 +34,7 @@ const topics = [
   },
   {
     name: 'connections',
-    title: 'Connections: local, container, ssh, production',
+    title: 'Connections: local, container, ssh, Laravel Cloud, production',
     summary: 'Where code runs, and what a production tag changes.',
   },
   {
@@ -215,6 +215,12 @@ A connection is a project plus the command that reaches it. The app saves them;
   docker exec -it <name> php artisan tinker'\`, and the reads run inside the
   container over the same connection. \`path\` is the project's directory on the
   server, \`container_path\` is where the container sees it.
+- **Laravel Cloud** — the project is an environment on Laravel Cloud. Nothing is
+  booted here: the run is sent as one command to the environment, through
+  Laravel Cloud's API with the token saved in the app, and its answer is read
+  when the command ends. \`path\`, when set, is only a local checkout the class
+  names are read from. Laravel Cloud cannot cancel a command, so a run that times
+  out or is stopped keeps running there until it ends.
 
 ## The production tag
 
@@ -241,9 +247,10 @@ something, say what and why before the call.
   or the directory itself when there is none.
 - Neither: the connection this server was started on.
 
-\`tinkr_run_php\` is for a connection on this machine, \`tinkr_run_php_over_ssh\`
-for one over ssh. The two are not interchangeable — a call that names the wrong
-kind is refused with a message that names the right tool.`
+\`tinkr_run_php\` is for a connection on this machine or on Laravel Cloud,
+\`tinkr_run_php_over_ssh\` for one over ssh. The two are not interchangeable — a
+call that names the wrong kind is refused with a message that names the right
+tool.`
 
 /**
  * The tools.

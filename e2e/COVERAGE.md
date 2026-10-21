@@ -23,7 +23,7 @@ exercise the surface through its UI, not through a stub of it.
 | Theme attribute and the window's own theme | `01-app-shell`, `11-preferences` |
 | Locale switch and live messages | `11-preferences` |
 | Messages arrive before the window renders (no blank Loading) | every launch helper, `00-smoke` |
-| Preferences window and its five sections | `11-preferences`, `16-mcp` |
+| Preferences window and its six sections | `11-preferences`, `16-mcp`, `24-laravel-cloud` |
 | Logs window | `13-logs`, `15-container-ssh` |
 | Update prompt | `14-update` |
 
@@ -33,9 +33,10 @@ exercise the surface through its UI, not through a stub of it.
 | --- | --- |
 | List, current row, counts, quick/new buttons | `01-app-shell`, `02-connections` |
 | The four kinds and the fields each shows | `02-connections` |
+| The fifth kind, Laravel Cloud: the token notice, picking an application and an environment, the saved route | `24-laravel-cloud` |
 | Draft closed without being stored | `02-connections` |
 | Connect creates and switches the window | `02-connections` |
-| Autosave, tags, production label | `02-connections` |
+| Save writes an edit, closing discards it, tags, production label | `02-connections` |
 | Clone event, delete confirmation | `02-connections` |
 | Directory picker and SSH key picker | `18-connection-pickers` |
 | SSH password kept in a 0600 file, never rendered, forgotten, dropped on local | `03-password` |
@@ -45,6 +46,7 @@ exercise the surface through its UI, not through a stub of it.
 | Native connection context menu | Native menu; its clone and delete messages are tested in `02-connections` |
 | `closeConnection` (delete the last/current connection) | Not E2E; the window would quit |
 | SSH + container together | Not E2E; container and ssh are proven separately |
+| Cloud connection opens with the environment's status line and PHP version | `24-laravel-cloud` |
 
 ## Editor and documents
 
@@ -104,6 +106,7 @@ exercise the surface through its UI, not through a stub of it.
 | Snippet form switch and prefix | `11-preferences` |
 | AI provider, endpoint, token, model, delay, check | `12-ai` |
 | MCP connection, entry, tools, client configure, copy | `16-mcp` |
+| Laravel Cloud token: a refused token, a saved one, forgetting it | `24-laravel-cloud` |
 | Recording the AI/new-connection shortcuts | Not E2E; their default bindings are tested |
 | Every locale | Not E2E; one non-English locale is tested |
 | Light-theme palette beyond the `data-theme` attribute | Not E2E |
@@ -119,6 +122,19 @@ exercise the surface through its UI, not through a stub of it.
 | Inline completion request, ghost text, acceptance | `22-ai-autocomplete` |
 | Provider error wording | Not E2E; unit-tested service paths |
 | Anthropic/custom wire styles | Not E2E; only the OpenAI shape is driven |
+
+## Laravel Cloud
+
+| Surface | Proof |
+| --- | --- |
+| A snippet runs as one environment command, and its printed output and value come back | `24-laravel-cloud` |
+| The applications list follows `links.next`, so a later page's application is choosable | `24-laravel-cloud` |
+| A missing permission is named in the error | `24-laravel-cloud` |
+| Stopping a run says Laravel Cloud keeps the command running | `24-laravel-cloud` |
+| The connection's window shows its status line and the environment's PHP version | `24-laravel-cloud` |
+| No token saved: the dialog says so and opens the settings section | `24-laravel-cloud` |
+| Command size limit, the API's error mapping, pagination without a next link | Unit (`tinkr-core` cloud tests) |
+| Cloud logs, live reflection and closure-valued snippet fields | Not available by design (see `laravel-cloud-plan.md`); a run says so rather than pretending |
 
 ## Updates and MCP
 
@@ -140,7 +156,8 @@ All of these are exercised through the bridge, not called from a test:
 | --- | --- | --- |
 | Config and language | `allConfig`, `setConfig`, `getLocale`, `setLocale`, `allLocales`, `getIntlConfig` | `11-preferences`, every launch |
 | Connections | `allConnections`, `getConnection`, `createConnection`, `updateConnection`, `deleteConnection`, `forgetPassword`, `connectConnection`, `reconnectConnection`, `quickConnect`, `listContainers`, `listProjectDirs` | `01`, `02`, `03`, `18`, `15` |
-| Session | `runConnection`, `inputConnection`, `stopConnection` | `04`, `19` |
+| Session | `runConnection`, `inputConnection`, `stopConnection` | `04`, `19`, `24` |
+| Laravel Cloud | `cloudStatus`, `setCloudToken`, `forgetCloudToken`, `listCloudApplications` | `24` |
 | Snippets and history | `allSnippets`, `createSnippet`, `updateSnippet`, `deleteSnippet`, `allHistory`, `clearHistory` | `06`, `07` |
 | Logs | `logFiles`, `logRead` | `13`, `15` |
 | AI and form | `aiProviders`, `aiAsk`, `aiComplete`, `aiCheck`, `aiFiles`, `parsePhpForm`, `stringifyPhpForm`, `phpCompletions` | `12`, `17`, `20`, `22` |
@@ -171,6 +188,9 @@ covered:
 - SSH and container flows are opt-in (`TINKR_E2E_LOCAL_SSH=1`, Docker plus a PHP
   image). Without them the suite still runs, with those tests skipped.
 - The suite is serial by construction and takes a few minutes.
+- `24-laravel-cloud` runs against a fake API on loopback
+  ([`support/fakeCloud.js`](./support/fakeCloud.js)); the commands it starts are
+  real php processes in the fixture project, so no test reaches the network.
 - A handful of edge branches are left to unit tests: update progress/failure,
   AI provider errors and non-OpenAI wire styles, query/result limits, Monolog's
   JSON entries, and the MCP tools that read the app's history.

@@ -326,6 +326,60 @@ function dd(...$values)
     exit(1);
 }
 
+/**
+ * `collect()` as the fixture spells it: the values it was given, with the one
+ * method a snippet here asks of them. Laravel's collection is a large dependency
+ * to install for a suite whose subject is the app, and `sum()` is what a
+ * snippet in it computes.
+ */
+class TinkrFixtureCollection
+{
+    private $items;
+
+    public function __construct($items = [])
+    {
+        $this->items = $items;
+    }
+
+    public function sum()
+    {
+        return array_sum($this->items);
+    }
+}
+
+function collect($items = [])
+{
+    return new TinkrFixtureCollection($items);
+}
+
+// `tinker --execute=<code>` is how a Laravel Cloud run reaches a project: one
+// command, one eval, and the process ends. The code is evaluated here, at the
+// top level, which is the scope the interactive loop's own eval runs in — so the
+// wrapper's variables, `DB` and the query event behave exactly as they do in a
+// session, and the caller reads the same envelope out of stdout.
+$execute = null;
+
+foreach (array_slice($argv, 1) as $argument) {
+    if (strncmp($argument, '--execute=', strlen('--execute=')) === 0) {
+        $execute = substr($argument, strlen('--execute='));
+    }
+}
+
+if ($execute !== null) {
+    try {
+        eval($execute);
+    } catch (Throwable $e) {
+        // the same words the loop says, and the status a failed command has:
+        // the caller reads the output rather than waiting for an envelope that
+        // cannot be printed
+        echo PHP_EOL, 'PHP ', get_class($e), ': ', $e->getMessage(), PHP_EOL;
+
+        exit(1);
+    }
+
+    exit(0);
+}
+
 // icanon off is what lifts the 4096-byte line limit; echo off keeps the wrapper
 // out of the output pane, which the app's filter would otherwise have to strip
 @shell_exec('stty -F /dev/tty -icanon -echo 2>/dev/null');

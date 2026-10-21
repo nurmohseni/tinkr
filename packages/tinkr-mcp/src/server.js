@@ -531,24 +531,54 @@ const limitOf = args => {
 }
 
 /**
+ * A saved connection, as a client reads it.
+ *
+ * A Laravel Cloud connection has no command and no server to attach to: its code
+ * runs as a command inside an environment Laravel Cloud owns, named here by the
+ * application and environment it was saved with. Its `path` is only the local
+ * checkout the class index is read from, so it is reported as that rather than
+ * as where the code runs.
+ *
+ * `cloud` is there only for a cloud connection: every other kind reads exactly
+ * as it always has.
+ *
  * @param {Record<String, any>} connection
  * @return {Object}
  */
-const connectionInfo = connection => ({
-  id: connection.id,
-  name: connection.name || null,
-  tag: connection.tag || null,
-  directory: connection.is_over_ssh ? null : connection.path || null,
-  command: connection.command || null,
-  over_ssh: Boolean(connection.is_over_ssh),
-  ssh: connection.is_over_ssh
-    ? {
-        server: connection.ssh_server || null,
-        user: connection.ssh_user || null,
-        port: connection.ssh_port || null,
-      }
-    : null,
-})
+const connectionInfo = connection => {
+  const info = {
+    id: connection.id,
+    name: connection.name || null,
+    tag: connection.tag || null,
+    directory: connection.is_over_ssh || connection.is_cloud ? null : connection.path || null,
+    command: connection.is_cloud ? null : connection.command || null,
+    over_ssh: Boolean(connection.is_over_ssh),
+    ssh: connection.is_over_ssh
+      ? {
+          server: connection.ssh_server || null,
+          user: connection.ssh_user || null,
+          port: connection.ssh_port || null,
+        }
+      : null,
+  }
+
+  if (connection.is_cloud) {
+    info.cloud = {
+      application: {
+        id: connection.cloud_application_id || null,
+        name: connection.cloud_application_name || null,
+      },
+      environment: {
+        id: connection.cloud_environment_id || null,
+        name: connection.cloud_environment_name || null,
+      },
+      // the checkout, when there is one, is read for class names only
+      local_checkout: connection.path || null,
+    }
+  }
+
+  return info
+}
 
 const productionRule = 'A connection tagged production is refused unless this server was started on ' +
   'it (--connection) or with --allow-production.'
@@ -652,12 +682,15 @@ const TOOLS = [
   {
     name: 'tinkr_run_php',
     title: 'Run PHP in a project',
-    description: 'Run PHP in a project on this machine, in that project\'s own Tinker session, ' +
+    description: 'Run PHP in a project on this machine, or in a Laravel Cloud environment, in ' +
+      'that project\'s own Tinker session, ' +
       'and answer with what every statement returned and what the code printed. The session ' +
       'is booted for the call, so the code on disk is the code that runs, and the code runs ' +
       'with the project booted: its classes, its configuration, its database. Every statement ' +
       'is evaluated in order and the run stops at the first one that throws. Pass ' +
-      '`guard: "rollback"` for a dry run. ' + productionRule,
+      '`guard: "rollback"` for a dry run. A Laravel Cloud connection is sent as one command ' +
+      'to the environment it names, which is a container Laravel Cloud runs: nothing is booted ' +
+      'here, and a run that is stopped keeps running there until it ends. ' + productionRule,
     annotations: {readOnlyHint: false, destructiveHint: true, openWorldHint: false},
     inputSchema: {
       type: 'object',
@@ -675,7 +708,8 @@ const TOOLS = [
         connection: {
           type: 'string',
           description: 'The id or name of a connection saved in Tinkr, when the code should run ' +
-            'in that one. A connection over ssh is refused here: use tinkr_run_php_over_ssh.',
+            'in that one. A Laravel Cloud connection runs in the environment it names. A ' +
+            'connection over ssh is refused here: use tinkr_run_php_over_ssh.',
         },
         guard: guardInput,
         timeout_ms: timeoutInput,
@@ -796,7 +830,9 @@ const TOOLS = [
     name: 'tinkr_list_connections',
     title: 'List the saved connections',
     description: 'List the connections saved in Tinkr: the directories and the servers the app ' +
-      'runs code in, with the command each session is started with.',
+      'runs code in, with the command each session is started with. A Laravel Cloud connection ' +
+      'is listed with the application and environment it was saved with instead: it has no ' +
+      'command and no server, and its code runs inside an environment Laravel Cloud owns.',
     annotations: {readOnlyHint: true, destructiveHint: false, openWorldHint: false},
     inputSchema: {type: 'object', properties: {}, additionalProperties: false},
   },
@@ -957,17 +993,21 @@ const createServer = ({
     const remote = Boolean(connection.is_over_ssh)
 
     if (remote !== overSsh) {
+      // a cloud connection is neither: it runs in an environment Laravel Cloud
+      // owns, and naming it as one that runs here would be a wrong answer to the
+      // question the caller is asking
+      const where = connection.is_cloud ? 'runs on Laravel Cloud' : (remote ? 'runs over ssh' : 'runs on this machine')
+      const tool = connection.is_cloud ? 'tinkr_run_php' : (remote ? 'tinkr_run_php_over_ssh' : 'tinkr_run_php')
+
       if (!named) {
         throw new Error(overSsh
-          ? `This server was started on ${connection.name}, which runs on this machine. ` +
+          ? `This server was started on ${connection.name}, which ${where}. ` +
             'Name a connection that runs over ssh.'
-          : `This server was started on ${connection.name}, which runs over ssh. ` +
-            'Use tinkr_run_php_over_ssh.')
+          : `This server was started on ${connection.name}, which ${where}. ` +
+            `Use ${tool}.`)
       }
 
-      throw new Error(remote
-        ? `${connection.name} runs over ssh. Use tinkr_run_php_over_ssh.`
-        : `${connection.name} runs on this machine. Use tinkr_run_php.`)
+      throw new Error(`${connection.name} ${where}. Use ${tool}.`)
     }
 
     if (connection.tag === 'production' && !allowProduction && !(found.saved && connection.id === pinnedId)) {
@@ -979,8 +1019,10 @@ const createServer = ({
     }
 
     // a directory that is not there would boot the session in the home
-    // directory instead, where there is no project to run in
-    if (!remote) {
+    // directory instead, where there is no project to run in. A cloud
+    // connection boots nothing here: its path is an optional local checkout for
+    // class names, and a run goes to Laravel Cloud with or without one
+    if (!remote && !connection.is_cloud) {
       let directory = false
 
       try {

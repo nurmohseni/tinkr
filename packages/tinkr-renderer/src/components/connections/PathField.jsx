@@ -23,12 +23,18 @@ const BrowseIcon = () => (
  * The project path, with the directory picker set into the end of the field. An
  * SSH connection reaches a remote path, so the picker is only offered for a
  * project on this machine.
+ *
+ * A Laravel Cloud connection has no use for a path: its code runs in the
+ * environment, not in a directory here. What the path is then is a local copy of
+ * the same project, which is read for the class names the editor completes from,
+ * so the line under the field says so and the field stays optional.
  */
 const PathField = () => {
   const intl = useIntl()
   const {watch, setValue, register} = useFormContext()
 
   const isOverSSH = watch('is_over_ssh')
+  const isCloud = watch('is_cloud')
   const pick = intl.formatMessage({id: 'connections.select_directory'})
 
   return (
@@ -42,7 +48,7 @@ const PathField = () => {
           id='connection-path'
           name='path'
           type='text'
-          placeholder='/var/www/html'
+          placeholder={isCloud ? undefined : '/var/www/html'}
           spellCheck={false}
           autoComplete='off'
           {...register('path')}
@@ -68,6 +74,12 @@ const PathField = () => {
           </button>
         )}
       </div>
+
+      {isCloud && (
+        <p className='cfield__note'>
+          {intl.formatMessage({id: 'connections.path_cloud_hint'})}
+        </p>
+      )}
     </Field>
   )
 }

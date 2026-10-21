@@ -24,6 +24,15 @@ const newConnection = name => ({
   is_over_ssh: false,
   path: '',
   command: '',
+  // a connection that is not one of Laravel Cloud's carries the fields anyway,
+  // empty: a form that read a missing field would have to tell "not a cloud
+  // connection" from "a cloud connection with nothing chosen", and the kind is
+  // what says which
+  is_cloud: false,
+  cloud_application_id: '',
+  cloud_application_name: '',
+  cloud_environment_id: '',
+  cloud_environment_name: '',
 })
 
 export {newConnectionId, newConnection}

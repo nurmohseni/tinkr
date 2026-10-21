@@ -85,6 +85,30 @@ stays untouched.
 | `21-result-actions` | copy a value, a row and a CSV, and write the CSV to disk |
 | `22-ai-autocomplete` | an inline completion request, its ghost text, and taking it |
 | `23-mcp-server` | the MCP server over JSON-RPC: handshake, tools, run, guard, snippets |
+| `24-laravel-cloud` | a token checked, saved and forgotten; a connection built from an application and its environment; a run through the API and what it printed; a missing permission; a stop |
+
+## The Laravel Cloud fake
+
+`24-laravel-cloud` points the app at a fake API on loopback
+([`support/fakeCloud.js`](./support/fakeCloud.js)) with
+`TINKR_LARAVEL_CLOUD_URL`, which is the one thing about a cloud connection a
+test can replace: the transport is real fetch, the envelope is real JSON:API,
+and the command the app posts is really run, by `sh -c` in the fixture project.
+So a run in that spec is a real `php artisan tinker --execute=…` process, and
+the only thing standing in for the platform is the network.
+
+```js
+const cloud = await startFakeCloud({applications, fail: {status: 403, path: /\/commands/}})
+const {page, close} = await launchTinkr(
+  {secrets: {'@laravel-cloud': 'fixture-cloud-token'}},
+  {env: {TINKR_LARAVEL_CLOUD_URL: cloud.url}},
+)
+```
+
+The fixture serves two applications, one per page, so the picker's `links.next`
+is followed. `fail` forces a status for the calls whose path it matches, which
+is how a token that is valid and not permitted is driven. `requests` holds every
+call the app made, and `commands` what the fake started.
 
 ## Environment-dependent flows
 

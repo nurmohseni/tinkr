@@ -1,4 +1,4 @@
-const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead} = require('tinkr-core')
+const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead, isCloud} = require('tinkr-core')
 
 const {exec, quoted} = require('../remote')
 
@@ -270,6 +270,45 @@ const walkIndex = connection => {
 }
 
 /**
+ * Whether a connection's project lives on a machine this one has to ask.
+ *
+ * A connection over ssh does, and its machine is asked with a command of its
+ * own. A connection on Laravel Cloud does not: its code runs in Laravel Cloud's
+ * container, and the project this app can read is the local checkout the
+ * connection names, if it names one. That checkout is read here, from this
+ * machine's files, and never through the API — a class list is not worth a
+ * command in a production environment's history.
+ *
+ * @param {Record<String, any>} connection
+ * @return {Boolean}
+ */
+const onAnotherMachine = connection => Boolean(connection && connection.is_over_ssh)
+
+/**
+ * The index of the project this machine holds for a connection.
+ *
+ * A cloud connection without a path has no project here at all: an empty index
+ * is what it offers, because a suggestion popup with no names is the truth and
+ * a walk of the home directory would be a guess.
+ *
+ * @param {Record<String, any>} connection
+ * @return {Object|null}
+ */
+const localIndex = connection => (isCloud(connection) && !connection.path
+  ? emptyIndex()
+  : classIndex(connection.path))
+
+/**
+ * An index of a project that declares nothing.
+ *
+ * It is the same shape the other reads answer with, so everything that reads an
+ * index — the popup, a prompt's attachments — needs no case of its own.
+ *
+ * @return {Object}
+ */
+const emptyIndex = () => indexFrom({})
+
+/**
  * The index of a connection's project, for whoever can wait for it to be read.
  *
  * A prompt's attachments are asked for when the request is sent, and a request
@@ -288,8 +327,8 @@ const indexFor = async connection => {
   }
 
   // a local project is this machine's, and its index is kept once read
-  if (!connection.is_over_ssh) {
-    return classIndex(connection.path)
+  if (!onAnotherMachine(connection)) {
+    return localIndex(connection)
   }
 
   return remoteIndexes.get(connection.id) || walkIndex(connection)
@@ -314,8 +353,8 @@ const readyIndex = connection => {
     return null
   }
 
-  if (!connection.is_over_ssh) {
-    return classIndex(connection.path)
+  if (!onAnotherMachine(connection)) {
+    return localIndex(connection)
   }
 
   return remoteIndexes.get(connection.id) || null
@@ -340,8 +379,9 @@ const readyIndex = connection => {
  * for it
  */
 const prefetchIndex = connection => {
-  // this machine's projects are read here, in the moment they are asked about
-  if (!connection || !connection.is_over_ssh) {
+  // this machine's projects are read here, in the moment they are asked about,
+  // and a cloud connection's local checkout is one of them
+  if (!connection || !onAnotherMachine(connection)) {
     return undefined
   }
 
@@ -367,7 +407,7 @@ const prefetchIndex = connection => {
  * for it
  */
 const refreshIndex = connection => {
-  if (!connection || !connection.is_over_ssh) {
+  if (!connection || !onAnotherMachine(connection)) {
     return undefined
   }
 
@@ -390,7 +430,7 @@ const filesFor = async (connection, typed) => {
     return []
   }
 
-  if (!connection.is_over_ssh) {
+  if (!onAnotherMachine(connection)) {
     return localFilesFor(connection.path, typed)
   }
 
@@ -440,7 +480,7 @@ const attachmentsFor = async (connection, prompt) => {
     return []
   }
 
-  if (!connection.is_over_ssh) {
+  if (!onAnotherMachine(connection)) {
     return localAttachmentsFor(connection.path, prompt)
   }
 
