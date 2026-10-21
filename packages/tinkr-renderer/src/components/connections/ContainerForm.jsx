@@ -30,7 +30,7 @@ const ENGINES = ['docker', 'podman', 'sail', 'kubectl']
  * @param {Record<String, any>} connection what the form holds
  * @return {{containers: Array, dirs: Array, loading: Object}}
  */
-const useDiscovery = ({id, container_engine: engine, container_name: name, is_over_ssh: ssh, ssh_server: server, ssh_port: port, ssh_user: user, ssh_password: saved}) => {
+const useDiscovery = ({id, container_engine: engine, container_name: name, is_over_ssh: ssh, ssh_server: server, ssh_port: port, ssh_user: user, ssh_key: key, ssh_password: saved}) => {
   const [containers, setContainers] = useState([])
   const [dirs, setDirs] = useState([])
   const [loading, setLoading] = useState({containers: false, dirs: false})
@@ -57,6 +57,7 @@ const useDiscovery = ({id, container_engine: engine, container_name: name, is_ov
       ssh_server: server,
       ssh_port: port,
       ssh_user: user,
+      ssh_key: key,
       ssh_password: saved,
     })
       .then(found => {
@@ -70,7 +71,7 @@ const useDiscovery = ({id, container_engine: engine, container_name: name, is_ov
       .finally(() => { if (live) { setLoading(one => Object.assign({}, one, {containers: false})) } })
 
     return () => { live = false }
-  }, [reachable, id, engine, ssh, server, port, user, saved])
+  }, [reachable, id, engine, ssh, server, port, user, key, saved])
 
   useEffect(() => {
     let live = true
@@ -91,6 +92,7 @@ const useDiscovery = ({id, container_engine: engine, container_name: name, is_ov
       ssh_server: server,
       ssh_port: port,
       ssh_user: user,
+      ssh_key: key,
       ssh_password: saved,
     })
       .then(found => {
@@ -102,7 +104,7 @@ const useDiscovery = ({id, container_engine: engine, container_name: name, is_ov
       .finally(() => { if (live) { setLoading(one => Object.assign({}, one, {dirs: false})) } })
 
     return () => { live = false }
-  }, [reachable, id, engine, ssh, server, port, user, saved, name])
+  }, [reachable, id, engine, ssh, server, port, user, key, saved, name])
 
   return {containers, dirs, loading}
 }
@@ -138,6 +140,7 @@ const ContainerForm = () => {
     ssh_server: server,
     ssh_port: watch('ssh_port'),
     ssh_user: user,
+    ssh_key: watch('ssh_key'),
     ssh_password: watch('ssh_password'),
   })
 

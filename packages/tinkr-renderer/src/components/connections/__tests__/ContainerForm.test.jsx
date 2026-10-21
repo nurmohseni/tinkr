@@ -86,6 +86,22 @@ describe('the container fields of a connection', () => {
     view.done()
   })
 
+  // a server that only lets a key in refuses a listing made without it, and
+  // the form would read the refusal as "nothing is running"
+  test('reaches the server with the connection\'s own key', async () => {
+    const view = render(
+      {is_over_ssh: true, ssh_server: 'srv', ssh_user: 'root', ssh_key: '/home/me/.ssh/id_deploy', container_engine: 'docker', container_name: 'app-1', container_path: ''},
+      {listContainers: jest.fn(async () => []), listProjectDirs: jest.fn(async () => [])},
+    )
+
+    await settle()
+
+    expect(listContainers).toHaveBeenCalledWith(expect.objectContaining({ssh_key: '/home/me/.ssh/id_deploy'}))
+    expect(listProjectDirs).toHaveBeenCalledWith(expect.objectContaining({ssh_key: '/home/me/.ssh/id_deploy'}))
+
+    view.done()
+  })
+
   // a machine that cannot answer is one with nothing to offer, and the field is
   // still a field: a typed name is what a connection the app cannot list uses
   test('never blocks the field, and says so when nothing answered', async () => {
