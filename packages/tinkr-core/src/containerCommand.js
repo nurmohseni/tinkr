@@ -275,6 +275,9 @@ const projectDirsCommand = (root = '/') => `php -r ${word(
   // a link can point anywhere, and a project found through one is not one of
   // this container's: what is walked is what is really here
   'if (@is_link($tinkr_path)) { continue; }' +
+  // every package a project installed has a composer.json of its own, and none
+  // of them is a project to run tinker in: a dependency tree is not walked
+  "if ($tinkr_entry === 'vendor' || $tinkr_entry === 'node_modules') { continue; }" +
   'if (@is_dir($tinkr_path)) { $tinkr_walk($tinkr_path, $depth + 1); }' +
   '}' +
   '};' +

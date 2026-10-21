@@ -155,6 +155,34 @@ describe('a container connection', () => {
     expect(question.startsWith('php -r ')).toBe(true)
   })
 
+  // every installed package has a composer.json of its own: a project with a
+  // vendor directory is one project, not a hundred
+  test('finds the project and not the packages it installed', () => {
+    const fs = require('fs')
+    const os = require('os')
+    const path = require('path')
+    const {execSync} = require('child_process')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-dirs-'))
+    const touch = file => {
+      fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true})
+      fs.writeFileSync(path.join(root, file), '{}')
+    }
+
+    touch('app/artisan')
+    touch('app/vendor/laravel/framework/composer.json')
+    touch('app/node_modules/pkg/composer.json')
+    touch('srv/api/composer.json')
+
+    try {
+      const answer = execSync(projectDirsCommand(root), {encoding: 'utf8'})
+
+      expect(projectDirsIn(answer)).toEqual([path.join(root, 'app'), path.join(root, 'srv/api')])
+    } finally {
+      fs.rmSync(root, {recursive: true, force: true})
+    }
+  })
+
   test('knows whether a project is in a container, on either machine', () => {
     expect(inContainer({container_engine: 'docker'})).toBe(true)
     expect(inContainer({is_over_ssh: true, container_engine: 'podman'})).toBe(true)
