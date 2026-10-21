@@ -23,6 +23,7 @@
 </p>
 
 <p align="center">
+  <a href="https://tinkrapp.dev">Website</a> ·
   <a href="#install">Install</a> ·
   <a href="#features">Features</a> ·
   <a href="#mcp-server">MCP server</a> ·
