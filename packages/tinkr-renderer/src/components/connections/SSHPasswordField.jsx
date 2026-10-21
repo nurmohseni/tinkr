@@ -66,8 +66,8 @@ const SSHPasswordField = () => {
       />
 
       {saved && (
-        <div className='row' style={{marginTop: 'var(--s2)'}}>
-          <span className='field__help grow'>
+        <div className='cfield__note'>
+          <span className='grow'>
             {intl.formatMessage({id: 'connections.ssh_password_kept'})}
           </span>
 

@@ -3,6 +3,7 @@ import {useFormContext} from 'react-hook-form'
 import {useIntl} from 'react-intl'
 
 import Field from '../Field'
+import Section from './Section'
 import {listContainers, listProjectDirs} from '../../utils/api'
 
 // the engines a container connection can be built for, in the order the app
@@ -148,21 +149,33 @@ const ContainerForm = () => {
   const dirsId = 'connection-container-paths'
 
   return (
-    <>
+    <Section
+      id='connection-container'
+      title={intl.formatMessage({id: 'connections.section_container'})}
+    >
       <Field
         label={intl.formatMessage({id: 'connections.container_engine'})}
-        htmlFor='connection-container-engine'
+        labelId='connection-container-engine-label'
       >
-        <select
-          className='select'
-          id='connection-container-engine'
-          style={{width: '100%'}}
-          {...register('container_engine')}
+        <div
+          className='segmented segmented--fill'
+          role='radiogroup'
+          aria-labelledby='connection-container-engine-label'
         >
           {ENGINES.map(one => (
-            <option key={one} value={one}>{one}</option>
+            <label
+              key={one}
+              className='segmented__item'
+            >
+              <input
+                type='radio'
+                value={one}
+                {...register('container_engine')}
+              />
+              {one}
+            </label>
           ))}
-        </select>
+        </div>
       </Field>
 
       {/* a datalist and not a select: what is running is what is offered, and a
@@ -172,7 +185,7 @@ const ContainerForm = () => {
         htmlFor='connection-container-name'
       >
         <input
-          className='input'
+          className='input input--mono'
           id='connection-container-name'
           name='container_name'
           type='text'
@@ -182,7 +195,6 @@ const ContainerForm = () => {
             : intl.formatMessage({id: 'connections.container_placeholder'})}
           spellCheck={false}
           autoComplete='off'
-          style={{fontFamily: 'var(--font-mono)'}}
           {...register('container_name')}
         />
 
@@ -198,30 +210,13 @@ const ContainerForm = () => {
         </datalist>
 
         {containers.length === 0 && !loading.containers && (
-          <span className='field__help' style={{marginTop: 'var(--s2)'}}>
+          <p className='cfield__note'>
             {intl.formatMessage({id: 'connections.container_none'})}
-          </span>
+          </p>
         )}
       </Field>
 
-      <Field
-        label={intl.formatMessage({id: 'connections.container_command'})}
-        htmlFor='connection-container-command'
-      >
-        <input
-          className='input'
-          id='connection-container-command'
-          name='container_command'
-          type='text'
-          placeholder='php artisan tinker'
-          spellCheck={false}
-          autoComplete='off'
-          style={{fontFamily: 'var(--font-mono)'}}
-          {...register('container_command')}
-        />
-      </Field>
-
-      {/* the project path above is the machine's, which is what the directory
+      {/* the project path below is the machine's, which is what the directory
           picker and a local index read. A container sees the project somewhere
           of its own — compose mounts it where the image expects — and this is
           where the reads that index the project and tail its logs go looking */}
@@ -230,7 +225,7 @@ const ContainerForm = () => {
         htmlFor='connection-container-path'
       >
         <input
-          className='input'
+          className='input input--mono'
           id='connection-container-path'
           name='container_path'
           type='text'
@@ -240,7 +235,6 @@ const ContainerForm = () => {
             : intl.formatMessage({id: 'connections.container_path_placeholder'})}
           spellCheck={false}
           autoComplete='off'
-          style={{fontFamily: 'var(--font-mono)'}}
           {...register('container_path')}
         />
 
@@ -250,7 +244,23 @@ const ContainerForm = () => {
           ))}
         </datalist>
       </Field>
-    </>
+
+      <Field
+        label={intl.formatMessage({id: 'connections.container_command'})}
+        htmlFor='connection-container-command'
+      >
+        <input
+          className='input input--mono'
+          id='connection-container-command'
+          name='container_command'
+          type='text'
+          placeholder='php artisan tinker'
+          spellCheck={false}
+          autoComplete='off'
+          {...register('container_command')}
+        />
+      </Field>
+    </Section>
   )
 }
 

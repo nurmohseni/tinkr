@@ -6,7 +6,7 @@ const {spawn, execFileSync} = require('child_process')
 const {test, expect} = require('@playwright/test')
 
 const {fixture, fixtureConnection, launchTinkr} = require('../support/tinkr')
-const {chooseKind, runCode} = require('../support/actions')
+const {chooseKind, editConnection, runCode} = require('../support/actions')
 
 const run = (command, args) => execFileSync(command, args, {encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']})
 /** The log viewer window for the connection the editor is on. */
@@ -290,7 +290,7 @@ test.describe('a project on a server over ssh', () => {
 
       // the connection's own settings are what the store holds, key and port
       // included
-      await page.getByRole('navigation', {name: 'Connections'}).getByRole('button', {name: /^Over ssh/}).click()
+      await editConnection(page, 'Over ssh')
 
       const dialog = page.getByRole('dialog')
 

@@ -110,6 +110,20 @@ const cloneConnection = id => {
 }
 
 /**
+ * Open a connection's dialog in the editor window, from the menu a right click
+ * on its row raises.
+ *
+ * @param {String} id
+ */
+const editConnection = id => {
+  const win = getCurrentEditorWindow()
+
+  if (win) {
+    win.webContents.send('editConnection', id)
+  }
+}
+
+/**
  * Connect to a connection.
  *
  * The app keeps one window, so connecting switches that window to the
@@ -360,6 +374,7 @@ module.exports = {
   deleteConnection,
   deleteConnectionConfirm,
   cloneConnection,
+  editConnection,
   createConnection,
   updateConnection,
   forgetPassword,

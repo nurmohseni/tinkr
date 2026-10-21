@@ -3,7 +3,7 @@ const path = require('path')
 const {test, expect} = require('@playwright/test')
 
 const {fixture, launchTinkr} = require('../support/tinkr')
-const {chooseKind, openNewConnection} = require('../support/actions')
+const {chooseKind, editConnection, openNewConnection} = require('../support/actions')
 
 const appFile = (profile, name) => path.join(profile, 'Electron', 'app', name)
 
@@ -16,12 +16,15 @@ test.describe('the connection dialog', () => {
 
       const dialog = page.getByRole('dialog')
 
-      await expect(dialog).toContainText('New Connection')
       await expect(dialog.locator('#connection-name')).toHaveValue('New Connection')
       await expect(dialog.locator('#connection-path')).toBeVisible()
       await expect(dialog.locator('#connection-command')).toBeVisible()
-      await expect(dialog.locator('#connection-tag')).toHaveValue('local')
+      await expect(dialog.getByRole('radio', {name: 'local', exact: true})).toBeChecked()
       await expect(dialog.getByRole('button', {name: 'Connect'})).toBeVisible()
+
+      // the route says what Connect will start: a command left empty is the
+      // default command from the settings
+      await expect(dialog.getByRole('list', {name: 'Route'})).toContainText('php artisan tinker')
 
       // local
       await expect(dialog.locator('#connection-ssh-server')).toHaveCount(0)
@@ -29,8 +32,8 @@ test.describe('the connection dialog', () => {
 
       // container: engine, container, project path, and no command of its own
       await chooseKind(page, 'container')
-      await expect(dialog.locator('#connection-container-engine')).toBeVisible()
-      await expect(dialog.locator('#connection-container-engine')).toHaveValue('docker')
+      await expect(dialog.getByRole('radiogroup', {name: 'Engine'})).toBeVisible()
+      await expect(dialog.getByRole('radio', {name: 'docker', exact: true})).toBeChecked()
       await expect(dialog.locator('#connection-container-name')).toBeVisible()
       await expect(dialog.locator('#connection-container-path')).toBeVisible()
       await expect(dialog.locator('#connection-command')).not.toBeVisible()
@@ -46,9 +49,9 @@ test.describe('the connection dialog', () => {
       await expect(dialog.locator('#connection-container-name')).toHaveCount(0)
 
       // ssh + container: both halves at once
-      await chooseKind(page, 'ssh + container')
+      await chooseKind(page, 'ssh-container')
       await expect(dialog.locator('#connection-ssh-server')).toBeVisible()
-      await expect(dialog.locator('#connection-container-engine')).toBeVisible()
+      await expect(dialog.getByRole('radiogroup', {name: 'Engine'})).toBeVisible()
       await expect(dialog.locator('#connection-container-name')).toBeVisible()
       await expect(dialog.locator('#connection-command')).not.toBeVisible()
     } finally {
@@ -87,7 +90,7 @@ test.describe('the connection dialog', () => {
       await dialog.locator('#connection-name').fill('Second')
       await dialog.locator('#connection-path').fill(fixture)
       await dialog.locator('#connection-command').fill('php artisan tinker')
-      await dialog.locator('#connection-tag').selectOption('testing')
+      await dialog.getByRole('radiogroup', {name: 'Tag'}).getByText('testing', {exact: true}).click()
       await dialog.getByRole('button', {name: 'Connect'}).click()
 
       await expect(page.locator('.statusbar')).toContainText('Connected · Second (local)')
@@ -119,16 +122,15 @@ test.describe('the connection dialog', () => {
     const {page, profile, close} = await launchTinkr()
 
     try {
-      // clicking the row of the connection the window is on opens its settings
-      await page.getByRole('navigation', {name: 'Connections'}).getByRole('button', {name: /^Fixture/}).click()
-      await expect(page.getByRole('dialog')).toBeVisible()
+      // a row only connects; the pencil on it is what opens its settings
+      await editConnection(page, 'Fixture')
 
       const dialog = page.getByRole('dialog')
 
       await dialog.locator('#connection-name').fill('Renamed')
       // the form writes back after a pause
       await page.waitForTimeout(900)
-      await dialog.locator('#connection-tag').selectOption('production')
+      await dialog.getByRole('radiogroup', {name: 'Tag'}).getByText('production', {exact: true}).click()
       await page.waitForTimeout(900)
 
       const stored = JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8'))

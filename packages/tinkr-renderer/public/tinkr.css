@@ -64,6 +64,15 @@
   --outcome-printed: var(--text-muted);
   --outcome-threw: var(--error);
 
+  /* stage: what a connection's tag says about its data, as a light on its row.
+     Quiet for a machine of one's own, rising toward vermilion for production.
+     Colour is never alone: the stage's word is always beside it or read out */
+  --stage-local: oklch(0.66 0.010 150);       /* the floor's own faint ink */
+  --stage-development: oklch(0.78 0.08 235);  /* sky */
+  --stage-testing: oklch(0.84 0.08 105);      /* straw */
+  --stage-staging: oklch(0.80 0.11 70);       /* ochre */
+  --stage-production: oklch(0.72 0.15 30);    /* vermilion */
+
   /* code */
   --code-keyword: oklch(0.77 0.07 172);    /* #85c3af return, new, fn, use */
   --code-type: oklch(0.93 0.008 150);      /* #e4e9e5 class names, set at 600 */
@@ -202,6 +211,12 @@
   --warning-soft: oklch(0.53 0.11 70 / 0.10);
   --success-soft: oklch(0.47 0.08 172 / 0.10);
   --accent-soft: oklch(0.47 0.08 172 / 0.10);
+
+  --stage-local: oklch(0.55 0.012 150);
+  --stage-development: oklch(0.52 0.10 245);
+  --stage-testing: oklch(0.52 0.09 110);
+  --stage-staging: oklch(0.60 0.12 65);
+  --stage-production: oklch(0.55 0.18 30);
 
   --code-keyword: oklch(0.46 0.08 172);    /* #196653 */
   --code-type: oklch(0.25 0.012 150);      /* #1e231f */

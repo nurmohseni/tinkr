@@ -94,6 +94,9 @@ const openNewConnection = async page => {
   await expect(page.getByRole('dialog')).toBeVisible()
 }
 
+// a name as the start of a pattern, every character meaning itself
+const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 /**
  * Click a connection in the sidebar by its name.
  *
@@ -101,11 +104,28 @@ const openNewConnection = async page => {
  * @param {String} name
  */
 const openConnection = async (page, name) => {
+  // anchored: the row's pencil is a button too, and its name holds this one
   await page.getByRole('navigation', {name: 'Connections'})
-    .getByRole('button', {name})
+    .getByRole('button', {name: new RegExp(`^${escape(name)}`)})
     .click()
 
   await expect(page.locator('.statusbar')).toContainText(`Connected · ${name}`)
+}
+
+/**
+ * Open a connection's dialog from the pencil on its sidebar row. The pencil
+ * shows while the row is hovered, as it does for a person, so the row is
+ * pointed at first.
+ *
+ * @param {import('playwright').Page} page
+ * @param {String} name
+ */
+const editConnection = async (page, name) => {
+  const list = page.getByRole('navigation', {name: 'Connections'})
+
+  await list.getByRole('button', {name: new RegExp(`^${escape(name)}`)}).hover()
+  await list.getByRole('button', {name: `Edit ${name}`, exact: true}).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
 }
 
 /**
@@ -124,22 +144,25 @@ const chooseOutputView = async (page, name) => {
 /**
  * Choose one of the dialog's four kinds.
  *
- * The kind is a segmented control whose labels repeat words the form's own
- * fields hold (`local` is also a tag), so the control is what is looked in.
+ * The kind is the rail's radio group, and a kind is picked by the value its
+ * radio carries (`local`, `container`, `ssh`, `ssh-container`): the rail's
+ * words are copy, and its radios are hidden behind their rows, so the row that
+ * holds the radio is what is pressed.
  *
  * @param {import('playwright').Page} page
- * @param {String} label
+ * @param {String} kind
  */
-const chooseKind = async (page, label) => {
+const chooseKind = async (page, kind) => {
   await page.getByRole('dialog')
-    .locator('.segmented--fill label')
-    .filter({hasText: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)})
+    .locator('label.kind')
+    .filter({has: page.locator(`input[name="connection-type"][value="${kind}"]`)})
     .click()
 }
 
 module.exports = {
   chooseKind,
   chooseOutputView,
+  editConnection,
   openConnection,
   openNewConnection,
   outputText,

@@ -1,21 +1,21 @@
 import PropTypes from 'prop-types'
 
 /**
- * One line of the connection form: the label on the shared label column, the
- * control after it. The row is `.form-row` (display: contents), so both land in
- * the `.form-grid` grid that ConnectionForm draws; the connection form is the
- * only place it is used.
+ * One line of a connection dialog's section: the label on the section's label
+ * column, the control after it. The connection form is the only place it is
+ * used.
+ *
+ * A control that is a group of radios has no element a `<label>` can point at,
+ * so the row names it with `labelId` instead: the label is then a plain span
+ * the group reads as its name through `aria-labelledby`.
  */
-const Field = ({label, htmlFor, hidden, children}) => (
-  <div className='form-row' hidden={hidden || undefined}>
-    <label
-      className='form-row__label'
-      htmlFor={htmlFor}
-    >
-      {label}
-    </label>
+const Field = ({label, htmlFor, labelId, hidden, children}) => (
+  <div className='cfield' hidden={hidden || undefined}>
+    {labelId
+      ? <span id={labelId} className='cfield__label'>{label}</span>
+      : <label className='cfield__label' htmlFor={htmlFor}>{label}</label>}
 
-    <div className='form-row__control'>
+    <div className='cfield__control'>
       {children}
     </div>
   </div>
@@ -23,7 +23,8 @@ const Field = ({label, htmlFor, hidden, children}) => (
 
 Field.propTypes = {
   label: PropTypes.node.isRequired,
-  htmlFor: PropTypes.string.isRequired,
+  htmlFor: PropTypes.string,
+  labelId: PropTypes.string,
   // a row that belongs to another kind of connection, and is not shown for this
   // one: the control stays in the form, so its value travels with the save
   hidden: PropTypes.bool,

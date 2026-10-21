@@ -200,6 +200,14 @@ contextBridge.exposeInMainWorld('api', {
     }
   },
 
+  onEditConnection: cb => {
+    const listener = (event, id) => cb(id)
+    ipcRenderer.on('editConnection', listener)
+    return {
+      dispose: () => ipcRenderer.off('editConnection', listener),
+    }
+  },
+
   createSnippet: snippet => ipcRenderer.send('createSnippet', connectionId(), snippet),
   updateSnippet: snippet => ipcRenderer.send('updateSnippet', connectionId(), snippet),
   deleteSnippet: id => ipcRenderer.send('deleteSnippet', connectionId(), id),

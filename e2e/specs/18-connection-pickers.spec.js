@@ -3,7 +3,7 @@ const path = require('path')
 const {test, expect} = require('@playwright/test')
 
 const {fixture, launchTinkr} = require('../support/tinkr')
-const {openNewConnection} = require('../support/actions')
+const {editConnection, openNewConnection} = require('../support/actions')
 
 const appFile = (profile, name) => path.join(profile, 'Electron', 'app', name)
 
@@ -45,9 +45,8 @@ test.describe('the platform file pickers', () => {
     const {app, page, profile, close} = await launchTinkr({connections: [remote]})
 
     try {
-      // the connection the window is on opens its settings
-      await page.getByRole('navigation', {name: 'Connections'}).getByRole('button', {name: /^Remote/}).click()
-      await expect(page.getByRole('dialog')).toBeVisible()
+      // the pencil on the row opens the connection's settings
+      await editConnection(page, 'Remote')
 
       const key = path.join(fixture, 'composer.json')
 

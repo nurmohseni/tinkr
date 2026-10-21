@@ -18,6 +18,7 @@ import UpdatePrompt from './components/editor/UpdatePrompt'
 import DeleteSnippetConfirm from './components/editor/DeleteSnippetConfirm'
 import ConnectionPage from './components/ConnectionPage'
 import DeleteConnectionConfirm from './components/connections/DeleteConnectionConfirm'
+import StageLight from './components/connections/StageLight'
 import useSplit from './hooks/useSplit'
 import DocumentScope from './components/editor/DocumentScope'
 import {sizesAtom, connectionAtom, settledRunAtom, setAnswer, inFlightDocumentAtom, inFlightAtom} from './stores/editor'
@@ -146,6 +147,7 @@ const EditorWindow = () => {
     <WindowContainer>
       <div className='app'>
         <Titlebar>
+          <StageLight tag={connection.tag}/>
           <span className='mono'>{connection.name}</span>
           <span className='titlebar__sep'>·</span>
           <span className='muted'>{connection.is_over_ssh ? 'ssh' : 'local'}</span>
