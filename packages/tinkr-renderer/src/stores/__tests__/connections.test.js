@@ -72,14 +72,14 @@ describe('connections store', () => {
     expect(api.connectConnection).toHaveBeenCalledWith(edited)
   })
 
-  test('the autosave of a draft writes nothing', () => {
+  test('an update of a draft writes nothing', () => {
     store.set(connections.updateConnectionAtom, {id: 'draft', name: 'Typed'})
 
     expect(api.updateConnection).not.toHaveBeenCalled()
     expect(store.get(connections.connectionDataAtom)).not.toHaveProperty('draft')
   })
 
-  test('the autosave of a stored connection writes it', () => {
+  test('a save of a stored connection writes it', () => {
     const edited = {...stored, name: 'Magic!'}
 
     store.set(connections.updateConnectionAtom, edited)
@@ -117,7 +117,7 @@ describe('connections store', () => {
       expect(store.get(connections.connectionDataAtom).draft.ssh_password).toBe(true)
     })
 
-    test('is handed over on an autosave, and never drawn from the window', () => {
+    test('is handed over on a save, and never drawn from the window', () => {
       const edited = {...stored, ssh_password: true, password: 'hunter2'}
 
       store.set(connections.updateConnectionAtom, edited)
@@ -126,8 +126,8 @@ describe('connections store', () => {
       expect(store.get(connections.connectionDataAtom)[stored.id].password).toBe(undefined)
     })
 
-    // an autosave fires on every field, and one that did not touch the password
-    // must not look like the password having been cleared
+    // a save carries every field, and one that did not touch the password must
+    // not look like the password having been cleared
     test('that was not typed does not clear the one that is kept', () => {
       const edited = {...stored, name: 'Renamed', ssh_password: true, password: ''}
 

@@ -37,13 +37,16 @@ test.describe('the ssh password', () => {
       await expect(dialog).not.toContainText('The password is kept')
 
       await password.fill('correct horse battery staple')
-      await page.waitForTimeout(900)
+      await dialog.getByRole('button', {name: 'Save', exact: true}).click()
+      await expect(dialog).toBeHidden()
+
+      await expect.poll(() => JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8')).remote.ssh_password)
+        .toBe(true)
 
       const secrets = JSON.parse(fs.readFileSync(appFile(profile, 'secrets.json'), 'utf8'))
       const stored = JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8'))
 
       expect(secrets).toEqual({remote: 'correct horse battery staple'})
-      expect(stored.remote.ssh_password).toBe(true)
       expect(stored.remote.password).toBeUndefined()
       expect(fs.statSync(appFile(profile, 'secrets.json')).mode & 0o777).toBe(0o600)
 
@@ -51,7 +54,6 @@ test.describe('the ssh password', () => {
       // connection; the dialog says a password is kept when it is opened again
       expect(await page.content()).not.toContain('correct horse battery staple')
 
-      await page.keyboard.press('Escape')
       await openSettings(page)
 
       await expect(dialog).toContainText('The password is kept on this machine and is never shown again.')
@@ -84,11 +86,10 @@ test.describe('the ssh password', () => {
       await expect(dialog.locator('#connection-ssh-port')).toHaveValue('2222')
 
       await dialog.locator('#connection-ssh-port').fill('2200')
-      await page.waitForTimeout(900)
+      await dialog.getByRole('button', {name: 'Save', exact: true}).click()
 
-      const stored = JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8'))
-
-      expect(stored.remote.ssh_port).toBe('2200')
+      await expect.poll(() => JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8')).remote.ssh_port)
+        .toBe('2200')
     } finally {
       await close()
     }
@@ -108,11 +109,13 @@ test.describe('the ssh password', () => {
       await expect(dialog).toContainText('The password is kept on this machine and is never shown again.')
 
       await chooseKind(page, 'local')
-      await page.waitForTimeout(1200)
+      await dialog.getByRole('button', {name: 'Save', exact: true}).click()
+
+      await expect.poll(() => JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8')).remote.is_over_ssh)
+        .toBe(false)
 
       const stored = JSON.parse(fs.readFileSync(appFile(profile, 'connections.json'), 'utf8'))
 
-      expect(stored.remote.is_over_ssh).toBe(false)
       expect(stored.remote.ssh_password).toBe(false)
       expect(JSON.parse(fs.readFileSync(appFile(profile, 'secrets.json'), 'utf8'))).toEqual({})
     } finally {

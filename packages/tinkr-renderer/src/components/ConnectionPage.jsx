@@ -40,8 +40,8 @@ const ConnectionPage = ({params}) => {
   )
 
   const handleSubmit = data => {
-    // the autosave of a draft would be its first write, and a draft is written
-    // when it is confirmed, not while it is typed
+    // a draft has no Save: it is written when it is confirmed with Connect, so
+    // an update for one writes nothing
     if (!isDraft) {
       updateConnection(data)
     }
