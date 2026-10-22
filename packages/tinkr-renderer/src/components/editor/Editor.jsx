@@ -68,12 +68,11 @@ const Editor = () => {
 
   runTarget.current = {run, documentId}
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(code => {
+  const runNow = code => {
     const {run: send, documentId: document} = runTarget.current
 
     send(code, {document})
-  }, 500, {leading: true, trailing: false}), [])
+  }
 
   // 重置编辑器的事件和代码
   const resetEditor = editor => {
@@ -242,7 +241,7 @@ const Editor = () => {
       contextMenuGroupId: 'navigation',
       contextMenuOrder: 1,
       run: ed => {
-        runDebounced(ed.getValue())
+        runNow(ed.getValue())
         return null
       },
     })
