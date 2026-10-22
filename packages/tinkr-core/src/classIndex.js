@@ -397,36 +397,48 @@ const classIndex = projectPath => {
  * Only a name with exactly one candidate is answered: with two, `Order` could
  * be either and guessing would run something other than what was written.
  *
+ * It is given the index rather than a directory because the project need not be
+ * on this machine: over ssh the composer files are on the other one, and the
+ * index read from there has the same shape as the one read here (see
+ * tinkr-main's services/project).
+ *
+ * @param {Object|null} found what indexFrom built for the project
+ * @param {String} code the snippet, as the editor holds it
+ * @return {Object<String, String>}
+ */
+const importsIn = (found, code) => {
+  const imports = {}
+
+  if (!found) {
+    return imports
+  }
+
+  const {index} = found
+
+  for (const name of bareClassNames(code)) {
+    const candidates = index.get(name.toLowerCase())
+
+    if (candidates && candidates.size === 1) {
+      imports[name] = Array.from(candidates)[0]
+    }
+  }
+
+  return imports
+}
+
+/**
  * @param {String} projectPath the directory the session runs in
  * @param {String} code the snippet, as the editor holds it
  * @return {Object<String, String>}
  */
 const importsFor = (projectPath, code) => {
-  const imports = {}
-
   try {
-    const found = classIndex(projectPath)
-
-    if (!found) {
-      return imports
-    }
-
-    const {index} = found
-
-    for (const name of bareClassNames(code)) {
-      const candidates = index.get(name.toLowerCase())
-
-      if (candidates && candidates.size === 1) {
-        imports[name] = Array.from(candidates)[0]
-      }
-    }
+    return importsIn(classIndex(projectPath), code)
   } catch (e) {
     // an unreadable project, a broken autoload file, anything: the run goes on
     // exactly as it does today and imports nothing
     return {}
   }
-
-  return imports
 }
 
 /**
@@ -569,5 +581,6 @@ module.exports = {
   matchingFiles,
   matchingFilesIn,
   importsFor,
+  importsIn,
   clearClassIndex,
 }

@@ -1,7 +1,7 @@
 const {spawn} = require('child_process')
 const {app} = require('electron')
 
-const {sshArgs, askpassEnvironment, inContainer} = require('tinkr-core')
+const {sshArgs, controlPath, askpassEnvironment, inContainer} = require('tinkr-core')
 
 // how long a connection is given to answer before it is taken as one that
 // cannot: a machine that is there answers in a moment, one that is not never
@@ -40,6 +40,182 @@ const askpassDir = () => {
 const quoted = value => `'${String(value).replace(/'/g, "'\\''")}'`
 
 /**
+ * The connections whose master this app has started, by socket.
+ *
+ * It is what makes starting one a thing that happens once: everything that
+ * reaches a connection asks for the master, and what it gets after the first ask
+ * is the same login being waited on.
+ *
+ * @type {Map<String, {connection: Object, starting: Promise<Boolean>}>}
+ */
+const masters = new Map()
+
+/**
+ * Whether a master already answers on a socket.
+ *
+ * A socket can outlive the app that made it — an app that was killed, a window
+ * that closed without quitting — and a login that is already there is one to
+ * travel down rather than to make again. It is worth the one spawn it costs,
+ * because asking ssh to become a master on a socket that is taken does not fail:
+ * it silently stops multiplexing and sits on a connection of its own for as long
+ * as `-N` says, which is a login nobody closes.
+ *
+ * @param {Record<String, any>} connection
+ * @return {Promise<Boolean>}
+ */
+const masterAnswers = connection => new Promise(resolve => {
+  let child
+
+  try {
+    child = spawn('ssh', ['-O', 'check', ...sshArgs(connection)], {stdio: 'ignore'})
+  } catch (e) {
+    resolve(false)
+
+    return
+  }
+
+  if (!child || typeof child.on !== 'function') {
+    resolve(false)
+
+    return
+  }
+
+  child.on('error', () => resolve(false))
+  child.on('close', code => resolve(code === 0))
+})
+
+/**
+ * Start the connection's master, or find the one already there.
+ *
+ * A connection over ssh is logged in to once and then travelled down (see
+ * sshControl), and this is where that login is made. It is started by the app
+ * rather than left to whichever command needed a connection first, because the
+ * commands that come and go are killed when they are done, and a master killed
+ * with them takes its socket with it.
+ *
+ * Every start is asked of the socket before it is made: a master ends itself
+ * when it has been idle long enough (see masterOptions), and a run that comes
+ * after one has ended must make a new login rather than wait on the old one.
+ *
+ * It never rejects and never fails a command: a machine that will not multiplex,
+ * a socket that cannot be made, an ssh that is not there — each answers false,
+ * and every command still reaches the machine on its own, exactly as it did
+ * before there was a master.
+ *
+ * @param {Record<String, any>} connection
+ * @return {Promise<Boolean>} whether a master is up
+ */
+const ensureMaster = connection => {
+  if (!connection || !connection.is_over_ssh) {
+    return Promise.resolve(false)
+  }
+
+  const socket = controlPath(connection)
+
+  if (!socket) {
+    return Promise.resolve(false)
+  }
+
+  const known = masters.get(socket)
+
+  // commands of one connection start together, and they are one login: the
+  // second asks what the first is already asking
+  if (known && known.opening) {
+    return known.opening
+  }
+
+  const entry = known || {connection, owned: false}
+  const opening = openMaster(connection, socket, entry)
+
+  entry.opening = opening
+  masters.set(socket, entry)
+
+  return opening
+}
+
+/**
+ * Make the connection's login, or adopt one that is answering already.
+ *
+ * @param {Record<String, any>} connection
+ * @param {String} socket
+ * @param {Object} entry
+ * @return {Promise<Boolean>}
+ */
+const openMaster = async (connection, socket, entry) => {
+  try {
+    // a socket that answers is a login to travel down rather than to make
+    // again, and it is not this app's to end (see closeMasters)
+    if (await masterAnswers(connection)) {
+      return true
+    }
+
+    const askpass = askpassEnvironment(askpassDir(), connection)
+
+    // `-f` is what makes this a wait for a login rather than for the connection:
+    // the master detaches once it is up and leaves the socket behind, and what
+    // this spawn answers with is whether it got that far. `-N` is there because
+    // there is nothing to run on the far side — being connected is the whole of it
+    const child = spawn('ssh', ['-f', '-N', ...sshArgs(connection, {master: true})], {
+      stdio: 'ignore',
+      ...(askpass ? {env: Object.assign({}, process.env, askpass.env)} : {}),
+    })
+
+    const up = await new Promise(resolve => {
+      child.on('error', () => resolve(false))
+      child.on('close', code => resolve(code === 0))
+    })
+
+    // a login that did not happen is not remembered as one that did, so the
+    // next command tries again
+    if (!up) {
+      if (masters.get(socket) === entry) {
+        masters.delete(socket)
+      }
+
+      return false
+    }
+
+    entry.owned = true
+    masters.set(socket, entry)
+
+    return true
+  } finally {
+    entry.opening = null
+  }
+}
+
+/**
+ * End the logins this app made.
+ *
+ * A master ends by itself when it has been idle long enough (see masterOptions),
+ * so this is the app leaving cleanly rather than a login it opened being left on
+ * somebody's server. It is ended by signal rather than asked to leave: ssh's own
+ * exit request ends a master between sessions, and one that was asked while a
+ * session was still open keeps the connection and loses its socket, which leaves
+ * nothing to ask a second time (seen outliving the app by minutes). The socket a
+ * login answers on is in its command line and in no other process's, so the
+ * signal reaches exactly the logins this app started.
+ */
+const closeMasters = () => {
+  for (const [socket, {owned}] of masters) {
+    if (owned === false) {
+      continue
+    }
+
+    try {
+      const child = spawn('pkill', ['-TERM', '-f', `ControlPath=${socket}`], {stdio: 'ignore'})
+
+      child.on('error', () => {})
+    } catch (e) {
+      // nothing to do about a pkill that will not even be started: the master
+      // ends itself
+    }
+  }
+
+  masters.clear()
+}
+
+/**
  * Run a command on the machine a connection runs on, and answer with what it
  * said.
  *
@@ -59,7 +235,17 @@ const quoted = value => `'${String(value).replace(/'/g, "'\\''")}'`
  * @param {Number} [options.maxBuffer] how much of an answer to keep
  * @return {Promise<{stdout: String, stderr: String, code: Number|null}>}
  */
-const exec = (connection, command, {timeout = defaultTimeout, maxBuffer} = {}) => new Promise(resolve => {
+const exec = (connection, command, options) => {
+  if (!connection || !connection.is_over_ssh) {
+    return run(connection, command, options)
+  }
+
+  // the login is not part of what a command is given to answer in: a command
+  // that waits ten seconds for an answer waits ten seconds to be asked
+  return ensureMaster(connection).then(() => run(connection, command, options))
+}
+
+const run = (connection, command, {timeout = defaultTimeout, maxBuffer} = {}) => new Promise(resolve => {
   const project = (connection && connection.path) || ''
   // the command is one word of the shell there, and so is the directory it is
   // run in: nothing else of the connection goes into the line.
@@ -152,4 +338,6 @@ module.exports = {
   defaultTimeout,
   quoted,
   exec,
+  ensureMaster,
+  closeMasters,
 }

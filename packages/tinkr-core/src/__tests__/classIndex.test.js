@@ -9,6 +9,7 @@ const {
   matchingClasses,
   matchingFilesIn,
   importsFor,
+  importsIn,
   projectFiles,
   matchingFiles,
   clearClassIndex,
@@ -81,6 +82,23 @@ describe('the project class index', () => {
     expect(importsFor(root, "Order::where('paid', true)->count();")).toEqual({Order: 'App\\Models\\Order'})
     expect(importsFor(root, 'new Invoice();')).toEqual({Invoice: 'App\\Models\\Invoice'})
     expect(importsFor(root, 'Helper::x();')).toEqual({Helper: 'App\\Support\\Helper'})
+  })
+
+  // a project over ssh is indexed on the machine that holds it, and what comes
+  // back is the index (see services/project). Aliases are answered from that,
+  // here, where the composer files are not: this is the lookup a run over ssh
+  // makes, and it is the one that answers `Class "Post" not found`
+  test('answers a short name from an index read somewhere else', () => {
+    const index = indexFrom({
+      classmap: ['App\\Models\\Post', 'App\\Models\\Order', 'Other\\Order'],
+    })
+
+    expect(importsIn(index, 'Post::first();')).toEqual({Post: 'App\\Models\\Post'})
+
+    // a name two classes carry is not one to guess at, and the snippet may still
+    // name the one that is unambiguous
+    expect(importsIn(index, 'Order::count(); Post::first();')).toEqual({Post: 'App\\Models\\Post'})
+    expect(importsIn(null, 'Post::first();')).toEqual({})
   })
 
   test('leaves a short name two classes carry alone', () => {

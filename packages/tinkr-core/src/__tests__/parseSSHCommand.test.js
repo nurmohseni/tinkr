@@ -1,4 +1,17 @@
 const {parseSSHCommand, sshArgs, sshProblem} = require('../parseSSHCommand')
+const {controlOptions, controlPath, masterOptions} = require('../sshControl')
+
+// the multiplexing options a line carries before anything else, each as the one
+// word of a shell line it is: which socket they name is the temporary directory
+// this runs in plus a digest of the target
+const multiplexed = (connection, quote = option => `'${option}'`) =>
+  controlOptions(connection).map(quote)
+
+// a session's line, as the session types it
+const line = (connection, rest) => ['ssh', '-t', ...multiplexed(connection), rest].join(' ')
+
+// the same line as bash reads it back
+const received = (connection, ...rest) => ['[-t]', ...multiplexed(connection, option => `[${option}]`), ...rest].join('')
 
 // a connection whose fields are what a person typed into the form
 // what bash reads a line back as, which is the only reader that matters: the
@@ -28,11 +41,25 @@ const conn = (fields = {}) => Object.assign({
 describe('the session command', () => {
   test('reaches the connection with its port, key and user', () => {
     expect(parseSSHCommand(conn()))
-      .toBe("ssh -t -- 'root@192.168.1.1' 'exec bash --login -i'")
+      .toBe(line(conn(), "'--' 'root@192.168.1.1' 'exec bash --login -i'"))
     expect(parseSSHCommand(conn({ssh_port: '2000'})))
-      .toBe("ssh -t -p '2000' -- 'root@192.168.1.1' 'exec bash --login -i'")
+      .toBe(line(conn({ssh_port: '2000'}), "'-p' '2000' '--' 'root@192.168.1.1' 'exec bash --login -i'"))
     expect(parseSSHCommand(conn({ssh_port: '2000', ssh_key: '/usr/local/id.pem'})))
-      .toBe("ssh -t -p '2000' -i '/usr/local/id.pem' -- 'root@192.168.1.1' 'exec bash --login -i'")
+      .toBe(line(conn({ssh_port: '2000'}), "'-p' '2000' '-i' '/usr/local/id.pem' '--' 'root@192.168.1.1' 'exec bash --login -i'"))
+  })
+
+  // the socket a session travels down is named after the machine and the
+  // account, so two connections to the same account share the login and a
+  // connection to another machine does not (see sshControl)
+  test('travels down the connection that is already open', () => {
+    expect(controlPath(conn({ssh_port: '2000'}))).not.toBe(controlPath(conn({ssh_port: '2001'})))
+    expect(controlPath(conn())).toBe(controlPath(conn({ssh_port: '22'})))
+    expect(controlPath(conn())).toBe(controlPath(conn({ssh_key: '/keys/id'})))
+
+    const split = words(parseSSHCommand(conn({ssh_port: '2000'}))).split('][')
+
+    expect(split).toContain('ControlMaster=auto')
+    expect(split).toContain(`ControlPath=${controlPath(conn({ssh_port: '2000'}))}`)
   })
 
   // the bug this waits against: `-t` written after the target is not an option,
@@ -43,7 +70,7 @@ describe('the session command', () => {
     // bash splits the line exactly as it would for ssh, which is the only reader
     // that matters here
     expect(words(parseSSHCommand(conn({path: '/var/www/html', ssh_port: '2000'}))))
-      .toBe('[-t][-p][2000][--][root@192.168.1.1][cd \'/var/www/html\' && exec bash --login -i]')
+      .toBe(received(conn({ssh_port: '2000'}), '[-p][2000][--][root@192.168.1.1][cd \'/var/www/html\' && exec bash --login -i]'))
 
     // the target is the first word that is not an option — after its `--` — and
     // nothing after it is read as one, which is what `-t` written there used to
@@ -55,9 +82,9 @@ describe('the session command', () => {
   })
 
   test('quotes the directory it lands in, so a path is one word', () => {
-    const line = parseSSHCommand(conn({path: '/var/www/html'}))
+    const session = parseSSHCommand(conn({path: '/var/www/html'}))
 
-    expect(line).toContain("'cd '\\''/var/www/html'\\'' && exec bash --login -i'")
+    expect(session).toContain("'cd '\\''/var/www/html'\\'' && exec bash --login -i'")
   })
 
   // psysh draws a prompt only when its stdin is a terminal, so the far side is
@@ -72,12 +99,12 @@ describe('the session command', () => {
   // `Are you sure you want to continue connecting?` answered the command, and
   // the session it was for never began
   test('carries the command in the ssh line, where ssh questions cannot eat it', () => {
-    const line = parseSSHCommand(conn({path: '/var/www/html'}), 'php artisan tinker')
+    const session = parseSSHCommand(conn({path: '/var/www/html'}), 'php artisan tinker')
 
     // the command is inside the one quoted word ssh is given as its remote
     // command, and bash reads it back as one argument
-    expect(words(line))
-      .toBe('[-t][--][root@192.168.1.1][cd \'/var/www/html\' && php artisan tinker]')
+    expect(words(session))
+      .toBe(received(conn(), "[--][root@192.168.1.1][cd '/var/www/html' && php artisan tinker]"))
   })
 
   test('a path with a space stays one word, and a quote cannot open a string', () => {
@@ -90,10 +117,10 @@ describe('the session command', () => {
     // rather than a statement: the shell the session types into reads one word
     // the path is inside a single quoted word, so a `;` in it is a character
     // rather than a statement: the shell the session types into reads one word
-    const line = parseSSHCommand(conn({path: '/home/qa/app; touch /tmp/pwned'}))
+    const session = parseSSHCommand(conn({path: '/home/qa/app; touch /tmp/pwned'}))
 
-    expect(line.startsWith("ssh -t -- 'root@192.168.1.1' 'cd '")).toBe(true)
-    expect(line.endsWith("'")).toBe(true)
+    expect(session).toContain("'--' 'root@192.168.1.1' 'cd '")
+    expect(session.endsWith("'")).toBe(true)
   })
 
   // the bug this waits against: the shell in front of ssh is a login shell, and
@@ -101,23 +128,23 @@ describe('the session command', () => {
   // replaces what the pty's environment had. What is written on the line is read
   // after the profile has run, which is what makes the helper the app's
   test('puts the helper\'s variables on the line, after the login profile runs', () => {
-    const line = parseSSHCommand(
+    const session = parseSSHCommand(
       conn({ssh_password: true}),
       null,
       {SSH_ASKPASS: '/data/ssh/askpass.sh', SSH_ASKPASS_REQUIRE: 'force'},
     )
 
-    expect(line.startsWith("SSH_ASKPASS='/data/ssh/askpass.sh' SSH_ASKPASS_REQUIRE='force' ssh -t")).toBe(true)
+    expect(session.startsWith("SSH_ASKPASS='/data/ssh/askpass.sh' SSH_ASKPASS_REQUIRE='force' ssh -t")).toBe(true)
 
     // and they are assignments of a shell, so the first word the shell runs is
     // still ssh, with the target it was given
-    expect(words(line))
-      .toBe('[-t][--][root@192.168.1.1][exec bash --login -i]')
+    expect(words(session))
+      .toBe(received(conn(), '[--][root@192.168.1.1][exec bash --login -i]'))
   })
 
   test('carries the options a password login needs, and none for a key', () => {
     expect(words(parseSSHCommand(conn({is_over_ssh: true, ssh_password: true}))))
-      .toBe('[-t][-o][StrictHostKeyChecking=accept-new][-o][NumberOfPasswordPrompts=1][--][root@192.168.1.1][exec bash --login -i]')
+      .toBe(received(conn({ssh_password: true}), '[-o][StrictHostKeyChecking=accept-new][-o][NumberOfPasswordPrompts=1][--][root@192.168.1.1][exec bash --login -i]'))
 
     expect(parseSSHCommand(conn({is_over_ssh: true, ssh_key: '/keys/id'}))).not.toContain('StrictHostKeyChecking')
   })
@@ -140,9 +167,13 @@ describe('the arguments a command is run with', () => {
   test('are words of their own, with the target after --', () => {
     // these go to spawn('ssh', args): no shell reads them, so nothing splits,
     // and `--` is what stops a target that looks like an option being one
-    expect(sshArgs(conn())).toEqual(['--', 'root@192.168.1.1'])
+    expect(sshArgs(conn())).toEqual([...controlOptions(conn()), '--', 'root@192.168.1.1'])
     expect(sshArgs(conn({ssh_port: '2000', ssh_key: '/keys/my key'})))
-      .toEqual(['-p', '2000', '-i', '/keys/my key', '--', 'root@192.168.1.1'])
+      .toEqual([...controlOptions(conn({ssh_port: '2000'})), '-p', '2000', '-i', '/keys/my key', '--', 'root@192.168.1.1'])
+
+    // a command that is the connection's master says so instead of travelling
+    // down a socket, and nothing after it can turn it back into a passenger
+    expect(sshArgs(conn(), {master: true})).toEqual([...masterOptions(conn()), '--', 'root@192.168.1.1'])
   })
 
   test('report what is wrong with a connection rather than guessing', () => {

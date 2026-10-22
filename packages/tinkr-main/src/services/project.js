@@ -1,4 +1,4 @@
-const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead, isCloud} = require('tinkr-core')
+const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead, isCloud, importsIn} = require('tinkr-core')
 
 const {exec, quoted} = require('../remote')
 
@@ -335,6 +335,40 @@ const indexFor = async connection => {
 }
 
 /**
+ * The classes a snippet names without qualifying them, by short name, for the
+ * session to alias before it evaluates it.
+ *
+ * It is the index of the connection's own project that answers, which is what
+ * makes it work over ssh: the composer files that name the classes are on the
+ * machine the project is on, so the index read there is the one that knows them.
+ * Reading it here — this machine's copy — would answer with nothing for a project
+ * over ssh, and nothing is what a run with an unqualified `Post::first();` in it
+ * then fails on: `Class "Post" not found`.
+ *
+ * The read is the connection's own (see indexFor), so a session that comes up
+ * while the project is being read for the popup waits on that read rather than
+ * starting another.
+ *
+ * @param {Record<String, any>} connection
+ * @param {String} code the snippet, as the editor holds it
+ * @return {Promise<Object<String, String>>}
+ */
+const importsForRun = async (connection, code) => {
+  if (!code) {
+    return {}
+  }
+
+  try {
+    return importsIn(await indexFor(connection), code)
+  } catch (e) {
+    // a project whose index cannot be read is a run without aliases, not a run
+    // that does not happen: the same answer the local lookup gives when its
+    // files are unreadable
+    return {}
+  }
+}
+
+/**
  * The index of a connection's project, as far as it has been read.
  *
  * This is the popup's question, and the popup's question arrives with a
@@ -520,6 +554,7 @@ const clearRemoteIndexes = () => {
 module.exports = {
   indexCode,
   indexFor,
+  importsForRun,
   readyIndex,
   prefetchIndex,
   refreshIndex,
