@@ -59,8 +59,21 @@ const Editor = () => {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const writeCodeDebounced = useCallback(debounce(value => writeCode(value), 200), [])
+  // the document a shortcut runs is the one on screen when it is pressed: the
+  // editor's run action is registered once, when the editor is built, so a
+  // function closed over the document of that moment would send every later
+  // shortcut to the tab the window opened on — the answer would land there,
+  // and the tab being read would wait for one that never comes
+  const runTarget = useRef(null)
+
+  runTarget.current = {run, documentId}
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(code => run(code, {document: documentId}), 500), [documentId])
+  const runDebounced = useCallback(debounce(code => {
+    const {run: send, documentId: document} = runTarget.current
+
+    send(code, {document})
+  }, 500, {leading: true, trailing: false}), [])
 
   // 重置编辑器的事件和代码
   const resetEditor = editor => {
@@ -111,6 +124,14 @@ const Editor = () => {
       if (isMatchShortcut(e.browserEvent, config.shortcut_run)) {
         e.preventDefault()
         e.stopPropagation()
+
+        // a key that is held down repeats, and a repeat is not another press:
+        // without this the window that collapses a double press would let a held
+        // shortcut start a new session every time the key repeated
+        if (e.browserEvent.repeat) {
+          return false
+        }
+
         await editor.getAction('run-php-snippet').run()
         return false
       }

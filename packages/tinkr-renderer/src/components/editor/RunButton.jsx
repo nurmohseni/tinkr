@@ -62,8 +62,17 @@ const RunButton = () => {
   // well any more where the well was emptied while it ran
   const isDisabled = !running && code.trim() === ''
 
+  // the press is the run: it goes out now, and the window below only collapses a
+  // second press inside it — a double click that would otherwise boot one session
+  // and immediately stop it. The wait the window used to hold the run for was a
+  // fixed half second in front of every run, paid before the session was booted:
+  // a run that took a second reported it and took a second and a half, and the
+  // count on this button did not even start until the half second was over
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(value => run(value, {document: documentId}), 500), [documentId])
+  const runDebounced = useCallback(debounce(value => run(value, {document: documentId}), 500, {
+    leading: true,
+    trailing: false,
+  }), [documentId])
 
   const label = intl.formatMessage({id: running ? 'editor.stop' : 'editor.run'})
 
