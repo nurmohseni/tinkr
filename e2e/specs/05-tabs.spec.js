@@ -57,6 +57,35 @@ test.describe('tabs and sessions', () => {
     }
   })
 
+  test('runs the tab on screen from the Ctrl+R binding after another tab is opened', async () => {
+    const {page, close} = await launchTinkr()
+
+    try {
+      const button = page.locator('.tabbar .btn--run').first()
+      const output = page.locator('.output')
+
+      await setEditorCode(page, '1 + 1;')
+      await page.keyboard.press('Control+r')
+      await expect(output.locator('.t-number').first()).toHaveText('2', {timeout: 60_000})
+      await expect(button).not.toHaveClass(/btn--danger/, {timeout: 60_000})
+
+      // the action the shortcut fires is registered once, with the editor, so
+      // this is the binding that used to run the document the window opened on
+      await page.locator('.tabbar__new').click()
+      await expect(page.getByRole('tablist', {name: 'Open documents'}).getByRole('tab')).toHaveCount(2)
+
+      await setEditorCode(page, '10 + 10;')
+      // the code reached the store of the tab on screen, which is what makes the
+      // well writable and the button pressable
+      await expect(button).toBeEnabled({timeout: 10_000})
+      await page.keyboard.press('Control+r')
+
+      await expect(output.locator('.t-number').first()).toHaveText('20', {timeout: 60_000})
+    } finally {
+      await close()
+    }
+  })
+
   test('asks before closing a session that holds code, and can remember the answer', async () => {
     const {page, profile, close} = await launchTinkr()
 
