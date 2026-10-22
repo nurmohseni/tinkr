@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   setConfig: data => ipcRenderer.send('setConfig', data),
   allLocales: () => ipcRenderer.sendSync('allLocales'),
   getIntlConfig: () => ipcRenderer.send('getIntlConfig'),
-  checkForUpdates: () => ipcRenderer.send('checkForUpdates'),
+  checkForUpdates: () => invoke('checkForUpdates'),
   downloadUpdate: () => ipcRenderer.send('downloadUpdate'),
   installUpdate: () => ipcRenderer.send('installUpdate'),
   onPhpVersion: cb => {

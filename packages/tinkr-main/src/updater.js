@@ -40,28 +40,54 @@ const tell = (channel, payload) => {
 const canUpdate = () => fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'))
 
 /**
- * Ask the releases whether there is something newer than this build.
+ * Ask the releases whether there is something newer than this build, and say
+ * what was found.
  *
- * It is called once as the app opens and every few hours after that, and a
- * check that cannot be made — no network, no release to read — is a line in the
- * log rather than something to interrupt anyone about.
+ * It runs once as the app opens and every few hours after that, where the
+ * answer is a line in the log, and it runs because the settings asked, where the
+ * answer is the whole point: the window needs to know what happened, not just
+ * that the question was asked. So it never says nothing — a build that cannot
+ * replace itself says so, and a feed that cannot be read says what went wrong
+ * rather than leaving a button looking like it did not work.
  *
- * @return {Promise<void>}
+ * The running version is not part of the answer: the window already prints the
+ * app's version from its own build, and that is the number the person reads in
+ * the title bar and the status bar.
+ *
+ * @return {Promise<{status: String, latest?: String, message?: String}>} `unavailable`
+ *   when this build cannot update itself, `newest` when it is, `available` with
+ *   the version that is out, and `failed` with the reason the check was not made
  */
 const checkForUpdates = async () => {
   if (!canUpdate()) {
     log.info('[update] this build cannot install over itself, so nothing was asked')
 
-    return
+    return {status: 'unavailable'}
   }
 
   log.info('[update] checking for a newer version')
 
+  let found
+
   try {
-    await autoUpdater.checkForUpdates()
+    found = await autoUpdater.checkForUpdates()
   } catch (e) {
     log.warn('[update] could not check for a newer version:', e.message)
+
+    return {status: 'failed', message: e.message}
   }
+
+  // the updater answers nothing at all when it is not allowed to run, which is
+  // what a build that was not installed from a release gets
+  if (!found) {
+    return {status: 'unavailable'}
+  }
+
+  if (!found.isUpdateAvailable) {
+    return {status: 'newest'}
+  }
+
+  return {status: 'available', latest: found.updateInfo.version}
 }
 
 /** Download what the check found, because the window asked. */

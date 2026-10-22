@@ -279,7 +279,15 @@
     "cloud_permission_environments": "Environments: View environments, View environment instances, Create environment commands, View environment logs",
     "cloud_check_description": "Laravel Cloud wird einmal gefragt, und das Token bleibt nur, wenn es antwortet.",
     "cloud_save": "Prüfen und speichern",
-    "cloud_check": "Token prüfen"
+    "cloud_check": "Token prüfen",
+    "updates": "Aktualisierungen",
+    "updates_description": "prüft, ob eine neuere Version von Tinkr veröffentlicht wurde",
+    "updates_check": "Nach Updates suchen",
+    "updates_checking": "Wird geprüft…",
+    "updates_newest": "Tinkr {version} ist die neueste Version.",
+    "updates_available": "Tinkr {latest} ist verfügbar. Das App-Fenster fragt, ob es heruntergeladen werden soll.",
+    "updates_unavailable": "Tinkr {version} kann sich nicht selbst aktualisieren: Es wurde nicht aus einem Release installiert.",
+    "updates_failed": "Die Prüfung war nicht möglich: {message}"
   },
   "ok": "OK",
   "cancel": "Abbrechen",

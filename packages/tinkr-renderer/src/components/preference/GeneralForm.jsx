@@ -4,6 +4,7 @@ import LocaleSelectField from './LocaleSelectField'
 import SegmentedField from './SegmentedField'
 import SwitchField from './SwitchField'
 import ThemeField from './ThemeField'
+import UpdateField from './UpdateField'
 import {useIntl} from 'react-intl'
 
 const GeneralForm = () => {
@@ -55,6 +56,8 @@ const GeneralForm = () => {
       configKey='log_dir'
       placeholder='storage/logs'
     />
+
+    <UpdateField/>
   </>
   )
 }

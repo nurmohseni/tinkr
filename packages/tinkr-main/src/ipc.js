@@ -410,9 +410,9 @@ ipcMain.on('clearHistory', (event, connectionId) => {
   event.returnValue = clearHistory(connectionId)
 })
 
-ipcMain.on('checkForUpdates', () => {
-  checkForUpdates()
-})
+// the window that asks gets the answer: what the releases said, or why they
+// could not be read
+ipcMain.handle('checkForUpdates', () => checkForUpdates())
 
 ipcMain.on('downloadUpdate', () => {
   downloadUpdate()

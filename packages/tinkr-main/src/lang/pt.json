@@ -279,7 +279,15 @@
     "cloud_permission_environments": "Environments: View environments, View environment instances, Create environment commands, View environment logs",
     "cloud_check_description": "O Laravel Cloud é questionado uma vez, e o token só fica se responder.",
     "cloud_save": "Verificar e guardar",
-    "cloud_check": "Verificar o token"
+    "cloud_check": "Verificar o token",
+    "updates": "Atualizações",
+    "updates_description": "verifica se foi publicada uma versão mais recente do Tinkr",
+    "updates_check": "Verificar atualizações",
+    "updates_checking": "A verificar…",
+    "updates_newest": "O Tinkr {version} é a versão mais recente.",
+    "updates_available": "O Tinkr {latest} já está disponível. A janela da aplicação pergunta se o queres descarregar.",
+    "updates_unavailable": "O Tinkr {version} não se consegue atualizar sozinho: não foi instalado a partir de uma versão publicada.",
+    "updates_failed": "Não foi possível verificar: {message}"
   },
   "ok": "OK",
   "cancel": "Cancelar",
