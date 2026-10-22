@@ -118,3 +118,44 @@ A version lives in the root `package.json` and in each `packages/*/package.json`
 and in the workspace dependency one package has on another — yarn links a
 workspace only when the version a package asks for is the version the other one
 has, so a bump that misses one is an install that cannot resolve.
+
+#### Signing the macOS build
+
+A mac build that is signed and notarized is the only kind macOS opens without a
+complaint. An unsigned one installs as "Tinkr is damaged and can't be opened",
+which is Gatekeeper refusing a bundle whose signature it cannot check against a
+notarization ticket, not a bad download. Both come from repository secrets, and
+the build skips them when they are absent, so a fork without them still builds —
+just unsigned.
+
+| Secret | What it is |
+| --- | --- |
+| `CSC_LINK` | the Developer ID Application certificate with its key, exported as `.p12` and base64 encoded |
+| `CSC_KEY_PASSWORD` | the password that `.p12` was exported with |
+| `APPLE_ID` | the Apple ID of the developer account |
+| `APPLE_APP_SPECIFIC_PASSWORD` | an app-specific password for that Apple ID, made at appleid.apple.com — not the account's own password |
+| `APPLE_TEAM_ID` | the team id, under Membership details in the developer account |
+
+The certificate is made once: from the Developer ID Application certificate in
+Keychain Access, "My Certificates", right click, export as `.p12`, then
+
+```bash
+base64 -i DeveloperID.p12
+```
+
+and paste the result as `CSC_LINK`. A certificate and an app-specific password
+each stay valid for a year and can be replaced without touching the other.
+
+Nothing is signed without `CSC_LINK`. With it set, the other four are required:
+the workflow fails rather than shipping a build that is signed but carries no
+ticket, because a Mac treats that exactly like an unsigned one. The mac job then
+checks the result the way a downloader's Mac will — `codesign --verify`,
+`spctl --assess` and `xcrun stapler validate` — so a signing problem fails the
+release instead of the install.
+
+While a release is unsigned it says so in the release body, from a
+`<!-- mac-unsigned -->` marker `scripts/release.js` writes. The website reads
+that marker to put the same note on the download page, so the two stay in step
+on their own: a release whose body carries it warns everywhere, and the day a
+signed release ships without it the warning is gone from both. A hand-written
+changelog keeps it by leaving the last block of the body alone.
