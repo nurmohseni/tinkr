@@ -116,6 +116,9 @@ describe('the connection two commands share', () => {
       '-o', 'ControlMaster=auto',
       '-o', `ControlPath=${socket}`,
       '-o', `ControlPersist=${persist}`,
+      // the handshake is bounded, so a host that is not reachable is ssh's own
+      // words in seconds rather than a session that sits on a silent terminal
+      '-o', 'ConnectTimeout=10',
     ])
 
     // the master the app starts is nobody's session, so nothing that ends takes

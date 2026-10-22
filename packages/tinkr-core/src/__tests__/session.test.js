@@ -105,26 +105,57 @@ describe('what a session waits for before it is handed a run', () => {
     expect(readied).toBe(true)
   })
 
-  test('answers once the shell has handed the terminal over and the command is still quiet', async () => {
+  // a quiet command is not a reading one: a run written into a command that has
+  // not taken the terminal is flushed when it finally does, so the session says
+  // the command never got anywhere rather than spending the run timeout
+  test('does not take a quiet command for a reading one', async () => {
+    let readied = false
+    let failed = null
+
+    session.ready().then(() => {
+      readied = true
+    }, error => {
+      failed = error
+    })
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    jest.advanceTimersByTime(4999)
+    await flush()
+
+    expect(readied).toBe(false)
+
+    jest.advanceTimersByTime(1)
+    await flush()
+
+    expect(readied).toBe(false)
+    expect(failed.name).toBe('SessionError')
+    expect(failed.message).toContain('printed nothing back')
+    expect(failed.message).toContain('never started reading the terminal')
+  })
+
+  test('answers at the limit for a command that printed but never said it was reading', async () => {
+    // sqlite3, mysql, redis-cli: they take the terminal without the escape
+    // readline prints, so their own prompt is the sign they are up
     let readied = false
 
     session.ready().then(() => {
       readied = true
     })
 
-    // a command that does not use readline takes the terminal without saying so,
-    // and it is reading by the time the handover has been quiet for a moment
     terminal.print(`${taken}user@host:~/app$ `)
     terminal.print(`\r\n${givenUp}\r`)
-    jest.advanceTimersByTime(1500)
+    terminal.print('Connected to a row store.\r\nsqlite> ')
+    jest.advanceTimersByTime(5000)
     await flush()
 
     expect(readied).toBe(true)
   })
 
   test('answers on a session that never hands the terminal over', async () => {
-    // ssh and docker put the terminal into a mode of their own, and a shell
-    // without readline never prints either escape
+    // a shell without readline never prints either escape, and nothing in its
+    // output says whether the command it runs is up: the limit is what keeps the
+    // session from waiting for a handover that is not coming
     let readied = false
 
     session.ready().then(() => {
@@ -132,20 +163,21 @@ describe('what a session waits for before it is handed a run', () => {
     })
 
     terminal.print('user@host:~/app$ ')
-    // it is still read into on a moment of quiet, only a longer one than a shell
-    // takes to read the files it starts with, which used to be written into
-    jest.advanceTimersByTime(140)
+    jest.advanceTimersByTime(4999)
     await flush()
 
     expect(readied).toBe(false)
 
-    jest.advanceTimersByTime(1500)
+    jest.advanceTimersByTime(1)
     await flush()
 
     expect(readied).toBe(true)
   })
 
   test('answers on a session that says nothing at all', async () => {
+    // nothing proves a command was handed the terminal — a shell without
+    // readline is quiet too — so this is the limit, not a verdict. A line that
+    // never connected is ssh's own bound to report (see controlOptions)
     let readied = false
 
     session.ready().then(() => {
@@ -156,6 +188,35 @@ describe('what a session waits for before it is handed a run', () => {
     await flush()
 
     expect(readied).toBe(true)
+  })
+
+  test('gives a session over ssh longer to boot, and says so when it printed nothing', async () => {
+    // a dial, a login and a machine that is not this one are paid before the
+    // command starts, and a run written before the command reads is a run lost
+    session = new Session({path: '/tmp', is_over_ssh: true}, {log: {error: () => {}}})
+    session.pty = terminal
+
+    let readied = false
+    let failed = null
+
+    session.ready().then(() => {
+      readied = true
+    }, error => {
+      failed = error
+    })
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    jest.advanceTimersByTime(14999)
+    await flush()
+
+    expect(readied).toBe(false)
+
+    jest.advanceTimersByTime(1)
+    await flush()
+
+    expect(failed.name).toBe('SessionError')
+    expect(failed.message).toContain('the ssh line was still connecting')
   })
 
   // the bug this waits against: a command that never booted leaves the shell at
@@ -199,20 +260,5 @@ describe('what a session waits for before it is handed a run', () => {
 
     expect(failed.message).toContain('exit status 127')
     expect(failed.output).toBe('')
-  })
-
-  test('is not failed by a shell that hands the terminal over and stays quiet', async () => {
-    let readied = false
-
-    session.ready().then(() => {
-      readied = true
-    })
-
-    terminal.print(`${taken}user@host:~/app$ `)
-    terminal.print(`\r\n${givenUp}\r`)
-    jest.advanceTimersByTime(1500)
-    await flush()
-
-    expect(readied).toBe(true)
   })
 })
