@@ -115,6 +115,14 @@ const controlOptions = connection => {
     '-o', 'ControlMaster=auto',
     '-o', `ControlPath=${socket}`,
     '-o', `ControlPersist=${persist}`,
+    // a machine that is not reachable at all is one ssh waits on for minutes —
+    // the handshake is bounded by nothing by default — and the session it was
+    // started for has already been given its own bound by then (see the session's
+    // ready): the wait has to end while somebody is still looking at it, and it
+    // ends with ssh's own words about the host instead of a timeout that says
+    // nothing. It bounds the connection itself, not the login, so a slow account
+    // on a reachable machine is still given its time
+    '-o', 'ConnectTimeout=10',
   ]
 }
 

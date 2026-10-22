@@ -40,13 +40,17 @@ const killSteps = [
 ]
 
 /**
- * How long a session is given to answer the command it was started with before
- * the run is written into it anyway, and how still the command has to be after
- * the shell handed it the terminal to count as the command being up. See
- * Session#ready.
+ * How long a session is given to show that the command it was started with is
+ * reading the terminal. See Session#ready.
+ *
+ * A run written into a session whose command is not reading yet is read by
+ * nobody: a command that uses readline flushes what is waiting on the terminal
+ * when it takes it over, and what it flushes is the run. The wait is therefore
+ * bounded rather than guessed. It is a longer bound over ssh, where the same
+ * boot waits on a dial, a login and a machine that is not this one.
  */
-const readyQuiet = 1500
 const readyLimit = 5000
+const readyLimitOverSSH = 15000
 
 /**
  * The two escapes readline prints when it takes the terminal over and when it
@@ -124,6 +128,21 @@ const sessionFailureMessage = (output, status) => {
 
   return `the session's command exited before it was ready${code}: ${output}`
 }
+
+/**
+ * What a session says when a command was handed the terminal and nothing ever
+ * came back from it: the line is still dialing, the login never finished, or the
+ * command never started. There is no output to carry, so the message is the
+ * whole of it — and it is said in place of a timeout spent waiting for an answer
+ * that could not come.
+ *
+ * @param {Object} connection
+ * @return {String}
+ */
+const silentSessionMessage = connection =>
+  connection && connection.is_over_ssh
+    ? 'the session printed nothing back: the ssh line was still connecting, or its login never finished'
+    : 'the session printed nothing back: its command never started reading the terminal'
 
 /**
  * The command to start the session with, with the pager out of the way.
@@ -296,12 +315,21 @@ class Session {
    * Readline is what shows the terminal changing hands: a shell hands it back
    * (`?2004l`) before it runs the command, and the command takes it (`?2004h`)
    * along with the prompt it prints next. A session is written into once the
-   * command has taken it, and once the handback has been followed by nothing at
-   * all for a moment — a command that does not use readline takes the terminal
-   * without saying so, and by then it is up either way. A session whose shell
-   * never hands the terminal back is written into at the limit instead of being
-   * left idle: a shell that is still reading its own files is quiet too, so
-   * silence on its own says nothing about whether the command is ready.
+   * command has taken the terminal — that, and nothing else, is what a command
+   * reading its terminal looks like.
+   *
+   * Silence is not that. A line that is still dialing, a login that is reading
+   * its own files and a command that has not booted yet are all silent, and a
+   * run written into any of them is answered by nobody: readline flushes what
+   * was waiting on the terminal when it takes it over, which is how a session
+   * that looked ready spent the whole run timeout and answered with a timeout.
+   * So the wait is bounded instead of guessed, and it ends in one of two ways
+   * (see `readyLimit`): the command says it is reading, or it printed something
+   * after the terminal was handed to it — a command that does not use readline
+   * takes the terminal without saying so, and its own prompt is the sign it is
+   * up. A command that was handed the terminal and answered with nothing at all
+   * never got anywhere, and that is what the session says, at the limit, in
+   * place of a timeout later.
    *
    * A command that fails to boot is the other way the terminal comes back: the
    * shell takes it over again and prints its own prompt, which is the same
@@ -312,7 +340,7 @@ class Session {
    * command printed and the status it left — rather than a timeout later.
    *
    * @return {Promise<void>} rejects with a SessionError when the command exits
-   * before it takes the terminal
+   * before it takes the terminal, or when it printed nothing back at all
    */
   ready() {
     return new Promise((resolve, reject) => {
@@ -324,28 +352,28 @@ class Session {
         return
       }
 
-      let quiet = null
       let limit = null
       let listener = null
       let handedBack = false
-      let everSeen = false
+      let shellTook = false
+      let printed = false
       let booted = ''
 
+      const limitAt = (this.connection && this.connection.is_over_ssh) ? readyLimitOverSSH : readyLimit
+
       const settle = () => {
-        clearTimeout(quiet)
         clearTimeout(limit)
         listener.dispose()
         resolve()
       }
 
-      const fail = status => {
-        clearTimeout(quiet)
+      const fail = (status, message = null) => {
         clearTimeout(limit)
         listener.dispose()
 
         const output = stripSessionNotes(booted).replace(/\r\n/g, '\n').trim()
 
-        reject(new SessionError(sessionFailureMessage(output, status), {output, status}))
+        reject(new SessionError(message || sessionFailureMessage(output, status), {output, status}))
       }
 
       listener = pty.onData(data => {
@@ -371,22 +399,22 @@ class Session {
         const taken = data.lastIndexOf(terminalTaken)
         const given = data.lastIndexOf(terminalGivenUp)
 
-        if (given !== -1 || taken !== -1) {
-          everSeen = true
-        }
-
         // what the command prints is what explains a boot that failed, so it is
-        // kept from the handover — before that the terminal is the shell's
+        // kept from the handover — before that the terminal is the shell's, and
+        // what it prints there is the line it was given, echoed back
         if (handedBack) {
           booted += data
 
           if (booted.length > bootOutputLimit * 4) {
             booted = booted.slice(-bootOutputLimit)
           }
+
+          if (stripSessionNotes(data).trim() !== '') {
+            printed = true
+          }
         }
 
-        // the command is reading: whichever of the two escapes is last is the
-        // state the terminal is in
+        // the command took the terminal in the same breath the shell gave it up
         if (given !== -1 && taken > given) {
           settle()
 
@@ -395,35 +423,48 @@ class Session {
 
         if (given !== -1) {
           handedBack = true
-          clearTimeout(quiet)
-          quiet = setTimeout(settle, readyQuiet)
 
           return
         }
 
-        if (handedBack && taken !== -1) {
+        // a take after the shell gave the terminal up is the command reading. A
+        // take before that is the shell's own prompt, which says nothing about
+        // whether the command is up — that is what `shellTook` records, and it
+        // is also all a shell without readline gives (see the limit below)
+        if (taken !== -1) {
+          if (handedBack || shellTook) {
+            settle()
+          } else {
+            shellTook = true
+          }
+        }
+
+        // nothing else settles this: the shell has said it is reading and has
+        // not handed the terminal over, and a run written into it now is what
+        // the line limit cuts
+      })
+
+      limit = setTimeout(() => {
+        // nothing was ever handed the terminal — a shell without readline — so
+        // what came back is the whole of what there is to go on
+        if (!handedBack) {
           settle()
 
           return
         }
 
-        // a shell that never says either escape — no readline, a session over ssh
-        // — is not saying that the command is reading either, so it is written
-        // into on a longer moment of quiet than reading its own files takes
-        if (!everSeen) {
-          clearTimeout(quiet)
-          quiet = setTimeout(settle, readyQuiet)
+        // a command that printed after it was given the terminal is up, even
+        // when it never says it is reading; one that printed nothing at all
+        // never got anywhere, and waiting the run timeout out for it is an
+        // answer the caller can do nothing with
+        if (printed) {
+          settle()
 
           return
         }
 
-        // the shell has said it is reading and has not handed the terminal over:
-        // a run written into it now is what the line limit cuts, so nothing
-        // settles this but the handover itself, or the limit below
-        clearTimeout(quiet)
-      })
-
-      limit = setTimeout(settle, readyLimit)
+        fail(null, silentSessionMessage(this.connection))
+      }, limitAt)
     })
   }
 
