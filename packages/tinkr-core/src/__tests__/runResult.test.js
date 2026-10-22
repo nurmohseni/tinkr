@@ -1,8 +1,12 @@
-const {RunResultFilter, wrapRun} = require('../runResult')
+const {RunResultFilter, wrapRun, typedRun} = require('../runResult')
 
 const marker = 'TINKRTEST'
 const start = 'STRTTEST'
 const envelope = payload => `${marker}@${Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')}@`
+// what psysh echoes back of a typed run: every line behind the prompt it was
+// read at, `> ` for the first and `. ` for the ones that continue it
+const echoOf = lines => lines.map((line, index) => `${index === 0 ? '' : '. '}${line}\r\n`).join('')
+const typedEcho = () => echoOf(typedRun(wrapRun("$a = str_repeat('x', 3000);").code))
 
 describe('the run result filter', () => {
   test('drops a php open tag before the snippet is encoded', () => {
@@ -26,16 +30,19 @@ describe('the run result filter', () => {
     expect(second.result).toEqual({value: 1})
   })
 
-  test('swallows the echoed command when it arrives split across chunks', () => {
+  test('swallows the echoed run when it arrives split across chunks', () => {
     const filter = new RunResultFilter(marker, start)
+    const echo = typedEcho()
+    let shown = filter.push('Psy Shell v0.12.24\n> ').output
 
-    filter.push('Psy Shell v0.12.24\n> ')
-    filter.push('$tinkr_code=base64_de')
+    // the echo is several lines, and the chunks fall anywhere inside them
+    for (let at = 0; at < echo.length; at += 7) {
+      shown += filter.push(echo.slice(at, at + 7)).output
+    }
 
-    const split = filter.push("code('YWJj');$tinkr_imported=[];\n")
-
-    // nothing of the echo reaches the terminal, however the chunks fell
-    expect(split.output.trim()).toBe('')
+    // nothing of the echo reaches the terminal, however the chunks fell: the
+    // banner is all there is, and the prompt went with the line read behind it
+    expect(shown).toBe('Psy Shell v0.12.24\n')
     expect(filter.printed).toBe('')
 
     filter.push(`${start}\r\narray:1 [\n  0 => "a"\n]\n`)
@@ -44,6 +51,24 @@ describe('the run result filter', () => {
 
     expect(result).toEqual({value: null, error: null})
     expect(filter.printed).toBe('array:1 [\n  0 => "a"\n]\n')
+  })
+
+  test('drops a line of the echo the terminal wrapped onto a line of its own', () => {
+    const filter = new RunResultFilter(marker, start)
+    const [first, ...rest] = typedRun(wrapRun("$a = str_repeat('x', 3000);").code)
+
+    filter.push('Psy Shell v0.12.24\r\n> ')
+    // a narrow terminal breaks a long line, and the piece past the break carries
+    // no tag of its own
+    const wrapped = filter.push(`${first.slice(0, 40)}\r\n${first.slice(40)}\r\n${rest.map(line => `. ${line}\r\n`).join('')}`)
+
+    expect(wrapped.output).toBe('')
+
+    filter.push('"DUMPED"\r\n')
+    filter.push(`${start}${envelope({value: null, error: {class: 'Exit', message: 'stopped'}})}`)
+
+    // what the run printed is the dump, and nothing of the echo
+    expect(filter.printedText()).toBe('"DUMPED"\r\n')
   })
 
   // the bug this waits against: `dd()` dumps to the terminal on its own and
@@ -55,13 +80,14 @@ describe('the run result filter', () => {
 
     // the session is up and the wrapped command has been echoed
     filter.push('Psy Shell v0.12.24\n> ')
-    filter.push("$tinkr='TINK'.'RTEST';$tinkr_code=base64_decode('YWJj');\r\n")
+    filter.push(typedEcho())
 
     // psysh dumps, and aborts before the marker is written
     filter.push('"DUMPED" // vendor/psy/psysh/src/ExecutionLoopClosure.php(55) : eval()\'d code:2\r\n')
     filter.push(`${start}TINKRTEST@${Buffer.from(JSON.stringify({value: null, error: {class: 'Exit', message: 'stopped'}})).toString('base64')}@`)
 
     expect(filter.printedText()).toContain('"DUMPED"')
+    expect(filter.printedText()).not.toContain('tinkr')
   })
 
   test('does not call the session booting a run printed', () => {
@@ -152,8 +178,8 @@ describe('the run result filter', () => {
     // the session booting
     filter.push('Psy Shell v0.12.24 (PHP 8.5.11 — cli)\n> ')
 
-    // the tty echoing the wrapped command back
-    const echoed = filter.push("$tinkr='TINK'.'RTEST';$tinkr_code=base64_decode('YWJj');$tinkr_error=null;try{\n")
+    // psysh echoing the typed run back
+    const echoed = filter.push(typedEcho())
 
     expect(echoed.output).toBe('')
     expect(filter.printed).toBe('')

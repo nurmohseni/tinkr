@@ -35,7 +35,7 @@ jest.mock('../remote', () => ({
   quoted: jest.requireActual('../remote').quoted,
 }))
 
-const {runCloud, wrapRun, runOutput} = require('tinkr-core')
+const {runCloud, wrapRun, runOutput, typedRun} = require('tinkr-core')
 
 const {Pty} = require('../pty/Pty')
 const {exec} = require('../remote')
@@ -72,7 +72,7 @@ describe('a run of a connection', () => {
 
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
-      input: jest.fn(),
+      type: jest.fn(() => Promise.resolve()),
       ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(cb => {
         printed.push(cb)
@@ -150,7 +150,7 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => {
       pty = {
         connect: jest.fn(),
-        input: jest.fn(),
+        type: jest.fn(() => Promise.resolve()),
         ready: jest.fn(() => new Promise(resolve => {
           reading = resolve
         })),
@@ -170,13 +170,13 @@ describe('a run of a connection', () => {
     // written before the session is reading, anything past the terminal's line
     // limit is dropped and the run arrives cut in half, which the session reads
     // as a syntax error instead of as the run
-    expect(pty.input).not.toHaveBeenCalled()
+    expect(pty.type).not.toHaveBeenCalled()
 
     reading()
     await new Promise(resolve => setImmediate(resolve))
 
-    expect(pty.input.mock.calls[0][0]).toContain('the snippet')
-    expect(pty.input.mock.calls[0][0].endsWith('\r')).toBe(true)
+    // typed a line at a time, which is what libedit reads whole
+    expect(pty.type).toHaveBeenCalledWith(typedRun('the snippet'))
   })
 
   test('writes nothing into a session that was replaced while it was booting', async () => {
@@ -186,7 +186,7 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => {
       pty = {
         connect: jest.fn(),
-        input: jest.fn(),
+        type: jest.fn(() => Promise.resolve()),
         ready: jest.fn(() => new Promise(resolve => {
           reading = resolve
         })),
@@ -203,7 +203,7 @@ describe('a run of a connection', () => {
     reading()
     await new Promise(resolve => setImmediate(resolve))
 
-    expect(pty.input).not.toHaveBeenCalled()
+    expect(pty.type).not.toHaveBeenCalled()
   })
 
   // a run that never returns used to leave the pane waiting with no end, and the
@@ -217,7 +217,7 @@ describe('a run of a connection', () => {
       Pty.mockImplementation(() => {
         pty = {
           connect: jest.fn(),
-          input: jest.fn(),
+          type: jest.fn(() => Promise.resolve()),
           kill: jest.fn(),
           ready: jest.fn(() => new Promise(() => {})),
           onData: jest.fn(() => ({dispose: jest.fn()})),
@@ -272,7 +272,7 @@ describe('a run of a connection', () => {
   test('answers a run whose session never booted with what the command said', async () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
-      input: jest.fn(),
+      type: jest.fn(() => Promise.resolve()),
       ready: jest.fn(() => Promise.reject(
         Object.assign(new Error('the session\'s command exited before it was ready (exit status 1): Could not open input file: artisan'), {
           name: 'SessionError',
