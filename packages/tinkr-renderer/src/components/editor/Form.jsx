@@ -1,7 +1,6 @@
-import {useCallback, useEffect, useState} from 'react'
+import {useEffect, useState} from 'react'
 import {useRoute} from 'wouter'
 import {useAtomValue, useSetAtom} from 'jotai'
-import debounce from 'lodash/debounce'
 import {FormattedMessage, useIntl} from 'react-intl'
 
 import FormField from './FormField'
@@ -40,20 +39,12 @@ const Form = () => {
     })()
   }, [])
 
-  // the submit is the run: it goes out as soon as the values are written into the
-  // snippet, and the window only collapses a second submit inside it
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(code => run(code, {document: params.id}), 500, {
-    leading: true,
-    trailing: false,
-  }), [params.id])
-
   const runSnippet = async () => {
     // the form's values are written into the code the form was read from, so
     // the snippet travels with them: a form carries no code of its own
     try {
       const code = await stringifyPhpForm(fields, snippet.code)
-      runDebounced(code)
+      run(code, {document: params.id})
     } catch (e) {
       setError(e.message)
     }

@@ -1,8 +1,7 @@
-import {useCallback, useEffect, useState} from 'react'
+import {useEffect, useState} from 'react'
 import {useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {useRoute} from 'wouter'
-import debounce from 'lodash/debounce'
 
 import {activeSessionAtom, documentAtomWithId} from '../../stores/sessions'
 import {runAtom, runStartedAtAtom, runningAtom, stopRunAtom} from '../../stores/editor'
@@ -62,17 +61,13 @@ const RunButton = () => {
   // well any more where the well was emptied while it ran
   const isDisabled = !running && code.trim() === ''
 
-  // the press is the run: it goes out now, and the window below only collapses a
-  // second press inside it — a double click that would otherwise boot one session
-  // and immediately stop it. The wait the window used to hold the run for was a
-  // fixed half second in front of every run, paid before the session was booted:
-  // a run that took a second reported it and took a second and a half, and the
-  // count on this button did not even start until the half second was over
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const runDebounced = useCallback(debounce(value => run(value, {document: documentId}), 500, {
-    leading: true,
-    trailing: false,
-  }), [documentId])
+  // the press is the run: it goes out now. It used to wait half a second first,
+  // which was a fixed half second paid before the session booted — a run that
+  // took a second reported it and took a second and a half, and the count on
+  // this button did not start until the wait was over. A second press is not
+  // lost either: the button is a stop by then, which is what a run that is
+  // going offers instead of another run
+  const start = () => run(code, {document: documentId})
 
   const label = intl.formatMessage({id: running ? 'editor.stop' : 'editor.run'})
 
@@ -81,7 +76,7 @@ const RunButton = () => {
       className={running ? 'btn btn--danger btn--run' : 'btn btn--primary btn--run'}
       type='button'
       aria-label={label}
-      onClick={running ? stop : () => runDebounced(code)}
+      onClick={running ? stop : start}
       disabled={isDisabled}
       style={isFormMode ? {display: 'none'} : undefined}
     >
