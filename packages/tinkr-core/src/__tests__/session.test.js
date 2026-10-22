@@ -105,6 +105,49 @@ describe('what a session waits for before it is handed a run', () => {
     expect(readied).toBe(true)
   })
 
+  // the bug this waits against: libedit takes the terminal without the bracket
+  // paste escape, so a session over ssh to a Debian or Ubuntu php sat out the
+  // whole fifteen second limit before every run was even typed
+  test('answers once psysh prints its prompt through libedit', async () => {
+    session = new Session({path: '/tmp', is_over_ssh: true}, {log: {error: () => {}}})
+    session.pty = terminal
+
+    let readied = false
+
+    session.ready().then(() => {
+      readied = true
+    })
+
+    terminal.print(`${taken}user@host:~$ `)
+    terminal.print(`ssh -t host 'php artisan tinker'\r\n${givenUp}\r`)
+    terminal.print('\u001b[90mPsy Shell v0.12.18 (PHP 8.2.35 — cli) by Justin Hileman\u001b[39m\r\n')
+    await flush()
+
+    // the banner is psysh booting, not psysh reading
+    expect(readied).toBe(false)
+
+    terminal.print('> ')
+    await flush()
+
+    expect(readied).toBe(true)
+  })
+
+  test('does not take a prompt the shell printed before the handover for psysh', async () => {
+    let readied = false
+
+    session.ready().then(() => {
+      readied = true
+    })
+
+    // a line the shell reads as unfinished is answered with its own `> `
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print("echo 'php artisan tinker\r\n> ")
+    jest.advanceTimersByTime(1000)
+    await flush()
+
+    expect(readied).toBe(false)
+  })
+
   // a quiet command is not a reading one: a run written into a command that has
   // not taken the terminal is flushed when it finally does, so the session says
   // the command never got anywhere rather than spending the run timeout
@@ -260,5 +303,65 @@ describe('what a session waits for before it is handed a run', () => {
 
     expect(failed.message).toContain('exit status 127')
     expect(failed.output).toBe('')
+  })
+})
+
+describe('how a run is typed into a session', () => {
+  let session = null
+  let terminal = null
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    terminal = fakeTerminal()
+    session = new Session({path: '/tmp'}, {log: {error: () => {}}})
+    session.pty = terminal
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  // the bug this waits against: a line typed while psysh is between two reads
+  // is echoed by the terminal itself, torn into the echo of the line before it,
+  // and the pieces read as what the run printed
+  test('types each line once psysh has read the one before it', async () => {
+    let typed = false
+
+    session.type(['echo eval(base64_decode(/*tinkr*/\'YWJj\'', '.\'ZGVm\'', '));']).then(() => {
+      typed = true
+    })
+
+    expect(terminal.written).toEqual(['echo eval(base64_decode(/*tinkr*/\'YWJj\'\r'])
+
+    // the echo of the line is not psysh reading the next one
+    terminal.print('echo eval(base64_decode(/*tinkr*/\'YWJj\'')
+    expect(terminal.written).toHaveLength(1)
+
+    terminal.print('\r\n. ')
+    expect(terminal.written).toEqual(['echo eval(base64_decode(/*tinkr*/\'YWJj\'\r', '.\'ZGVm\'\r'])
+
+    terminal.print(".'ZGVm'\r\n\u001b[?2004h. ")
+    await flush()
+
+    expect(terminal.written[2]).toBe('));\r')
+    expect(typed).toBe(true)
+  })
+
+  test('hands the rest over at once when psysh never shows its prompt', async () => {
+    let typed = false
+
+    session.type(['one', 'two', 'three']).then(() => {
+      typed = true
+    })
+
+    terminal.print('one\r\nmy-prompt: ')
+    jest.advanceTimersByTime(4999)
+    expect(terminal.written).toEqual(['one\r'])
+
+    jest.advanceTimersByTime(1)
+    await flush()
+
+    expect(terminal.written).toEqual(['one\r', 'two\rthree\r'])
+    expect(typed).toBe(true)
   })
 })

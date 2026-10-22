@@ -85,6 +85,16 @@ class Pty {
   }
 
   /**
+   * Type a run into the session, a line at a time (see Session#type).
+   *
+   * @param {Array<String>} lines
+   * @return {Promise<void>}
+   */
+  type(lines) {
+    return this.session.type(lines)
+  }
+
+  /**
    * The session is reading the terminal, so the run it was started with can go
    * in without being dropped. See Session#ready.
    *

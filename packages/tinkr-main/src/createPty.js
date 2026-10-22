@@ -1,5 +1,6 @@
 const {
   wrapRun,
+  typedRun,
   RunResultFilter,
   runOutput,
   isCloud,
@@ -232,7 +233,9 @@ const createPty = (connection, code, guard = null, timeout = null) => {
         run = wrapRun(code, aliases, guard)
         filter = new RunResultFilter(run.marker, run.start)
 
-        pty.input(`${run.code}\r`)
+        // typed a line at a time: one line of the whole run is more than
+        // libedit reads (see runResult.typedRun)
+        return pty.type(typedRun(run.code))
       }).catch(error => {
         // the command never became the session — a missing `artisan`, a platform
         // check, a php that is not there — so the run did not happen and the

@@ -4,8 +4,8 @@ const osLocale = require('os-locale')
 const os = require('os')
 const fs = require('fs')
 
-const {wrapRun, RunResultFilter} = require('./runResult')
-const {stripSessionNotes} = require('./terminalOutput')
+const {wrapRun, typedRun, RunResultFilter} = require('./runResult')
+const {stripRendering, stripSessionNotes} = require('./terminalOutput')
 const {importsFor} = require('./classIndex')
 const {parseSSHCommand} = require('./parseSSHCommand')
 const {askpassEnvironment} = require('./sshAskpass')
@@ -58,6 +58,19 @@ const readyLimitOverSSH = 15000
  */
 const terminalTaken = '\u001b[?2004h'
 const terminalGivenUp = '\u001b[?2004l'
+
+/**
+ * What psysh prints when it reads a line: its prompt, and the prompt it reads a
+ * statement that is not finished behind. The modern theme's `> ` and `. `, and
+ * the classic theme's `>>> ` and `... `, each at the start of a line.
+ *
+ * It is how a session reading through libedit says it is reading: libedit
+ * prints no bracket paste escape (see `terminalTaken`), and php on Debian,
+ * Ubuntu and the official docker images reads through libedit. The prompt is
+ * printed by the readline itself, once it has the terminal, so a line written
+ * after it is a line that readline reads.
+ */
+const psyshPrompt = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) $/
 
 /**
  * What the shell prints once the command it was given has exited: an OSC 9999
@@ -275,7 +288,10 @@ class Session {
       // it: ssh's own prompts — a host key to accept, a password to type — read
       // the terminal it was started on, and a command written there alongside
       // ssh is what they answered instead. See parseSSHCommand.
-      this.pty.write(`${parseSSHCommand(this.connection, command, askpass && askpass.line)}${bootSentinel}\r`)
+      // The far psysh pages too, so its pager is put out of the way the same as
+      // here (see withoutPager): a value taller than the terminal — any model —
+      // otherwise sat behind `less`, waiting for a key, until the run timed out
+      this.pty.write(`${parseSSHCommand(this.connection, command && withoutPager(command), askpass && askpass.line)}${bootSentinel}\r`)
     } else if (command) {
       // the status of the command, printed by the shell once it is back: the
       // shell's prompt is the same escape as a command's, so this is what says
@@ -314,9 +330,11 @@ class Session {
    *
    * Readline is what shows the terminal changing hands: a shell hands it back
    * (`?2004l`) before it runs the command, and the command takes it (`?2004h`)
-   * along with the prompt it prints next. A session is written into once the
-   * command has taken the terminal — that, and nothing else, is what a command
-   * reading its terminal looks like.
+   * along with the prompt it prints next. libedit takes it without the escape,
+   * so psysh's own prompt after the handover is the same sign (see
+   * `psyshPrompt`). A session is written into once the command has taken the
+   * terminal — that, and nothing else, is what a command reading its terminal
+   * looks like.
    *
    * Silence is not that. A line that is still dialing, a login that is reading
    * its own files and a command that has not booted yet are all silent, and a
@@ -412,6 +430,15 @@ class Session {
           if (stripSessionNotes(data).trim() !== '') {
             printed = true
           }
+
+          // psysh printed its prompt: libedit has the terminal, and says so no
+          // other way. Only the end of what came back is read, which is where a
+          // prompt that is waiting for a line is
+          if (psyshPrompt.test(stripRendering(booted.slice(-256)))) {
+            settle()
+
+            return
+          }
         }
 
         // the command took the terminal in the same breath the shell gave it up
@@ -473,6 +500,87 @@ class Session {
    */
   write(code) {
     this.pty.write(code)
+  }
+
+  /**
+   * Type a run into the session, a line at a time, each once the session has
+   * read the one before it.
+   *
+   * A line typed ahead of the readline is read by the terminal instead: between
+   * two lines psysh has handed the terminal back, and what arrives then is echoed
+   * by the terminal itself, out of order with what the readline echoes, so the
+   * echo of the run is torn into pieces the pane cannot tell from what the run
+   * printed. Waiting for psysh's prompt between lines keeps the echo whole, and
+   * the lines few (see runResult.typedRun) keeps the wait short.
+   *
+   * A session that never shows the prompt — a theme of its own, a command that is
+   * not psysh — is handed the rest at once at the readiness limit rather than
+   * left waiting on a prompt that is not coming.
+   *
+   * @param {Array<String>} lines without their line endings
+   * @return {Promise<void>} once the last line is written
+   */
+  type(lines) {
+    return new Promise(resolve => {
+      const pty = this.pty
+
+      if (!pty || lines.length === 0) {
+        resolve()
+
+        return
+      }
+
+      const limitAt = (this.connection && this.connection.is_over_ssh) ? readyLimitOverSSH : readyLimit
+      let index = 0
+      let since = ''
+      let limit = null
+      let listener = null
+
+      const done = () => {
+        clearTimeout(limit)
+        listener.dispose()
+        resolve()
+      }
+
+      const next = () => {
+        clearTimeout(limit)
+
+        // a session killed while it was being typed into is not written into
+        if (this.pty !== pty) {
+          done()
+
+          return
+        }
+
+        since = ''
+        pty.write(`${lines[index]}\r`)
+        index++
+
+        if (index === lines.length) {
+          done()
+
+          return
+        }
+
+        limit = setTimeout(() => {
+          if (this.pty === pty) {
+            pty.write(lines.slice(index).map(line => `${line}\r`).join(''))
+          }
+
+          done()
+        }, limitAt)
+      }
+
+      listener = pty.onData(data => {
+        since = (since + data).slice(-256)
+
+        if (psyshPrompt.test(stripRendering(since))) {
+          next()
+        }
+      })
+
+      next()
+    })
   }
 
   /**
@@ -671,7 +779,9 @@ const runCode = (connection, code, options = {}) => {
         return
       }
 
-      session.write(`${run.code}\r`)
+      // a line at a time: one line of the whole run is more than libedit reads
+      // (see runResult.typedRun)
+      return session.type(typedRun(run.code))
     }).catch(error => finish(error))
 
     session.onExit(() => {

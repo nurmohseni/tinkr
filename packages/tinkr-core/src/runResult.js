@@ -585,9 +585,56 @@ const wrapRun = (source, imports = {}, guard = null) => {
  * split across two chunks, so a tail that could still become one is held back
  * until the next chunk says whether it was.
  */
-// what the session echoes back before it runs the wrapped command, so the
-// filter can swallow it however the chunks happen to split
-const ECHO = '=base64_decode('
+/**
+ * The tags every line a session is typed carries (see typedRun): the lines that
+ * open and continue the run, and the line that closes it. They are php comments,
+ * so they cost the run nothing, and they are what the session's echo of the run
+ * is told apart by.
+ */
+const TYPED = '/*tinkr*/'
+const TYPED_END = '/*tinkr:end*/'
+
+/**
+ * How much of the run one typed line carries.
+ *
+ * A run is several kilobytes, and typed as one line it is more than libedit —
+ * the readline php is built with on Debian, Ubuntu and the official docker
+ * images — will read: a 7.7 KB line stops echoing part way and is never
+ * evaluated, so the run waits out its whole timeout. A thousand characters is a
+ * line every readline reads, and few enough lines that the round trip each one
+ * waits on (see Session#type) costs well under a second over ssh.
+ */
+const typedLineLength = 1000
+
+/**
+ * The run, as the lines a session is typed.
+ *
+ * The wrapped code travels base64-encoded and is evaluated in one statement, so
+ * psysh reads the lines as one input: every line but the last leaves the call
+ * open, which is psysh's cue to read another line rather than to evaluate. The
+ * encoding is what keeps the lines safe to cut anywhere, and keeps the echo free
+ * of anything the run itself prints, the markers included.
+ *
+ * `echo` is there so the statement answers nothing: the wrapper prints its own
+ * envelope, and a `= null` after it would be psysh's, not the run's.
+ *
+ * @param {String} code `run.code` from wrapRun
+ * @return {Array<String>} the lines, in order, without their line endings
+ */
+const typedRun = code => {
+  const encoded = Buffer.from(code, 'utf8').toString('base64')
+  const lines = []
+
+  for (let at = 0; at < encoded.length; at += typedLineLength) {
+    const piece = `${TYPED}'${encoded.slice(at, at + typedLineLength)}'`
+
+    lines.push(at === 0 ? `echo eval(base64_decode(${piece}` : `.${piece}`)
+  }
+
+  lines.push(`));${TYPED_END}`)
+
+  return lines
+}
 
 class RunResultFilter {
   /**
@@ -608,9 +655,12 @@ class RunResultFilter {
     // abort before the wrapper's marker is flushed, so a run that leaves that
     // way has its dump here and nowhere else
     this.early = ''
-    // whether the echo of the wrapped command has been seen, which is where the
-    // session stops booting
+    // whether the echo of the typed run has been seen through to its last line,
+    // which is where the session stops booting
     this.asked = false
+    // whether the session is echoing the typed run back, which every line of it
+    // is dropped from the terminal for — a line the readline wrapped as well
+    this.typing = false
     this.started = false
     // whether the marker's own line ending has been dropped from the run yet
     this.trimmed = false
@@ -710,14 +760,32 @@ class RunResultFilter {
       this.tail = output.slice(lastNewline + 1)
       output = output.slice(0, lastNewline + 1)
 
-      // the session echoes the wrapped command back (the shell once, and its
-      // readline again); that echo is the point the session stops booting and
-      // the snippet starts printing
-      const echo = output.lastIndexOf(ECHO)
+      // the session echoes the typed run back, a line at a time (see typedRun);
+      // its last line is the point the session stops booting and the snippet
+      // starts printing, and none of it is the terminal's to show
+      const lines = output.split('\n')
+      const kept = []
+      let end = -1
 
-      if (echo !== -1) {
-        this.asked = true
-      }
+      lines.forEach((line, index) => {
+        if (line.includes(TYPED_END)) {
+          this.typing = false
+          this.asked = true
+          end = index
+
+          return
+        }
+
+        if (line.includes(TYPED)) {
+          this.typing = true
+        }
+
+        // the last piece is what follows the last line ending, which is always
+        // empty: it is kept so the lines rejoin with their endings
+        if (!this.typing || index === lines.length - 1) {
+          kept.push(line)
+        }
+      })
 
       const run = this.runOf(output)
 
@@ -728,16 +796,12 @@ class RunResultFilter {
         // through the wrapper. `dd()` and `exit()` do exactly that — they dump
         // and abort, so the wrapper's marker is never flushed and this is the
         // only place their output exists
-        this.early += echo === -1
-          ? output
-          : output.slice(output.indexOf('\n', echo) === -1 ? output.length : output.indexOf('\n', echo) + 1)
+        this.early += end === -1 ? output : lines.slice(end + 1).join('\n')
       }
 
       // the terminal keeps the session as it is, minus the readline echoing the
-      // wrapped command back
-      const terminal = output
-        .split('\n')
-        .filter(line => !line.includes(ECHO))
+      // typed run back
+      const terminal = kept
         .join('\n')
         .split(this.start)
         .join('')
@@ -844,5 +908,6 @@ module.exports = {
   wrapRun,
   RunResultFilter,
   phpString,
+  typedRun,
   parseResult,
 }
