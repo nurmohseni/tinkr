@@ -162,6 +162,11 @@ const setAnswer = runWrite((current, value) => Object.assign({}, current, {
 const appendToOutput = runWrite((current, value) => Object.assign({}, current, {
   output: `${current.output}${value}`,
 }))
+
+// what the run printed, whole: a run that answered while its connection was not
+// on screen brings what it printed in the answer, because no window was reading
+// the stream as it came
+const setOutput = runWrite((current, value) => Object.assign({}, current, {output: value}))
 // whether a run is sent inside a transaction it takes back when it is done. It
 // is a switch the user keeps set, and it is read when the run is sent rather
 // than stored with it, so turning it on changes the next run and not the last.
@@ -365,6 +370,7 @@ export {
   setRun,
   setGate,
   setAnswer,
+  setOutput,
   currentResultAtom,
   currentOutputAtom,
   currentRunCodeAtom,

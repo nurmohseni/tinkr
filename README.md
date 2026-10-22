@@ -75,7 +75,7 @@ xattr -dr com.apple.quarantine /Applications/Tinkr.app
 | **Editor** | Monaco, with class names and `::` method suggestions read straight from your project, local or remote. |
 | **Snippet forms** | Turn a snippet's variables into a form and run it like a tiny admin panel. |
 | **Snippets & history** | Save the code you reuse. Every run is kept across restarts; one click puts it back in the editor. |
-| **Tabs, each with its own answer** | Open several snippets at once: every tab keeps the result it ran, its printed output and its own run marker, so switching back finds the answer it left rather than the last one anywhere. |
+| **Tabs, each with its own answer** | Open several snippets at once: every tab keeps the result it ran, its printed output and its own run marker, so switching back finds the answer it left rather than the last one anywhere. Each connection keeps its own tabs: move to another project and back, and the documents, the code in them and a run that was going are where you left them — the run is not stopped by the move, and its answer waits for the connection. |
 
 ### Read
 

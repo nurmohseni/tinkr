@@ -2,8 +2,8 @@ const fs = require('fs')
 const path = require('path')
 const {test, expect} = require('@playwright/test')
 
-const {fixture, launchTinkr} = require('../support/tinkr')
-const {chooseKind, editConnection, openNewConnection} = require('../support/actions')
+const {fixture, fixtureConnection, launchTinkr} = require('../support/tinkr')
+const {chooseKind, editConnection, openConnection, openNewConnection, setEditorCode} = require('../support/actions')
 
 const appFile = (profile, name) => path.join(profile, 'Electron', 'app', name)
 
@@ -113,6 +113,95 @@ test.describe('the connection dialog', () => {
       expect(second.ssh_password).toBe(false)
 
       await page.locator('.statusbar').getByText(/PHP \d/).waitFor({timeout: 15_000})
+    } finally {
+      await close()
+    }
+  })
+
+
+  test('keeps the tabs and the run of a connection the window moves away from', async () => {
+    const {page, close} = await launchTinkr({
+      connections: [
+        fixtureConnection({id: 'one', name: 'One'}),
+        fixtureConnection({id: 'two', name: 'Two'}),
+      ],
+    })
+
+    try {
+      const tabs = page.getByRole('tablist', {name: 'Open documents'}).getByRole('tab')
+      const button = page.locator('.tabbar .btn--run').first()
+      const output = page.locator('.output')
+      const history = page.getByRole('navigation', {name: 'History'})
+
+      await expect(page.locator('.statusbar')).toContainText('Connected · One')
+
+      // a tab of its own holding code nobody saved, and a run that is still
+      // going when the window moves: both belong to this connection
+      await setEditorCode(page, 'sleep(4) + 42;')
+      await page.locator('.tabbar__new').click()
+      await setEditorCode(page, "'kept';")
+      await expect(tabs).toHaveCount(2)
+
+      await tabs.nth(0).click()
+      await button.click()
+      await expect(button).toHaveClass(/btn--danger/)
+
+      await openConnection(page, 'Two')
+
+      // the connection it moved to opens on its own session, with nothing of One
+      await expect(tabs).toHaveCount(1)
+      await expect(button).not.toHaveClass(/btn--danger/)
+
+      // long enough for the run of One to come back with nobody watching it
+      await page.waitForTimeout(6000)
+
+      await openConnection(page, 'One')
+
+      // the tabs came back, the run was not stopped by the move, and its answer
+      // is on the tab that sent it
+      await expect(tabs).toHaveCount(2)
+
+      await tabs.nth(0).click()
+      await expect(output.locator('.t-number').first()).toHaveText('42', {timeout: 60_000})
+      await expect(button).not.toHaveClass(/btn--danger/)
+
+      // the run happened while the window was elsewhere, and the history says so
+      await expect(history.locator('.tree-nav__row--run')).toHaveCount(1)
+
+      // and the other tab is the code it held, not an empty one
+      await tabs.nth(1).click()
+      await expect(page.locator('.editor .monaco-editor').first()).toContainText("'kept';")
+    } finally {
+      await close()
+    }
+  })
+
+  test('leaves a run going while the window is on another connection', async () => {
+    const {page, close} = await launchTinkr({
+      connections: [
+        fixtureConnection({id: 'one', name: 'One'}),
+        fixtureConnection({id: 'two', name: 'Two'}),
+      ],
+    })
+
+    try {
+      const button = page.locator('.tabbar .btn--run').first()
+      const output = page.locator('.output')
+
+      await expect(page.locator('.statusbar')).toContainText('Connected · One')
+
+      // long enough that the run is still going when the window is back on One
+      await setEditorCode(page, 'sleep(6) + 42;')
+      await button.click()
+      await expect(button).toHaveClass(/btn--danger/)
+
+      await openConnection(page, 'Two')
+      await openConnection(page, 'One')
+
+      // the session the window left was not stopped by the move: it is still the
+      // run that is going, and it answers on the tab that sent it
+      await expect(button).toHaveClass(/btn--danger/)
+      await expect(output.locator('.t-number').first()).toHaveText('42', {timeout: 60_000})
     } finally {
       await close()
     }

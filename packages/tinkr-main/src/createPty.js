@@ -9,7 +9,12 @@ const {
 
 const {Pty} = require('./pty/Pty')
 
-const {getEditorWindow, getPtyProcess, setPtyProcess} = require('./processes')
+const {
+  getEditorWindow,
+  getPtyProcess,
+  setPtyProcess,
+  setBufferedAnswer,
+} = require('./processes')
 const {appendHistory} = require('./services/history')
 const {refreshIndex} = require('./services/project')
 const secrets = require('./database/secrets')
@@ -70,6 +75,11 @@ const createPty = (connection, code, guard = null, timeout = null) => {
   const startedAt = Date.now()
   let timer = null
 
+  // whether a run is going in this session, which is what decides whether the
+  // session outlives a move to another connection: a session sitting at its
+  // prompt is the app's to end, one that is running something is the person's
+  pty.running = Boolean(run)
+
   /**
    * The run's answer, out of the envelope: the pane is told what it returned,
    * what it printed, and how long the whole of it took — the boot of the session
@@ -80,22 +90,40 @@ const createPty = (connection, code, guard = null, timeout = null) => {
   const answered = result => {
     clearTimeout(timer)
 
-    const win = getEditorWindow(id)
-
-    if (!win) {
-      return
-    }
-
     // what the run printed is the filter's; a run that never reached the
     // session brings its own output, because there was no run to print anything
     const answer = Object.assign({}, result, {
       output: result.output === undefined ? runOutput(filter) : result.output,
       duration: Date.now() - startedAt,
     })
+    // the run is over, and the history row is the connection's whether or not
+    // the window is on it: a run that came back while the person was elsewhere
+    // is still a run that happened
+    const history = appendHistory(id, code, answer)
 
-    win.webContents.send('runResult', answer)
-    win.webContents.send('historyConnection', appendHistory(id, code, answer))
+    pty.running = false
+
     refreshIndex(connection)
+
+    const win = getEditorWindow(id)
+
+    if (win) {
+      win.webContents.send('runResult', answer)
+      win.webContents.send('historyConnection', history)
+
+      return
+    }
+
+    // the window is showing another connection: the answer waits for this one,
+    // and the session that has answered is ended here rather than left running
+    // for nobody. What it printed is part of the answer, so the pane reads it
+    // when the answer lands
+    setBufferedAnswer(id, {answer, history})
+
+    if (getPtyProcess(id) === pty) {
+      setPtyProcess(id, null)
+      pty.kill()
+    }
   }
 
   /**
@@ -139,26 +167,30 @@ const createPty = (connection, code, guard = null, timeout = null) => {
 
     const win = getEditorWindow(id)
 
-    if (!win) {
-      return
-    }
-
     if (!filter) {
-      win.webContents.send('outputConnection', data)
+      if (win) {
+        win.webContents.send('outputConnection', data)
+      }
+
       return
     }
 
+    // the filter is fed whether or not the window is on this connection: a run
+    // goes on while the person is elsewhere, and what it answers is read out of
+    // the stream the same way either way
     const {output, run, result} = filter.push(data)
 
-    if (output) {
-      win.webContents.send('outputConnection', output)
-    }
+    if (win) {
+      if (output) {
+        win.webContents.send('outputConnection', output)
+      }
 
-    // the output pane shows what the run printed, never the session booting: it
-    // listens on a channel of its own, and the terminal tab keeps the whole
-    // session
-    if (run) {
-      win.webContents.send('runOutput', run)
+      // the output pane shows what the run printed, never the session booting: it
+      // listens on a channel of its own, and the terminal tab keeps the whole
+      // session
+      if (run) {
+        win.webContents.send('runOutput', run)
+      }
     }
 
     // the run is over: what came back, what it printed, and how long it took.
@@ -240,6 +272,11 @@ const runInCloud = (connection, code, guard, timeout) => {
   const stop = new AbortController()
   const handle = {kill: () => stop.abort()}
 
+  // a cloud command goes on in Laravel Cloud whether or not this window shows
+  // the connection, so the handle is one the move to another connection keeps
+  // (see services/connections)
+  handle.running = true
+
   setPtyProcess(id, handle)
 
   const options = {
@@ -273,16 +310,25 @@ const runInCloud = (connection, code, guard, timeout) => {
 
     setPtyProcess(id, null)
 
-    const win = getEditorWindow(id)
-
-    if (!win) {
-      return
-    }
+    handle.running = false
 
     const result = Object.assign({}, answer, {
       output: answer.output === undefined ? '' : answer.output,
       duration: Date.now() - startedAt,
     })
+    const history = appendHistory(id, code, result)
+
+    refreshIndex(connection)
+
+    const win = getEditorWindow(id)
+
+    if (!win) {
+      // the command ended while the window was on another connection: it is the
+      // connection's to read when it is shown again
+      setBufferedAnswer(id, {answer: result, history})
+
+      return
+    }
 
     // the output pane is the run's own output, on the channel a session's run
     // prints to, so the two kinds of run read the same in the pane
@@ -291,8 +337,7 @@ const runInCloud = (connection, code, guard, timeout) => {
     }
 
     win.webContents.send('runResult', result)
-    win.webContents.send('historyConnection', appendHistory(id, code, result))
-    refreshIndex(connection)
+    win.webContents.send('historyConnection', history)
   }
 
   runCloud(connection, code, options).then(result => settled(result), error => {

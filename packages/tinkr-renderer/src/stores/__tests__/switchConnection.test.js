@@ -68,7 +68,7 @@ describe('switching the window connection', () => {
     expect(store.get(stores.history.historyListAtom)).toEqual([])
   })
 
-  test('and nothing of the old connection is still on screen', () => {
+  test('and nothing of the connection it left is still on screen', () => {
     store.set(stores.sessions.addSessionAtom, stores.sessions.newSession({name: '18:30', code: 'old'}))
     store.set(stores.tabs.openTabAtom, 's1')
     // a run's answer and what it printed are one document's record
@@ -92,6 +92,46 @@ describe('switching the window connection', () => {
     expect(store.get(stores.editor.runsAtom)).toEqual({})
     expect(store.get(stores.editor.inFlightAtom)).toBe(null)
     expect(store.get(stores.ai.aiThreadAtom)).toEqual([])
+  })
+
+  test('what a connection was holding comes back with it, down to the run that was going', () => {
+    const session = stores.sessions.newSession({name: '18:30', code: 'old'})
+    const record = {result: {value: 1, error: null}, output: 'printed', code: '1 + zero;', gate: null}
+
+    store.set(stores.sessions.addSessionAtom, session)
+    store.set(stores.tabs.openTabAtom, 's1')
+    store.set(stores.editor.runsAtom, {s1: record})
+    // a run of the snippet was going when the window moved away
+    store.set(stores.editor.inFlightAtom, {document: 's1', startedAt: 42})
+    store.set(stores.editor.activeDocumentAtom, 's1')
+
+    connection = second
+    store.set(stores.connections.switchConnectionAtom)
+
+    connection = first
+
+    // the window is told where to land: the document the connection was left on
+    expect(store.set(stores.connections.switchConnectionAtom)).toBe('/snippets/s1/editor')
+
+    expect(store.get(stores.sessions.sessionsAtom).map(one => one.id)).toContain(session.id)
+    expect(store.get(stores.sessions.activeSessionIdAtom)).toBe(session.id)
+    expect(store.get(stores.tabs.openTabsAtom)).toEqual(['s1'])
+    expect(store.get(stores.editor.runsAtom).s1).toEqual(record)
+    expect(store.get(stores.editor.inFlightAtom)).toEqual({document: 's1', startedAt: 42})
+  })
+
+  test('a connection whose last document was a session lands on the session, not on a snippet route', () => {
+    const session = stores.sessions.newSession({code: 'old'})
+
+    store.set(stores.sessions.addSessionAtom, session)
+    store.set(stores.editor.activeDocumentAtom, session.id)
+
+    connection = second
+    store.set(stores.connections.switchConnectionAtom)
+
+    connection = first
+
+    expect(store.set(stores.connections.switchConnectionAtom)).toBe('/')
   })
 
   test('what is not about a connection is left exactly as it was', () => {

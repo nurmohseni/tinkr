@@ -15,6 +15,8 @@ const {
   setEditorConnection,
   getCurrentEditorWindow,
   getEditorConnectionId,
+  getBufferedAnswer,
+  clearBufferedAnswer,
   killPtys,
 } = require('../processes')
 const {quickConnection, appName} = require('../constants')
@@ -69,6 +71,10 @@ const deleteConnection = id => {
   // is keeping a secret for nobody
   secrets.forget(dataDir(), id)
   connections.delete(id)
+
+  // a run of a connection that does not exist any more has no window to answer
+  // to, and no reason to keep a php
+  killPtys(id)
 }
 
 /**
@@ -113,12 +119,40 @@ const editConnection = id => {
 }
 
 /**
+ * Hand over what a connection's runs answered while the window was showing
+ * another one.
+ *
+ * The answer is the run's own: the window is told after it has been told which
+ * connection it is on, so the documents it restored are the ones the answer
+ * belongs to, and the history row is sent with it because the run happened
+ * whether or not anyone was watching.
+ *
+ * @param {String} id
+ * @param {Electron.BrowserWindow} win
+ */
+const flushAnswer = (id, win) => {
+  const buffered = getBufferedAnswer(id)
+
+  if (!buffered) {
+    return
+  }
+
+  clearBufferedAnswer(id)
+
+  win.webContents.send('runResult', buffered.answer)
+  win.webContents.send('historyConnection', buffered.history)
+}
+
+/**
  * Connect to a connection.
  *
  * The app keeps one window, so connecting switches that window to the
- * connection: the sessions of the connection it was running are dropped, the
- * connection's own are booted, and the window is told which connection it is on,
- * so the snippets, the runs and the documents it shows become that connection's.
+ * connection: what the window was showing — its documents, their code, the
+ * answers they hold and the run that was going — is kept under the connection it
+ * was showing and comes back with it, a session left mid-run is left to answer,
+ * and the connection's own session is booted unless it is still the one running.
+ * The window is then told which connection it is on, so the snippets, the runs
+ * and the documents it shows become that connection's.
  *
  * The window is not loaded again for it. What belongs to a connection changes,
  * and what does not — the window, the preferences, the layout, the panel a
@@ -141,9 +175,29 @@ const connectConnection = async connection => {
   const previousId = getEditorConnectionId(win)
 
   if (previousId) {
-    killPtys(previousId)
-    setEditorWindow(previousId, null)
-    setEditorConnection(previousId, null)
+    // a session with a run going is the run somebody asked for: it is left to
+    // finish, and its answer waits for this connection to be shown again (see
+    // createPty). A session only sitting at its prompt is ended — whether the
+    // window is leaving the connection or connecting to it again
+    const pty = getPtyProcess(previousId)
+
+    if (pty && !pty.running) {
+      pty.kill()
+      setPtyProcess(previousId, null)
+    }
+
+    if (previousId !== connection.id) {
+      // the form session of a connection nobody is reading is not worth a php
+      const backgroundPty = getBackgroundPtyProcess(previousId)
+
+      if (backgroundPty) {
+        backgroundPty.kill()
+        setBackgroundPtyProcess(previousId, null)
+      }
+
+      setEditorWindow(previousId, null)
+      setEditorConnection(previousId, null)
+    }
   }
 
   setEditorWindow(connection.id, win)
@@ -155,9 +209,15 @@ const connectConnection = async connection => {
   // is told about it comes from that environment instead (see connectCloud)
   const cloud = isCloud(connection)
 
-  if (!cloud) {
+  // a connection this window comes back to may still be running the session it
+  // was left with: booting a second one over it would leave the first with
+  // nobody reading it, and the run it is in with no way to answer
+  if (!cloud && !getPtyProcess(connection.id)) {
     createPty(connection)
-    createBackgroundPty(connection)
+
+    if (!getBackgroundPtyProcess(connection.id)) {
+      createBackgroundPty(connection)
+    }
   }
 
   win.setTitle(`${appName} - ${connection.name}`)
@@ -167,6 +227,11 @@ const connectConnection = async connection => {
   // the one that was just booted
   win.webContents.send('setConnection', connection.id)
   win.webContents.send('reconnectConnection')
+
+  // the window has just been told which connection it is on, so this is the
+  // moment a run that answered while another connection was shown can land on
+  // the tab that sent it
+  flushAnswer(connection.id, win)
 
   if (cloud) {
     await connectCloud(connection, win)
