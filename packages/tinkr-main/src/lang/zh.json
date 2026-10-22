@@ -279,7 +279,15 @@
     "cloud_permission_environments": "Environments: View environments, View environment instances, Create environment commands, View environment logs",
     "cloud_check_description": "只向 Laravel Cloud 询问一次，得到回应后才保存令牌。",
     "cloud_save": "校验并保存",
-    "cloud_check": "校验令牌"
+    "cloud_check": "校验令牌",
+    "updates": "更新",
+    "updates_description": "检查是否已发布更新版本的 Tinkr",
+    "updates_check": "检查更新",
+    "updates_checking": "正在检查…",
+    "updates_newest": "Tinkr {version} 已是最新版本。",
+    "updates_available": "Tinkr {latest} 已发布。应用窗口会询问是否下载。",
+    "updates_unavailable": "Tinkr {version} 无法自行更新：它不是从正式版本安装的。",
+    "updates_failed": "无法检查：{message}"
   },
   "ok": "确定",
   "cancel": "取消",

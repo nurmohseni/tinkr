@@ -279,7 +279,15 @@
     "cloud_open": "Open Laravel Cloud",
     "cloud_check_description": "Laravel Cloud is asked once, and the token is kept only if it answers.",
     "cloud_save": "Check and save",
-    "cloud_check": "Check the token"
+    "cloud_check": "Check the token",
+    "updates": "Updates",
+    "updates_description": "check whether a newer version of Tinkr has been released",
+    "updates_check": "Check for updates",
+    "updates_checking": "Checking…",
+    "updates_newest": "Tinkr {version} is the newest version there is.",
+    "updates_available": "Tinkr {latest} is out. The app window asks whether to download it.",
+    "updates_unavailable": "Tinkr {version} cannot update itself: it was not installed from a release.",
+    "updates_failed": "The check could not be made: {message}"
   },
   "ok": "OK",
   "cancel": "Cancel",
