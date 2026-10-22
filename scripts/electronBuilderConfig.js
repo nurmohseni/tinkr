@@ -48,6 +48,21 @@ module.exports = {
       'dmg',
       'zip'
     ],
+    // What decides whether the download opens at all. An app that is not signed
+    // by a Developer ID and not notarized is reported by macOS as damaged, not
+    // as untrusted, so both come from the environment and neither is optional:
+    // a certificate in CSC_LINK signs it, and APPLE_ID with
+    // APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID notarizes it (see
+    // .github/workflows/release.yml, which also refuses to ship one without the
+    // other).
+    //
+    // The hardened runtime is what a notarization ticket is granted against, and
+    // electron-builder's default entitlements already carry the three things the
+    // app needs signed: JIT and unsigned executable memory for the renderer, and
+    // no library validation, which is what lets node-pty load the .node that sits
+    // unbundled beside app.asar.
+    hardenedRuntime: true,
+    notarize: true,
     extendInfo: {
       CFBundleURLSchemes: 'tinkr',
       CFBundleURLName: 'Tinkr Protocol',
