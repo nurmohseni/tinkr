@@ -3,7 +3,8 @@ jest.mock('child_process', () => ({spawn: jest.fn()}))
 const {EventEmitter} = require('events')
 const {spawn} = require('child_process')
 
-const {quoted, exec} = require('../remote')
+const {quoted, exec, ensureMaster, closeMasters} = require('../remote')
+const {controlOptions, masterOptions, controlPath, sshArgs} = require('tinkr-core')
 
 // a child that says what it was going to say once the listeners are on it, which
 // is when a real one says it too
@@ -43,8 +44,18 @@ const quiet = out => {
   return child
 }
 
+// a socket with no master on it: the check is the first thing the app asks of
+// ssh, and `-O check` exits 1 when nothing answers on the path
+const socketIsFree = () => spawn.mockImplementationOnce(() => answering('', 1))
+
 describe('running a command on the machine a connection runs on', () => {
-  beforeEach(() => spawn.mockReset())
+  beforeEach(() => {
+    // a master is a login this app made and kept, and it outlives a command: a
+    // test is not one connection's, so none is left for the next
+    spawn.mockImplementation(() => answering(''))
+    closeMasters()
+    spawn.mockReset()
+  })
 
   test('is a shell here, in the project\'s own directory', async () => {
     spawn.mockImplementation(() => answering('PHP 8.3.1 (cli)'))
@@ -57,19 +68,23 @@ describe('running a command on the machine a connection runs on', () => {
 
   test('is ssh there, reached with the port, the key and the target of the connection', async () => {
     spawn.mockImplementation(() => answering(''))
+    socketIsFree()
 
-    await exec({
+    const connection = {
       is_over_ssh: true,
       ssh_server: '192.168.1.1',
       ssh_user: 'root',
       ssh_port: '2000',
       ssh_key: '/usr/local/id.pem',
       path: '/var/www/html',
-    }, 'php -v')
+    }
+
+    await exec(connection, 'php -v')
 
     // each argument is one word of its own, and `--` is what stops a target that
     // looks like an option from being read as one
-    expect(spawn).toHaveBeenCalledWith('ssh', [
+    expect(spawn).toHaveBeenLastCalledWith('ssh', [
+      ...controlOptions(connection),
       '-p',
       '2000',
       '-i',
@@ -82,10 +97,114 @@ describe('running a command on the machine a connection runs on', () => {
 
   test('does not enter a directory of a connection that has none', async () => {
     spawn.mockImplementation(() => answering(''))
+    socketIsFree()
 
-    await exec({is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}, 'php -v')
+    const connection = {is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}
 
-    expect(spawn).toHaveBeenCalledWith('ssh', ['--', 'root@192.168.1.1', 'php -v'])
+    await exec(connection, 'php -v')
+
+    expect(spawn).toHaveBeenLastCalledWith('ssh', [...controlOptions(connection), '--', 'root@192.168.1.1', 'php -v'])
+  })
+
+  // logging in is what a command over ssh spends its time on, so the login is
+  // made once, by the connection, and every command after it travels down the
+  // socket that is left behind (see sshControl)
+  test('opens the connection before the command that needs it, and travels down it', async () => {
+    spawn.mockImplementation(() => answering(''))
+    socketIsFree()
+
+    const connection = {is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}
+
+    await exec(connection, 'php -v')
+
+    expect(spawn).toHaveBeenNthCalledWith(2, 'ssh',
+      ['-f', '-N', ...masterOptions(connection), '--', 'root@192.168.1.1'],
+      {stdio: 'ignore'})
+
+    // the next command of the same connection finds it open rather than waiting
+    // on another login: it asks the socket, and travels down what answers
+    spawn.mockClear()
+
+    await exec(connection, 'php -v')
+
+    expect(spawn.mock.calls.map(([, args]) => args)).toEqual([
+      ['-O', 'check', ...sshArgs(connection)],
+      [...controlOptions(connection), '--', 'root@192.168.1.1', 'php -v'],
+    ])
+  })
+
+  // a login that outlived the app that made it is a socket to use, and asking
+  // ssh to become a master on one that is taken does not fail: it stops
+  // multiplexing and sits on a connection of its own, which is a login nobody
+  // closes
+  test('uses a login that was already there rather than making a second one', async () => {
+    spawn.mockImplementation(() => answering('', 0))
+
+    const connection = {is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}
+
+    expect(await ensureMaster(connection)).toBe(true)
+
+    spawn.mockClear()
+
+    await exec(connection, 'php -v')
+
+    // asked, then travelled down: no second login, and no `-f` to make one
+    expect(spawn.mock.calls.map(([, args]) => args)).toEqual([
+      ['-O', 'check', ...sshArgs(connection)],
+      [...controlOptions(connection), '--', 'root@192.168.1.1', 'php -v'],
+    ])
+
+    // it is not this app's login to end, so leaving does not end it
+    spawn.mockClear()
+    closeMasters()
+
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  // a master is ended by signal rather than asked to leave: ssh's own exit
+  // request ends one between sessions, and one asked while a session is still
+  // open keeps the connection with no socket left to ask again on
+  test('ends the login it made when the app leaves', async () => {
+    spawn.mockImplementation(() => answering(''))
+    socketIsFree()
+
+    const connection = {is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}
+
+    expect(await ensureMaster(connection)).toBe(true)
+
+    spawn.mockClear()
+    closeMasters()
+
+    expect(spawn).toHaveBeenCalledWith(
+      'pkill',
+      ['-TERM', '-f', `ControlPath=${controlPath(connection)}`],
+      {stdio: 'ignore'},
+    )
+
+    // the login is not one this app travels down any more, so leaving twice
+    // ends it once
+    spawn.mockClear()
+    closeMasters()
+
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  test('runs the command anyway when the login does not happen', async () => {
+    // a machine that refuses multiplexing, an ssh that is not there: the command
+    // is slower, never absent
+    spawn.mockImplementation(() => answering('', 255))
+    socketIsFree()
+
+    const connection = {is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}
+
+    expect(await ensureMaster(connection)).toBe(false)
+
+    spawn.mockImplementation(() => answering('PHP 8.3.1 (cli)'))
+
+    const answer = await exec(connection, 'php -v')
+
+    expect(answer.stdout).toBe('PHP 8.3.1 (cli)')
+    expect(spawn).toHaveBeenLastCalledWith('ssh', [...controlOptions(connection), '--', 'root@192.168.1.1', 'php -v'])
   })
 
   test('says what a command exited with rather than failing on it', async () => {

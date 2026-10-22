@@ -1,5 +1,6 @@
 const {passwordArgs} = require('./sshAskpass')
 const {inContainer} = require('./containerCommand')
+const {controlOptions, masterOptions} = require('./sshControl')
 
 /**
  * A value as one word of the shell the session is typed into.
@@ -51,23 +52,12 @@ const sshProblem = connection => {
 }
 
 /**
- * How a connection is reached over ssh, as the arguments of the command that
- * reaches it.
- *
- * The port and the key are only in the list when the connection has them, and
- * the last one is always the target — `root@192.168.1.1`. Both the session that
- * logs in and the one-off commands a connection is asked to run travel this way,
- * so the two cannot drift: whatever reaches the machine reaches it the same.
- *
- * These are arguments of a command that is run without a shell — `spawn('ssh',
- * args)` — so a value here is one word already: nothing splits it and nothing
- * runs it. `--` before the target is what makes an argument that looks like an
- * option stop being read as one.
+ * Which machine and account a command reaches, and how it logs in to them.
  *
  * @param {Object} connection
  * @returns {Array<String>}
  */
-const sshArgs = connection => {
+const targetArgs = connection => {
   const args = []
 
   if (connection.ssh_port) {
@@ -89,6 +79,33 @@ const sshArgs = connection => {
 }
 
 /**
+ * How a connection is reached over ssh, as the arguments of the command that
+ * reaches it.
+ *
+ * The port and the key are only in the list when the connection has them, and
+ * the last one is always the target — `root@192.168.1.1`. Both the session that
+ * logs in and the one-off commands a connection is asked to run travel this way,
+ * so the two cannot drift: whatever reaches the machine reaches it the same.
+ * What is in front of them is the multiplexing that keeps the login from being
+ * paid twice (see sshControl).
+ *
+ * These are arguments of a command that is run without a shell — `spawn('ssh',
+ * args)` — so a value here is one word already: nothing splits it and nothing
+ * runs it. `--` before the target is what makes an argument that looks like an
+ * option stop being read as one.
+ *
+ * @param {Object} connection
+ * @param {Object} [options]
+ * @param {Boolean} [options.master] whether the command is the connection's
+ *   master rather than one that travels down its socket
+ * @returns {Array<String>}
+ */
+const sshArgs = (connection, {master = false} = {}) => [
+  ...(master ? masterOptions(connection) : controlOptions(connection)),
+  ...targetArgs(connection),
+]
+
+/**
  * The line a session types into its own shell to reach the connection.
  *
  * This one is a shell line — the session has a shell in front of it, and what is
@@ -104,6 +121,11 @@ const sshArgs = connection => {
  *   shell tries to run a program called `-t`, and the session that comes back
  *   has no terminal. That is a login that "does not initialize": the shell is
  *   there but not as the pty a tinker needs.
+ * - **The session is a passenger, not the driver.** The socket options come
+ *   before the target along with everything else, so a session that starts
+ *   while the connection is already open travels down it instead of logging in
+ *   again (see sshControl). It is what a run of a snippet costs once the
+ *   connection is up.
  * - **The remote side is given a terminal and an interactive shell.** ssh only
  *   allocates a pty when told to (`-t`), and a login shell on the far side is
  *   interactive only when it has one. psysh needs both: without a terminal it
@@ -147,18 +169,10 @@ const parseSSHCommand = (connection, command = null, askpass = null) => {
 
   const args = ['ssh', '-t']
 
-  if (connection.ssh_port) {
-    args.push('-p', word(connection.ssh_port))
-  }
-
-  if (connection.ssh_key) {
-    args.push('-i', word(connection.ssh_key))
-  }
-
-  passwordArgs(connection)
+  // the multiplexing options first, then the ones that name the machine and how
+  // it is logged in to; both lists are the same ones the spawned commands use
+  ;[...controlOptions(connection), ...targetArgs(connection)]
     .forEach(option => args.push(word(option)))
-
-  args.push('--', word(`${connection.ssh_user}@${connection.ssh_server}`))
 
   // what the remote side runs: into the project's directory, then whatever the
   // session was started with, and otherwise the account's own login shell

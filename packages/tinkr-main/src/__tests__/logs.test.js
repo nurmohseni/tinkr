@@ -410,7 +410,9 @@ describe('the log files of a connection that keeps them on another machine', () 
       {name: 'laravel.log', size: 1024, at: 1000},
     ])
 
-    const [command, args] = spawn.mock.calls[0]
+    // the last child is the command itself: the connection's login is a child
+    // of its own (see remote.ensureMaster)
+    const [command, args] = spawn.mock.calls[spawn.mock.calls.length - 1]
 
     expect(command).toBe('ssh')
     expect(args).toContain('root@192.168.1.1')
@@ -489,7 +491,9 @@ describe('the log files of a connection that keeps them on another machine', () 
     expect(answer.read).toBe(2048)
     expect(answer.entries[0].message).toBe('entry 22 '.padEnd(60, '.'))
 
-    const [command, args] = spawn.mock.calls[0]
+    // the last child is the command itself: the connection's login is a child
+    // of its own (see remote.ensureMaster)
+    const [command, args] = spawn.mock.calls[spawn.mock.calls.length - 1]
 
     expect(command).toBe('ssh')
     expect(args[args.length - 1]).toContain('$end=$after===null?min(4096,$to):min($start+2048,$to);')
@@ -509,7 +513,9 @@ describe('the log files of a connection that keeps them on another machine', () 
     expect(answer.from).toBe(2048)
     expect(answer.read).toBe(2048)
 
-    const [command, args] = spawn.mock.calls[0]
+    // the last child is the command itself: the connection's login is a child
+    // of its own (see remote.ensureMaster)
+    const [command, args] = spawn.mock.calls[spawn.mock.calls.length - 1]
 
     expect(command).toBe('ssh')
     expect(args[args.length - 1]).toContain('$after=2048;')

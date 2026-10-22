@@ -3,6 +3,7 @@ const {isCloud} = require('tinkr-core')
 const {BackgroundPty} = require('./pty/BackgroundPty')
 
 const {prefetchIndex} = require('./services/project')
+const {ensureMaster} = require('./remote')
 
 const {
   setBackgroundPtyProcess,
@@ -19,6 +20,13 @@ const createBackgroundPty = connection => {
   if (isCloud(connection)) {
     return
   }
+
+  // a connection over ssh is opened before it is used rather than by the first
+  // thing that uses it: the login is what a run of a snippet would otherwise wait
+  // for, and it is made here while the window is still coming up (see
+  // remote.ensureMaster). Nothing waits on it — an ssh that does not answer is a
+  // connection that is slow rather than one that does not work
+  ensureMaster(connection)
 
   const pty = new BackgroundPty(connection)
   pty.connect()

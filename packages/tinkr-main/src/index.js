@@ -6,6 +6,7 @@ const contextMenu = require('electron-context-menu')
 
 const {createEditorWindow} = require('./createEditorWindow')
 const {firstConnection, watchSnippetsOf} = require('./services/connections')
+const {closeMasters} = require('./remote')
 const {menu, dockMenu} = require('./menu')
 const {checkForUpdates} = require('./updater')
 require('./ipc')
@@ -49,6 +50,14 @@ app.on('window-all-closed', () => {
   if (!is.macos) {
     app.quit()
   }
+})
+
+// A connection over ssh is a login this app made and kept open for the next
+// command down it (see remote.ensureMaster). Quitting is when it is given back:
+// it would end itself after ten idle minutes anyway, and a login left on
+// somebody's server is not something to leave to a timer
+app.on('before-quit', () => {
+  closeMasters()
 })
 
 app.on('activate', async () => {

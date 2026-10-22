@@ -35,7 +35,7 @@ jest.mock('../remote', () => ({
   quoted: jest.requireActual('../remote').quoted,
 }))
 
-const {runCloud} = require('tinkr-core')
+const {runCloud, wrapRun, runOutput} = require('tinkr-core')
 
 const {Pty} = require('../pty/Pty')
 const {exec} = require('../remote')
@@ -67,6 +67,9 @@ describe('a run of a connection', () => {
     printed = []
     win = {webContents: {send: jest.fn()}}
 
+    wrapRun.mockClear()
+    runOutput.mockClear()
+
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       input: jest.fn(),
@@ -91,12 +94,28 @@ describe('a run of a connection', () => {
     setBackgroundPtyProcess('remote', null)
   })
 
+  test('reads the project for the classes the run names before the session gets it', async () => {
+    createPty(connection, 'Actor::first();')
+
+    // what is written aliases the classes the snippet names without qualifying
+    // them, and the index that names them is the project's own — over ssh, the
+    // one read on the machine that holds it. Without it the session answers
+    // `Class "Actor" not found`
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(exec).toHaveBeenCalledTimes(1)
+    expect(wrapRun).toHaveBeenCalledWith('Actor::first();', {Actor: 'App\\Models\\Actor'}, null)
+  })
+
   test('reads the project again once the run has answered', async () => {
     createPty(connection, 'the snippet')
 
-    // the run is not read beside: the files it is changing are not what it will
-    // leave behind, and such a read is the one this would replace
-    expect(exec).not.toHaveBeenCalled()
+    // the run's aliases have been read by the time it is written, and what the
+    // run changes in the project is what is read after it: the read this is
+    // about is the second one
+    await new Promise(resolve => setImmediate(resolve))
+
+    exec.mockClear()
 
     printed[0]('the value the session printed')
 
@@ -106,9 +125,9 @@ describe('a run of a connection', () => {
 
     expect(win.webContents.send).toHaveBeenCalledWith('runResult', expect.anything())
 
-    // the read has not answered yet, so the popup has nothing: it is answered out
-    // of what has been read, never out of what is being read
-    expect(readyIndex(connection)).toBe(null)
+    // the read has not answered yet, so the popup has nothing new: it is answered
+    // out of what has been read, never out of what is being read
+    expect(readyIndex(connection).index.get('actor')).toBeDefined()
 
     await new Promise(resolve => setImmediate(resolve))
 
@@ -221,6 +240,10 @@ describe('a run of a connection', () => {
       expect(answer[1].error.class).toBe('Timeout')
       expect(answer[1].error.message).toContain('5000ms')
       expect(answer[1].value).toBe(null)
+      // nothing was written, so there is no filter to read an output out of: the
+      // run printed nothing rather than throwing on the way to its answer
+      expect(runOutput).not.toHaveBeenCalled()
+      expect(answer[1].output).toBe('')
       // the session is stopped, which is what reaches the php doing the work
       expect(pty.kill).toHaveBeenCalled()
     } finally {
@@ -230,6 +253,10 @@ describe('a run of a connection', () => {
 
   test('reports how long the run took with its answer', async () => {
     createPty(connection, 'the snippet')
+
+    // the session prints the run's value once it has the run (see the write
+    // above), which is after the aliases it names have been looked up
+    await new Promise(resolve => setImmediate(resolve))
 
     printed[0]('the value the session printed')
 

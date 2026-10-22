@@ -3,6 +3,11 @@ const {
   containerList, containersIn, projectDirsCommand, projectDirsIn,
 } = require('../containerCommand')
 const {parseSSHCommand} = require('../parseSSHCommand')
+const {controlOptions} = require('../sshControl')
+
+// the multiplexing options a session's line carries in front of everything else
+// (see sshControl), as words of the shell line it is typed into
+const multiplexed = connection => controlOptions(connection).map(option => `'${option}'`)
 
 describe('a container connection', () => {
   test('builds the command of the engine it names', () => {
@@ -64,7 +69,7 @@ describe('a container connection', () => {
     // deploy need not hold the project on the machine, so there is no `cd` out
     // here — the engine's `-w` is the directory, inside the container
     expect(parseSSHCommand(connection, sessionCommand(connection)))
-      .toBe(String.raw`ssh -t -- 'deploy@srv' 'docker exec -it -w /srv/app app-abc123 php artisan tinker'`)
+      .toBe(['ssh', '-t', ...multiplexed(connection), String.raw`'--' 'deploy@srv' 'docker exec -it -w /srv/app app-abc123 php artisan tinker'`].join(' '))
 
     // when the container sees the project somewhere else, that is the directory
     expect(sessionCommand(Object.assign({}, connection, {container_path: '/var/www/html'})))
@@ -97,7 +102,7 @@ describe('a container connection', () => {
     // the engine's `-w` is the directory, inside the container
     expect(sessionCommand(connection)).toBe('docker exec -it -w /var/www/html app php artisan tinker')
     expect(parseSSHCommand(connection, sessionCommand(connection)))
-      .toBe(String.raw`ssh -t -- 'deploy@srv' 'docker exec -it -w /var/www/html app php artisan tinker'`)
+      .toBe(['ssh', '-t', ...multiplexed(connection), String.raw`'--' 'deploy@srv' 'docker exec -it -w /var/www/html app php artisan tinker'`].join(' '))
   })
 
   test('asks the container, not the machine, for a read of the project', () => {

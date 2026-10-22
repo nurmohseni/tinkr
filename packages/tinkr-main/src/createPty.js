@@ -1,7 +1,6 @@
 const {
   wrapRun,
   RunResultFilter,
-  importsFor,
   runOutput,
   isCloud,
   runCloud,
@@ -16,7 +15,7 @@ const {
   setBufferedAnswer,
 } = require('./processes')
 const {appendHistory} = require('./services/history')
-const {refreshIndex} = require('./services/project')
+const {importsForRun, refreshIndex} = require('./services/project')
 const secrets = require('./database/secrets')
 const {dataDir} = require('./utils/dataDir')
 
@@ -34,8 +33,12 @@ const {dataDir} = require('./utils/dataDir')
  * turned into the run's result instead.
  *
  * A run also names the classes the snippet uses without qualifying them, so the
- * session can alias them before it evaluates it (see classIndex.importsFor).
- * That is a lookup in an index the connection pays for once.
+ * session can alias them before it evaluates it (see classIndex.importsIn). That
+ * is a lookup in an index the connection pays for once, and it is the index of
+ * the project the session runs in — which, over ssh, is read from the machine
+ * that project is on (see services/project). What is written into the session is
+ * therefore built after that lookup answers, and the session boots while it is
+ * being answered.
  *
  * A guarded run is wrapped with the transaction it is evaluated inside, so the
  * run's envelope carries how that transaction ended (see runResult.guardArm).
@@ -65,20 +68,23 @@ const createPty = (connection, code, guard = null, timeout = null) => {
   const {id} = connection
 
   const pty = new Pty(connection)
-  // a session over ssh runs in the remote project, whose composer files are not
-  // on this machine to read
-  const imports = code && !connection.is_over_ssh && connection.path
-    ? importsFor(connection.path, code)
-    : {}
-  const run = code ? wrapRun(code, imports, guard) : null
-  const filter = run ? new RunResultFilter(run.marker, run.start) : null
+
+  // the classes the snippet names without qualifying them, for the session to
+  // alias before it evaluates it (see classIndex.importsIn). It is asked for
+  // here, before the session boots, so the two waits overlap: a project over ssh
+  // is read on the machine that holds it, and that read is usually the one the
+  // connection was opened with (see prefetchIndex)
+  const imports = code ? importsForRun(connection, code) : Promise.resolve({})
+
   const startedAt = Date.now()
+  let run = null
+  let filter = null
   let timer = null
 
   // whether a run is going in this session, which is what decides whether the
   // session outlives a move to another connection: a session sitting at its
   // prompt is the app's to end, one that is running something is the person's
-  pty.running = Boolean(run)
+  pty.running = Boolean(code)
 
   /**
    * The run's answer, out of the envelope: the pane is told what it returned,
@@ -91,9 +97,10 @@ const createPty = (connection, code, guard = null, timeout = null) => {
     clearTimeout(timer)
 
     // what the run printed is the filter's; a run that never reached the
-    // session brings its own output, because there was no run to print anything
+    // session brings its own output, because there was no run to print
+    // anything, and so does one that was stopped before it was written
     const answer = Object.assign({}, result, {
-      output: result.output === undefined ? runOutput(filter) : result.output,
+      output: result.output === undefined ? (filter ? runOutput(filter) : '') : result.output,
       duration: Date.now() - startedAt,
     })
     // the run is over, and the history row is the connection's whether or not
@@ -155,7 +162,7 @@ const createPty = (connection, code, guard = null, timeout = null) => {
 
   pty.connect()
 
-  if (run && timeout > 0) {
+  if (code && timeout > 0) {
     timer = setTimeout(timedOut, timeout)
   }
 
@@ -209,32 +216,41 @@ const createPty = (connection, code, guard = null, timeout = null) => {
 
   setPtyProcess(id, pty)
 
-  if (run) {
-    pty.ready().then(() => {
-      // the session may have been replaced, or closed, while it was booting
-      if (getPtyProcess(id) !== pty) {
-        return
-      }
+  if (code) {
+    pty.ready()
+      // the run is built once its aliases are known, because they are part of
+      // what is written: the wrapping is the same either way, and what it aliases
+      // is what the lookup answered
+      .then(() => imports)
+      .then(aliases => {
+        // the session may have been replaced, closed, or stopped for taking too
+        // long while it was booting or while its aliases were being read
+        if (getPtyProcess(id) !== pty) {
+          return
+        }
 
-      pty.input(`${run.code}\r`)
-    }).catch(error => {
-      // the command never became the session — a missing `artisan`, a platform
-      // check, a php that is not there — so the run did not happen and the
-      // reason is the command's own words. Without this the wait was the pane's
-      // whole answer, and it never came
-      if (getPtyProcess(id) !== pty) {
-        return
-      }
+        run = wrapRun(code, aliases, guard)
+        filter = new RunResultFilter(run.marker, run.start)
 
-      answered({
-        blocks: [],
-        value: null,
-        error: {class: 'SessionError', message: error.message},
-        queries: [],
-        queriesTotal: 0,
-        output: error.output || '',
+        pty.input(`${run.code}\r`)
+      }).catch(error => {
+        // the command never became the session — a missing `artisan`, a platform
+        // check, a php that is not there — so the run did not happen and the
+        // reason is the command's own words. Without this the wait was the pane's
+        // whole answer, and it never came
+        if (getPtyProcess(id) !== pty) {
+          return
+        }
+
+        answered({
+          blocks: [],
+          value: null,
+          error: {class: 'SessionError', message: error.message},
+          queries: [],
+          queriesTotal: 0,
+          output: error.output || '',
+        })
       })
-    })
   }
 }
 

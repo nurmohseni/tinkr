@@ -16,6 +16,7 @@ module.exports = Object.assign(
   require('./session'),
   require('./parseSSHCommand'),
   require('./sshAskpass'),
+  require('./sshControl'),
   require('./containerCommand'),
   require('./cloud'),
 )

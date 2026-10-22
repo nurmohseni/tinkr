@@ -288,6 +288,13 @@ test.describe('a project on a server over ssh', () => {
 
       await expect(page.locator('.output .t-number').first()).toHaveText('42')
 
+      // a class a snippet names without its namespace is aliased into the
+      // session, and the index that names it is the project's own: over ssh,
+      // the one read on the machine that holds the project
+      await runCode(page, 'Order::count();')
+
+      await expect(page.locator('.output .t-number').first()).toHaveText('3')
+
       // the connection's own settings are what the store holds, key and port
       // included
       await editConnection(page, 'Over ssh')
