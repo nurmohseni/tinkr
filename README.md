@@ -56,6 +56,14 @@ Grab the installer for your platform from the [latest release](https://github.co
 
 You need `php` on the machine (or server) where your project lives. That's it.
 
+If macOS says **Tinkr is damaged and can't be opened**, the release you took was
+built without an Apple signing identity. Move `Tinkr.app` to `/Applications`, then
+drop the flag macOS puts on a download it could not verify:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Tinkr.app
+```
+
 ## Features
 
 ### Run
