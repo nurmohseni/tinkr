@@ -31,9 +31,23 @@ const getOrCreateRelease = async tag => {
   // for a release that is not a pre-release, and a beta whose version says beta
   // is better shown there than a count of tags. The version is the signal.
   const prerelease = false
-  const body = process.env.GITHUB_SHA
+  // A macOS build that is neither signed by a Developer ID nor notarized is
+  // reported by macOS as damaged, not as untrusted, and the dialog offers no way
+  // past it. The note stays until a signed release ships. The marker is what the
+  // website reads to say the same thing on the download page (tinker-web,
+  // src/lib/github.ts), so the two go away together.
+  const macNote = `<!-- mac-unsigned -->
+> **macOS**: this build is not signed and notarized yet, so macOS reports the app as damaged. Drag Tinkr to Applications, then run this once:
+>
+> \`\`\`bash
+> xattr -dr com.apple.quarantine /Applications/Tinkr.app
+> \`\`\``
+  const built = process.env.GITHUB_SHA
     ? `Built from ${owner}/${repo}@${process.env.GITHUB_SHA.slice(0, 7)}`
     : 'See the changelog in the repository that builds the app'
+  const body = `${built}
+
+${macNote}`
 
   try {
     return await octokit.repos.getReleaseByTag({owner, repo, tag})
