@@ -11,10 +11,10 @@ import {
   getConnection,
   updateConnection,
 } from '../utils/api'
-import {connectionAtom, runsAtom, inFlightAtom} from './editor'
+import {activeDocumentAtom, connectionAtom, runsAtom, inFlightAtom} from './editor'
 import {historyListAtom} from './history'
 import {aiThreadAtom} from './ai'
-import {activeSessionIdAtom, newSession, sessionsAtom} from './sessions'
+import {activeSessionIdAtom, isSessionId, newSession, sessionsAtom} from './sessions'
 import {snippetDataAtom} from './snippets'
 import {openTabsAtom} from './tabs'
 import {emptyLogs, logsAtom} from './logs'
@@ -41,33 +41,87 @@ const createConnectionAtom = atom(null, (get, set, connection) => {
 })
 
 /**
+ * What each connection's window was holding, by connection id: the documents
+ * that were open, their code and the answers they last gave, and the run that
+ * was going when the window moved away.
+ *
+ * A connection is a project, and a document is about that project. Leaving one
+ * for another is not closing what was open in it: the sessions nobody has saved
+ * anywhere live here, and losing them on a click in the sidebar would be losing
+ * work the window never wrote down. The map lives here, beside the switch, and
+ * is as long as the window is.
+ *
+ * @type {Map<String, Object>}
+ */
+const documentsOf = new Map()
+
+/**
+ * The route a connection's last document is on: the session the window was on
+ * is the root, and a snippet is the route that names it.
+ *
+ * @param {String} document
+ * @param {Object} snippets
+ * @return {String}
+ */
+const pathOf = (document, snippets) => {
+  if (!document || isSessionId(document) || !snippets[document]) {
+    return '/'
+  }
+
+  return `/snippets/${document}/editor`
+}
+
+/**
  * Take the connection the main process switched this window to.
  *
  * The window was not loaded again for it, so everything that is a fact about a
  * connection has to be read again here: which connection the window is on, the
- * snippets and the runs of that connection, the documents the window had open —
- * they were the other connection's, and its code with them — the session the
- * terminal was on, and the result and the thread, which were about code from
- * somewhere else.
+ * snippets and the history of that connection, and the documents, the runs and
+ * the thread, which were the other connection's.
  *
- * What is not about a connection is not touched: the preferences, the layout,
- * the theme, the window itself.
+ * What the window was holding goes into `documentsOf` under the connection it
+ * was showing, and comes back when that connection is shown again: its tabs,
+ * the code in them, the answers they last gave and the run that was going. What
+ * is not about a connection is not touched: the preferences, the layout, the
+ * theme, the window itself.
+ *
+ * @return {String} the route of the document the connection was last on
  */
 const switchConnectionAtom = atom(null, (get, set) => {
-  set(connectionAtom, getConnection())
+  const left = get(connectionAtom)
+  const next = getConnection()
+
+  if (left && left.id) {
+    documentsOf.set(left.id, {
+      sessions: get(sessionsAtom),
+      activeSessionId: get(activeSessionIdAtom),
+      tabs: get(openTabsAtom),
+      runs: get(runsAtom),
+      inFlight: get(inFlightAtom),
+      document: get(activeDocumentAtom),
+    })
+  }
+
+  set(connectionAtom, next)
   set(snippetDataAtom, allSnippets())
   set(historyListAtom, allHistory())
-  set(sessionsAtom, [newSession()])
-  set(activeSessionIdAtom, null)
-  set(openTabsAtom, [])
-  // every tab's run was a run of the connection that has just been left: its
-  // answers, its output and the run that was going are not the new one's
-  set(runsAtom, {})
-  set(inFlightAtom, null)
+
+  const kept = documentsOf.get(next.id)
+
+  // a connection this window has not been on yet opens with one empty session
+  set(sessionsAtom, kept ? kept.sessions : [newSession()])
+  set(activeSessionIdAtom, kept ? kept.activeSessionId : null)
+  set(openTabsAtom, kept ? kept.tabs : [])
+  // every tab's run is the connection's own: the answers, the output and the
+  // run that was going come back with it
+  set(runsAtom, kept ? kept.runs : {})
+  set(inFlightAtom, kept ? kept.inFlight : null)
   set(aiThreadAtom, [])
   // the logs were the other connection's project, and the panel reads the new
   // one's the moment it has none
   set(logsAtom, emptyLogs())
+
+  return pathOf(kept && kept.document, get(snippetDataAtom))
 })
 
 /**

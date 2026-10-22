@@ -11,7 +11,7 @@ const {
   setEditorWindow,
   setEditorConnection,
   getEditorConnectionId,
-  killPtys,
+  killEveryPty,
 } = require('./processes')
 const {getEntryUrl, getPreloadEntryUrl} = require('./utils/entryUrl')
 const {frameOf} = require('./utils/frame')
@@ -84,8 +84,9 @@ const createEditorWindow = async connection => {
     setEditorWindow(closedId, null)
     setEditorConnection(closedId, null)
 
-    // 清理 pty
-    killPtys(closedId)
+    // 清理 pty: the window may have been on another connection when a run was
+    // going, so every session it left behind goes with it
+    killEveryPty()
   })
 
   setEditorWindow(id, win)

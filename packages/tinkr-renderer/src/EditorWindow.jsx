@@ -23,7 +23,7 @@ import StageLight from './components/connections/StageLight'
 import useSplit from './hooks/useSplit'
 import kindOf from './utils/connectionKind'
 import DocumentScope from './components/editor/DocumentScope'
-import {sizesAtom, connectionAtom, settledRunAtom, setAnswer, inFlightDocumentAtom, inFlightAtom} from './stores/editor'
+import {sizesAtom, connectionAtom, settledRunAtom, setAnswer, setOutput, inFlightDocumentAtom, inFlightAtom} from './stores/editor'
 import {configAtom} from './stores/config'
 import {historyListAtom} from './stores/history'
 import {snippetsConnectionAtom} from './stores/snippets'
@@ -62,13 +62,13 @@ const EditorWindow = () => {
   const {splitRef} = useSplit()
   const setSizes = useSetAtom(sizesAtom)
   const setAnswerFor = useSetAtom(setAnswer)
+  const setOutputFor = useSetAtom(setOutput)
   const setInFlight = useSetAtom(inFlightAtom)
   const setHistory = useSetAtom(historyListAtom)
 
   // the store itself, so the answer can be put under the document that sent the
   // run rather than under whatever is on screen when it lands
   const store = useStore()
-
 
   const connection = useAtomValue(connectionAtom)
   const config = useAtomValue(configAtom)
@@ -105,6 +105,13 @@ const EditorWindow = () => {
 
       if (document) {
         setAnswerFor({document, value: result})
+
+        // what the run printed is part of its answer, and a run that answered
+        // while this connection was not on screen printed it for nobody: the
+        // pane reads it from the answer rather than from a stream it never saw
+        if (typeof result.output === 'string') {
+          setOutputFor({document, value: result.output})
+        }
       }
 
       setInFlight(null)
@@ -116,11 +123,12 @@ const EditorWindow = () => {
     // time, because the writer was another process and the whole file is what it
     // changed
     const onSnippets = onSnippetsConnection(setSnippets)
-    // the main process switched this window's connection, and the documents it
-    // was on went with the old one: the window moves to the session it now has
+    // the main process switched this window's connection: the documents it was
+    // on were put away under the connection that was shown, and what the switch
+    // answers with is where this connection was left — a snippet's route, or the
+    // session it opens on
     const onConnection = onSetConnection(() => {
-      switchConnection()
-      setLocation('/')
+      setLocation(switchConnection() || '/')
     })
 
     // what the updater is doing, as it does it: it asks before it downloads and
