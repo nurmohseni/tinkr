@@ -380,24 +380,58 @@ if ($execute !== null) {
     exit(0);
 }
 
-// icanon off is what lifts the 4096-byte line limit; echo off keeps the wrapper
-// out of the output pane, which the app's filter would otherwise have to strip
+// icanon off is what lifts the 4096-byte line limit, and echo off leaves the
+// echo to the loop below, which is where psysh's readline does it too
 @shell_exec('stty -F /dev/tty -icanon -echo 2>/dev/null');
 
 $stdin = fopen('php://stdin', 'r');
 
+// psysh's prompts: `> ` when it reads a statement, `. ` behind one that is not
+// finished. The app types a run a line at a time and waits for one of them
+// between lines (see Session#type), and a run is one statement over several
+// lines (see runResult.typedRun), which is read whole before it is evaluated
+$pending = '';
+
+echo '> ';
+
 while (($line = fgets($stdin)) !== false) {
     $code = rtrim($line, "\r\n");
 
-    if (trim($code) === '') {
+    // the readline's own echo of what was typed
+    echo $code . "\r\n";
+
+    if ($pending === '' && trim($code) === '') {
+        echo '> ';
+
         continue;
     }
 
+    $pending = $pending === '' ? $code : $pending . "\n" . $code;
+
     try {
-        eval($code);
+        token_get_all('<?php ' . $pending, TOKEN_PARSE);
+    } catch (ParseError $e) {
+        // a statement that has not ended yet is read on, the way psysh does: php
+        // says so as an end of file, or as a bracket that is still open
+        $message = $e->getMessage();
+
+        if (strpos($message, 'end of file') !== false || strncmp($message, 'Unclosed', 8) === 0) {
+            echo '. ';
+
+            continue;
+        }
+    }
+
+    $statement = $pending;
+    $pending = '';
+
+    try {
+        eval($statement);
     } catch (Throwable $e) {
         // a run that broke the wrapper itself cannot answer through it; say what
         // happened rather than leaving the app waiting for an envelope
         echo PHP_EOL, 'PHP ', get_class($e), ': ', $e->getMessage(), PHP_EOL;
     }
+
+    echo PHP_EOL, '> ';
 }
