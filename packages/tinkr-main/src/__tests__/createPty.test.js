@@ -104,7 +104,7 @@ describe('a run of a connection', () => {
     await new Promise(resolve => setImmediate(resolve))
 
     expect(exec).toHaveBeenCalledTimes(1)
-    expect(wrapRun).toHaveBeenCalledWith('Actor::first();', {Actor: 'App\\Models\\Actor'}, null)
+    expect(wrapRun).toHaveBeenCalledWith('Actor::first();', {Actor: 'App\\Models\\Actor'}, null, null)
   })
 
   test('reads the project again once the run has answered', async () => {

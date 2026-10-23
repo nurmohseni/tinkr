@@ -230,7 +230,7 @@ const createPty = (connection, code, guard = null, timeout = null) => {
           return
         }
 
-        run = wrapRun(code, aliases, guard)
+        run = wrapRun(code, aliases, guard, timeout)
         filter = new RunResultFilter(run.marker, run.start)
 
         // typed a line at a time: one line of the whole run is more than

@@ -265,6 +265,56 @@ const guardArm = mode => `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=n
   "$tinkr_error=['class'=>'RuntimeException','message'=>'the transaction guard could not be armed: '.$tinkr_tx_error];}"
 
 /**
+ * The php that lets an interrupt end a run wherever the run is.
+ *
+ * Stopping a run is the terminal's ETX — SIGINT for the php in the foreground —
+ * because the php is a `docker exec`, a `podman exec` or an `ssh` away, and the
+ * signal the session's own process gets ends only the client on this machine
+ * (see Session#kill). psysh catches SIGINT to break back to its prompt, and php
+ * runs a caught signal only between two opcodes: a run blocked inside a query
+ * never gets there. It was never stopped, it went on holding whatever it had
+ * locked, and every run after it that touched the same rows waited on that lock
+ * until it timed out as well, and stayed behind just the same.
+ *
+ * So while the snippet is evaluated, SIGINT is what the system makes it: the
+ * end of the process, inside a blocking call or not, with no core written. The
+ * database rolls back what an ended connection had open. psysh's own handler is
+ * put back once the run is over, so an interrupt at the prompt is what it was.
+ */
+const INTERRUPT_ARM = '$tinkr_sigint=null;' +
+  "if(function_exists('pcntl_signal')&&function_exists('pcntl_signal_get_handler')&&defined('SIGINT')){" +
+  '$tinkr_sigint=pcntl_signal_get_handler(SIGINT);pcntl_signal(SIGINT,SIG_DFL);}'
+const INTERRUPT_RESTORE = 'if($tinkr_sigint!==null){pcntl_signal(SIGINT,$tinkr_sigint);}'
+
+/**
+ * The php that ends a run on its own once its time is up.
+ *
+ * An interrupt has to reach the php, and sometimes nothing can: a connection
+ * that dropped, a container started without a terminal, an app that was closed
+ * mid-run. The run carries its own deadline instead: an alarm with SIGALRM's
+ * default action, which ends the process where it runs, inside a blocking call
+ * or not, with no core written. It is set to the whole second at or after the
+ * run's timeout, which the app counts from before the session booted, so the
+ * app's own stop always comes first and this is what is left when it cannot
+ * arrive. A run that answers clears it, and the handler psysh had is put back.
+ *
+ * @param {Number|null} timeout the run's timeout, in milliseconds
+ * @return {{arm: String, clear: String}} empty for a run with no timeout
+ */
+const deadlineOf = timeout => {
+  if (!(Number(timeout) > 0)) {
+    return {arm: '', clear: ''}
+  }
+
+  return {
+    arm: '$tinkr_sigalrm=null;' +
+      "if(function_exists('pcntl_alarm')&&function_exists('pcntl_signal_get_handler')&&defined('SIGALRM')){" +
+      `$tinkr_sigalrm=pcntl_signal_get_handler(SIGALRM);pcntl_signal(SIGALRM,SIG_DFL);pcntl_alarm(${Math.ceil(timeout / 1000)});}`,
+    clear: 'if($tinkr_sigalrm!==null){pcntl_alarm(0);pcntl_signal(SIGALRM,$tinkr_sigalrm);}',
+  }
+}
+
+/**
  * The php that keeps a run's side effects out of the world.
  *
  * A transaction holds the database. It holds nothing else: `Mail::send`,
@@ -496,9 +546,11 @@ const printer = (keys, close = '') => {
  * name, as classIndex.importsFor resolves them
  * @param {String} [guard] `rollback` or `commit`, and nothing else: an
  * unrecognized mode is not guessed at, it is no guard at all
+ * @param {Number} [timeout] the run's timeout in milliseconds, which the php
+ * ends itself at when nothing else could stop it (see deadlineOf)
  * @return {{marker: String, start: String, imports: Object, code: String}}
  */
-const wrapRun = (source, imports = {}, guard = null) => {
+const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
   // a snippet can be written like a file and open with `<?php`, but it is eval'd
   // here, where the opening tag is a parse error, so it is dropped
   const code = source.replace(/^\s*<\?(?:php)?\s*/, '')
@@ -507,6 +559,7 @@ const wrapRun = (source, imports = {}, guard = null) => {
   const start = createStartMarker()
   const encoded = Buffer.from(code, 'utf8').toString('base64')
   const entries = Object.entries(imports)
+  const deadline = deadlineOf(timeout)
   // `sandbox` is a dry run with the side-effect drivers swapped for recorders:
   // the transaction is the same one, so it is a rollback plus the fakes
   const sandbox = guard === 'sandbox'
@@ -551,6 +604,9 @@ const wrapRun = (source, imports = {}, guard = null) => {
       // they are, so nothing comes back as a null it never was
       SAFE_ENCODE,
       '$tinkr_error=null;$tinkr_sent=false;$tinkr_imported=[];',
+      // from here to the envelope, an interrupt ends the run (see INTERRUPT_ARM)
+      INTERRUPT_ARM,
+      deadline.arm,
       importBlock(entries),
       // the pane reads the run from here: everything the session printed before
       // this line is the session booting
@@ -573,6 +629,8 @@ const wrapRun = (source, imports = {}, guard = null) => {
       // closed first, then what the run caught is counted
       closing,
       print,
+      INTERRUPT_RESTORE,
+      deadline.clear,
     ].join(''),
   }
 }

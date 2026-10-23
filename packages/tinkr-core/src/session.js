@@ -24,12 +24,15 @@ const {isCloud, runCloud, cloudTokenOf} = require('./cloud')
  * guarded `sleep(60)` held its transaction open and committed it later, unseen.
  *
  * The terminal is what reaches it. `\u0003` is ETX, which the terminal's line
- * discipline turns into SIGINT for the process in the foreground — the php — and
- * psysh forwards it to the forked child actually evaluating the snippet. It is
- * sent twice: the first one lands while the loop still owns the terminal often
- * enough that one is not enough, and the two are spaced far enough apart that
- * psysh is back at its prompt for the second. `exit();` then leaves a session
- * that is at its prompt, and the signal ends the shell either way.
+ * discipline turns into SIGINT for the process in the foreground — the php. A
+ * run takes that signal as the end of the process for as long as it evaluates
+ * (see runResult.INTERRUPT_ARM), so a run blocked inside a query ends as well:
+ * caught, the signal waited for the query, and the run outlived its kill with
+ * its locks held. It is sent twice: the first one lands while the loop still
+ * owns the terminal often enough that one is not enough, and the two are spaced
+ * far enough apart that psysh is back at its prompt for the second. `exit();`
+ * then leaves a session that is at its prompt, and the signal ends the shell
+ * either way.
  *
  * @type {Array<{keys: String, wait: Number}>}
  */
@@ -722,7 +725,7 @@ const runCode = (connection, code, options = {}) => {
   const imports = !connection.is_over_ssh && connection.path
     ? importsFor(connection.path, code)
     : {}
-  const run = wrapRun(code, imports, guard)
+  const run = wrapRun(code, imports, guard, timeout)
   const filter = new RunResultFilter(run.marker, run.start)
 
   return new Promise((resolve, reject) => {
