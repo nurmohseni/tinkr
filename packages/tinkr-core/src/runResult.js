@@ -94,10 +94,18 @@ const importBlock = entries => {
 const SPLIT_BLOCKS = [
   "$tinkr_tokens=token_get_all('<?php '.$tinkr_code);$tinkr_total=count($tinkr_tokens);",
   '$tinkr_stmts=[];$tinkr_stmt=\'\';$tinkr_line=0;$tinkr_l=1;$tinkr_stack=[];$tinkr_prev=null;',
-  // what can follow a `}` and still belong to the same statement: a closure
-  // being called, an index, a chained call, an operator. Anything else ends the
-  // statement at the brace, which is what `if (…) { … }` needs
-  "$tinkr_next=function($tinkr_all,$tinkr_i,$tinkr_count){for($tinkr_j=$tinkr_i+1;$tinkr_j<$tinkr_count;$tinkr_j++){$tinkr_t=$tinkr_all[$tinkr_j];if(is_array($tinkr_t)&&($tinkr_t[0]===T_WHITESPACE||$tinkr_t[0]===T_COMMENT||$tinkr_t[0]===T_DOC_COMMENT)){continue;}$tinkr_v=is_array($tinkr_t)?$tinkr_t[0]:$tinkr_t;return in_array($tinkr_v,[')',']','(',',','.','=','??','?',':','->','?->','::',T_OBJECT_OPERATOR,T_NULLSAFE_OBJECT_OPERATOR,T_DOUBLE_COLON,T_ELSE,T_ELSEIF,T_CATCH,T_FINALLY,T_WHILE,T_INSTANCEOF],true);}return false;};",
+  // the blocks written with php's alternative syntax that are open: inside one,
+  // a `;` ends a line of the block and not the statement, which is the whole of
+  // `foreach (…): … endforeach;`. `$tinkr_ctl` is the keyword whose header is
+  // being read, and `$tinkr_ctl_closed` says its `)` has been: a `:` next is
+  // what opens the block
+  '$tinkr_alt=0;$tinkr_ctl=null;$tinkr_ctl_closed=false;',
+  // what can follow a `}` and still belong to the same statement: the `;` that
+  // ends it, an index, a chained call, an operator. Anything else ends the
+  // statement at the brace, which is what `if (…) { … }` needs. A `(` is not one
+  // of them: a declaration — `class A { … }` — is followed by a statement of its
+  // own, and the line after one can open with a parenthesis
+  "$tinkr_next=function($tinkr_all,$tinkr_i,$tinkr_count){for($tinkr_j=$tinkr_i+1;$tinkr_j<$tinkr_count;$tinkr_j++){$tinkr_t=$tinkr_all[$tinkr_j];if(is_array($tinkr_t)&&($tinkr_t[0]===T_WHITESPACE||$tinkr_t[0]===T_COMMENT||$tinkr_t[0]===T_DOC_COMMENT)){continue;}$tinkr_v=is_array($tinkr_t)?$tinkr_t[0]:$tinkr_t;return in_array($tinkr_v,[')',']',';',',','.','=','??','?',':','->','?->','::',T_OBJECT_OPERATOR,T_NULLSAFE_OBJECT_OPERATOR,T_DOUBLE_COLON,T_ELSE,T_ELSEIF,T_CATCH,T_FINALLY,T_WHILE,T_INSTANCEOF],true);}return false;};",
   'for($tinkr_i=0;$tinkr_i<$tinkr_total;$tinkr_i++){',
   '$tinkr_token=$tinkr_tokens[$tinkr_i];',
   '$tinkr_text=is_array($tinkr_token)?$tinkr_token[1]:$tinkr_token;',
@@ -110,6 +118,12 @@ const SPLIT_BLOCKS = [
   'if(!$tinkr_stack&&$tinkr_line===0&&$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT){$tinkr_line=(int)$tinkr_l;}',
   '$tinkr_stmt.=$tinkr_text;',
   '$tinkr_word=($tinkr_id===null)?trim($tinkr_text):null;',
+  '$tinkr_significant=$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT;',
+  // the token after a control header's `)`: a `:` opens an alternative block,
+  // and an `elseif (…):` continues the one it is in
+  "if($tinkr_significant&&$tinkr_ctl_closed){if($tinkr_word===':'&&$tinkr_ctl!==T_ELSEIF){$tinkr_alt++;}$tinkr_ctl=null;$tinkr_ctl_closed=false;}",
+  'if(!$tinkr_stack&&in_array($tinkr_id,[T_IF,T_ELSEIF,T_FOREACH,T_FOR,T_WHILE,T_SWITCH,T_DECLARE],true)){$tinkr_ctl=$tinkr_id;}',
+  'if(!$tinkr_stack&&$tinkr_alt>0&&in_array($tinkr_id,[T_ENDIF,T_ENDFOREACH,T_ENDFOR,T_ENDWHILE,T_ENDSWITCH,T_ENDDECLARE],true)){$tinkr_alt--;}',
   // an interpolated `"{$a}"` opens a brace with a token of its own, and its `}`
   // is punctuation like any other: the stack is what tells the two apart, so the
   // brace that closes an interpolation is not read as the end of a statement.
@@ -117,17 +131,20 @@ const SPLIT_BLOCKS = [
   // `$o->{'f'.'oo'}` is a third kind, a name spelled at run time: it is marked
   // like an interpolation, because a `}` there closes a name and not a block
   "if($tinkr_word==='('||$tinkr_word==='['){$tinkr_stack[]=$tinkr_word;}" +
-  "elseif($tinkr_word==='{'){$tinkr_stack[]=in_array($tinkr_prev,['->','?->','::',T_OBJECT_OPERATOR,T_NULLSAFE_OBJECT_OPERATOR,T_DOUBLE_COLON,T_VARIABLE],true)?'@':'{';}" +
+  "elseif($tinkr_word==='{'){$tinkr_stack[]=in_array($tinkr_prev,['->','?->','::','$',T_OBJECT_OPERATOR,T_NULLSAFE_OBJECT_OPERATOR,T_DOUBLE_COLON,T_VARIABLE],true)?'@':'{';}" +
   'elseif($tinkr_id===T_CURLY_OPEN||$tinkr_id===T_DOLLAR_OPEN_CURLY_BRACES){$tinkr_stack[]=\'@\';}' +
   "elseif($tinkr_word===')'||$tinkr_word===']'||$tinkr_word==='}'){$tinkr_closed=array_pop($tinkr_stack);" +
+  "if($tinkr_word===')'&&!$tinkr_stack&&$tinkr_ctl!==null){$tinkr_ctl_closed=true;}" +
   // the `}` that closes a name belongs to the statement, and one that closes a
   // block only ends it when nothing can follow it
-  "if($tinkr_word==='}'&&(!$tinkr_stack)&&$tinkr_closed==='{'&&!$tinkr_next($tinkr_tokens,$tinkr_i,$tinkr_total)){" +
+  "if($tinkr_word==='}'&&(!$tinkr_stack)&&$tinkr_alt===0&&$tinkr_closed==='{'&&!$tinkr_next($tinkr_tokens,$tinkr_i,$tinkr_total)){" +
   "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];$tinkr_stmt='';$tinkr_line=0;}}" +
-  "if(!$tinkr_stack&&$tinkr_word===';'){" +
-  "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];$tinkr_stmt='';$tinkr_line=0;}" +
+  // a `;` on its own is no statement: evaluated, it would answer null over the
+  // value of the one before it
+  "if(!$tinkr_stack&&$tinkr_alt===0&&$tinkr_word===';'){" +
+  "if(trim($tinkr_stmt)!==';'){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}$tinkr_stmt='';$tinkr_line=0;}" +
   // the token before a `{` is what says which kind of brace it is
-  'if($tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT){$tinkr_prev=$tinkr_id===null?$tinkr_text:$tinkr_id;}',
+  'if($tinkr_significant){$tinkr_prev=$tinkr_id===null?$tinkr_text:$tinkr_id;}',
   '}',
   "if(trim($tinkr_stmt)!==''){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}",
 ]
@@ -845,16 +862,18 @@ class RunResultFilter {
         }
       })
 
+      // after the echo and before the marker: what the run wrote without going
+      // through the wrapper. `dd()` and `exit()` do exactly that — they dump
+      // and abort, so the wrapper's marker is never flushed and this is the
+      // only place their output exists. It is taken before the marker is looked
+      // for, because the two often share a chunk, and once the run has started
+      // what came before its marker would be read as the session booting
+      this.keepEarly(end === -1 ? output : lines.slice(end + 1).join('\n'))
+
       const run = this.runOf(output)
 
       if (this.started && !this.done) {
         this.printed += run
-      } else if (this.asked && !this.started && !this.done) {
-        // after the echo and before the marker: what the run wrote without going
-        // through the wrapper. `dd()` and `exit()` do exactly that — they dump
-        // and abort, so the wrapper's marker is never flushed and this is the
-        // only place their output exists
-        this.early += end === -1 ? output : lines.slice(end + 1).join('\n')
       }
 
       // the terminal keeps the session as it is, minus the readline echoing the
@@ -870,6 +889,8 @@ class RunResultFilter {
     const before = this.tail + buffer.slice(0, found)
 
     this.tail = ''
+
+    this.keepEarly(before)
 
     // the marker the run prints first is in this chunk as often as not: the
     // value it printed is written right after it
@@ -888,6 +909,25 @@ class RunResultFilter {
       run,
       result: captured.result,
     }
+  }
+
+  /**
+   * Keep what the run wrote around the wrapper, up to the run's start marker.
+   *
+   * Only text the session wrote after it echoed the typed run back and before
+   * the run started is the run's: before that it is the session booting, after
+   * it the run's own output is read through the marker.
+   *
+   * @param {String} text
+   */
+  keepEarly(text) {
+    if (!this.asked || this.started || this.done) {
+      return
+    }
+
+    const at = text.indexOf(this.start)
+
+    this.early += at === -1 ? text : text.slice(0, at)
   }
 
   /**
