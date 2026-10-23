@@ -82,6 +82,21 @@ describe('the history of a connection', () => {
     expect(allHistory('ordered').map(entry => entry.code)).toEqual(['the second run', 'the first run'])
   })
 
+  test('running the latest snippet again keeps only its first run', () => {
+    const [first] = appendHistory('repeated', '$n = 1;', {value: 1, error: null})
+    appendHistory('repeated', '$n = 1;', {value: 2, error: null})
+
+    expect(allHistory('repeated')).toEqual([first])
+  })
+
+  test('a snippet that differs from the latest run, even by whitespace, is recorded', () => {
+    appendHistory('changed', '$n = 1;', {value: 1, error: null})
+    appendHistory('changed', '$n = 1; ', {value: 1, error: null})
+    appendHistory('changed', '$n = 1;', {value: 1, error: null})
+
+    expect(allHistory('changed').map(entry => entry.code)).toEqual(['$n = 1;', '$n = 1; ', '$n = 1;'])
+  })
+
   test('caps the list and drops the oldest run', () => {
     for (let run = 0; run <= 50; run++) {
       appendHistory('capped', `run ${run}`, {value: null, error: null})
