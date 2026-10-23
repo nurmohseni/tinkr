@@ -129,9 +129,18 @@ const clearHistory = connectionId => {
  */
 const appendHistory = (connectionId, code, result) => {
   const text = String(code === undefined || code === null ? '' : code)
+  const store = history(connectionId)
+  const existing = store.get('entries', [])
+  const stored = text.length <= keptCode ? text : text.slice(0, keptCode)
+
+  // running the same snippet again is not a new entry: the first run of it stays
+  if (existing.length > 0 && existing[0].code === stored) {
+    return existing
+  }
+
   const entry = Object.assign({
     id: randomBytes(8).toString('hex'),
-    code: text.length <= keptCode ? text : text.slice(0, keptCode),
+    code: stored,
     at: Date.now(),
     outcome: outcomeOf(result),
   }, answerOf(result))
@@ -140,8 +149,7 @@ const appendHistory = (connectionId, code, result) => {
     entry.cut = ['code', ...(entry.cut || [])]
   }
 
-  const store = history(connectionId)
-  const entries = [entry, ...store.get('entries', [])].slice(0, limit)
+  const entries = [entry, ...existing].slice(0, limit)
 
   store.set('entries', entries)
 

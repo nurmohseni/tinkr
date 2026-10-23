@@ -57,8 +57,9 @@ test.describe('history', () => {
       await page.locator('.tabbar .btn--run').first().click()
       await expect(page.locator('.output')).toContainText('42', {timeout: 60_000})
 
-      // running it from the new tab is a run of its own, and the ledger says so
-      await expect(page.getByRole('navigation', {name: 'History'}).locator('.tree-nav__row--run')).toHaveCount(2)
+      // running it again from the new tab is the same code as the latest run, so
+      // the ledger keeps the first run of it and adds nothing
+      await expect(page.getByRole('navigation', {name: 'History'}).locator('.tree-nav__row--run')).toHaveCount(1)
     } finally {
       await close()
     }
