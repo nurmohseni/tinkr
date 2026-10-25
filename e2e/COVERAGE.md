@@ -91,6 +91,7 @@ exercise the surface through its UI, not through a stub of it.
 | Level, search and time-range filters | `13-logs` |
 | Follow while the file is appended | `13-logs` |
 | Infinite scrolling over a file larger than a window, with a bounded page/entry window | `13-logs` |
+| Paging under a level or a search filter, including a filtered list too short to scroll | `13-logs`, `LogsPanel` (the fill reads the page before) |
 | Logs over ssh and from inside a container | `15-container-ssh` |
 | Monolog JSON-format entries | Unit parser (`logs` service); not E2E |
 | Follow interval selector | `13-logs` (the control is rendered; a non-default interval is not timed) |

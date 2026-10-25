@@ -18,7 +18,7 @@ const logRead = jest.fn(() => Promise.resolve({size: 10, read: 10, from: 0, entr
 window.api = {logRead}
 
 const english = require('../../../../../tinkr-main/src/lang/en.json')
-const {logsAtom, logsFollowAtom} = require('../../../stores/logs')
+const {logsAtom, logsFollowAtom, logsLevelsAtom, logsSearchAtom} = require('../../../stores/logs')
 const LogsPanel = require('../LogsPanel').default
 
 // the words this window adds, which the message files are given separately
@@ -89,6 +89,89 @@ describe('the log viewer', () => {
     expect(markup).toContain('Pick a log file in the sidebar.')
     expect(markup).not.toContain('Start of the file')
     expect(markup).not.toContain('End of the file')
+  })
+})
+
+describe('paging a filtered list', () => {
+  // the page under the eye, far enough into the file that a page before it exists
+  const held = () => ({
+    dir: '/app/storage/logs',
+    files: [],
+    file: 'laravel.log',
+    pages: [{from: 256 * 1024, read: 128 * 1024, entries: []}],
+    entries: [],
+    size: 384 * 1024,
+    read: 128 * 1024,
+    from: 256 * 1024,
+    range: {from: 0, to: 384 * 1024},
+    loading: false,
+    loadingOlder: false,
+    loadingNewer: false,
+    error: '',
+  })
+
+  const open = atoms => {
+    const store = createStore()
+    const host = document.createElement('div')
+
+    store.set(logsAtom, held())
+
+    for (const [atom, value] of atoms) {
+      store.set(atom, value)
+    }
+
+    const root = createRoot(host)
+
+    act(() => {
+      root.render(
+        <IntlProvider locale='en' messages={Object.assign({}, added, flatten(english))}>
+          <Provider store={store}>
+            <LogsPanel/>
+          </Provider>
+        </IntlProvider>,
+      )
+    })
+
+    return {store, root}
+  }
+
+  beforeEach(() => logRead.mockClear())
+
+  // a filter leaves a list shorter than the pane, and a list with no scrollbar
+  // has no scroll to read the page before: the fill is the only way back, so it
+  // has to happen under a filter as much as without one
+  test('reads the page before when a level filter leaves a list too short to scroll', async () => {
+    const {root} = open([[logsLevelsAtom, ['info']]])
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(logRead).toHaveBeenCalledWith('laravel.log', {
+      bytes: 32 * 1024,
+      before: 256 * 1024,
+      since: '',
+      until: '',
+    })
+
+    act(() => root.unmount())
+  })
+
+  test('reads it for a search term too', async () => {
+    const {root} = open([[logsSearchAtom, 'No certificate']])
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(logRead).toHaveBeenCalledWith('laravel.log', {
+      bytes: 32 * 1024,
+      before: 256 * 1024,
+      since: '',
+      until: '',
+    })
+
+    act(() => root.unmount())
   })
 })
 
