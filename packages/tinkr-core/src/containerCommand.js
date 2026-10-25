@@ -143,7 +143,7 @@ const inContainer = connection => Boolean(connection && String(connection.contai
  * is configured. What the ssh line does is put the command on the far side of
  * the connection — after a `cd` into the project — so the same words mean the
  * same thing there as here. Only the reads that index the project and tail its
- * logs have to change, and they change in services/project and services/logs.
+ * logs have to change, and they change in the project reader and in logs.
  *
  * @param {ContainerConnection} connection
  * @return {String}

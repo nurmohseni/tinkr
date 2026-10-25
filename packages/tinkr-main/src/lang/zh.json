@@ -255,6 +255,8 @@
     "mcp_tool_delete_snippet": "删除连接的代码片段",
     "mcp_tool_list_history": "列出某个连接保留的运行记录",
     "mcp_tool_read_run": "读取一条运行记录及其返回的内容",
+    "mcp_tool_list_logs": "列出某个连接的日志文件",
+    "mcp_tool_tail_logs": "读取某个连接的日志：一次一个窗口或一次搜索",
     "shortcut_ai": "AI 面板",
     "shortcut_ai_description": "打开 AI 面板并把光标放进输入框",
     "log_dir": "日志文件",

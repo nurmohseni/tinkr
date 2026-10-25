@@ -15,6 +15,10 @@ import {configureClientAtom, mcpAtom, reloadMcpAtom} from '../../stores/mcp'
 const toolMessages = {
   tinkr_run_php: 'preference.mcp_tool_run_php',
   tinkr_run_php_over_ssh: 'preference.mcp_tool_run_php_over_ssh',
+  tinkr_list_history: 'preference.mcp_tool_list_history',
+  tinkr_read_run: 'preference.mcp_tool_read_run',
+  tinkr_list_logs: 'preference.mcp_tool_list_logs',
+  tinkr_tail_logs: 'preference.mcp_tool_tail_logs',
   tinkr_list_connections: 'preference.mcp_tool_list_connections',
   tinkr_list_snippets: 'preference.mcp_tool_list_snippets',
   tinkr_save_snippet: 'preference.mcp_tool_save_snippet',

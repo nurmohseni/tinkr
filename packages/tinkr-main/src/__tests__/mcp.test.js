@@ -161,6 +161,8 @@ describe('what the settings screen is told', () => {
       'tinkr_run_php_over_ssh',
       'tinkr_list_history',
       'tinkr_read_run',
+      'tinkr_list_logs',
+      'tinkr_tail_logs',
       'tinkr_list_connections',
       'tinkr_list_snippets',
       'tinkr_save_snippet',

@@ -408,3 +408,238 @@ describe('the tools', () => {
     expect(answer.content[0].text).toMatch(/`code` is required/)
   })
 })
+
+describe('the log tools', () => {
+  let dir = null
+  let logs = null
+
+  const line = (at, level, message) => `[${at}] production.${level}: ${message}`
+
+  // a project with the logs a connection has, and a connection of the app that
+  // runs in it: the newest file is the one a call reads when it names none
+  const openedOn = (files, options = {}) => {
+    logs = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-logs-'))
+
+    fs.mkdirSync(path.join(logs, 'storage', 'logs'), {recursive: true})
+
+    for (const [name, text] of Object.entries(files)) {
+      fs.writeFileSync(path.join(logs, 'storage', 'logs', name), text)
+    }
+
+    dir = makeAppDir(Object.assign(
+      {connections: {one: connection({id: 'one', name: 'One', path: logs})}},
+      options,
+    ))
+
+    return opened({at: logs, dataDir: dir}).server
+  }
+
+  const newest = (files, name) => {
+    const at = new Date()
+    const older = new Date(at.getTime() - 60000)
+
+    fs.utimesSync(path.join(logs, 'storage', 'logs', name), at, at)
+
+    for (const other of Object.keys(files)) {
+      if (other !== name) {
+        fs.utimesSync(path.join(logs, 'storage', 'logs', other), older, older)
+      }
+    }
+  }
+
+  afterEach(() => {
+    if (dir) {
+      removeAppDir(dir)
+      dir = null
+    }
+
+    if (logs) {
+      fs.rmSync(logs, {recursive: true, force: true})
+      logs = null
+    }
+  })
+
+  test('lists the log files of the connection, newest first', async () => {
+    const files = {
+      'laravel.log': `${line('2026-08-27 12:00:00', 'ERROR', 'the newest')}\n`,
+      'evo-2026-08-26.log': `${line('2026-08-26 12:00:00', 'INFO', 'the older')}\n`,
+    }
+
+    const server = openedOn(files)
+
+    newest(files, 'laravel.log')
+
+    const answer = await server.call('tinkr_list_logs', {})
+
+    expect(answer.isError).toBe(false)
+    expect(answer.structuredContent.dir).toBe(path.join(logs, 'storage', 'logs'))
+    expect(answer.structuredContent.files.map(one => one.name)).toEqual(['laravel.log', 'evo-2026-08-26.log'])
+    expect(answer.structuredContent.files[0].size).toBe(Buffer.byteLength(files['laravel.log']))
+    expect(answer.structuredContent.files[0].at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(answer.content[0].text).toContain('2 log files in')
+    expect(answer.content[0].text).toContain('laravel.log')
+  })
+
+  test('reads the end of the newest file when it names none', async () => {
+    const files = {
+      'laravel.log': [
+        line('2026-08-27 11:00:00', 'INFO', 'the job ran'),
+        line('2026-08-27 12:00:00', 'ERROR', 'No certificate found'),
+      ].join('\n') + '\n',
+      'evo-2026-08-26.log': `${line('2026-08-26 12:00:00', 'INFO', 'the older file')}\n`,
+    }
+
+    const server = openedOn(files)
+
+    newest(files, 'laravel.log')
+
+    const answer = await server.call('tinkr_tail_logs', {})
+
+    expect(answer.isError).toBe(false)
+    expect(answer.structuredContent.file).toBe('laravel.log')
+    expect(answer.structuredContent.filtered).toBe(false)
+    expect(answer.structuredContent.entries.map(one => one.message)).toEqual(['the job ran', 'No certificate found'])
+    expect(answer.content[0].text).toContain('[2026-08-27 12:00:00] production.ERROR: No certificate found')
+  })
+
+  test('scans the whole file for a level, and says what it left behind', async () => {
+    const server = openedOn({
+      'laravel.log': [
+        line('2026-08-27 10:00:00', 'ERROR', 'first'),
+        '[stacktrace]',
+        '#0 /app/a.php(1): go()',
+        line('2026-08-27 11:00:00', 'INFO', 'the job ran'),
+        line('2026-08-27 12:00:00', 'ERROR', 'second'),
+      ].join('\n') + '\n',
+    })
+
+    const answer = await server.call('tinkr_tail_logs', {level: 'error', limit: 1})
+
+    expect(answer.isError).toBe(false)
+    expect(answer.structuredContent.filtered).toBe(true)
+    expect(answer.structuredContent.entries.map(one => one.message)).toEqual(['second'])
+    expect(answer.structuredContent.older).toBe(1)
+    expect(answer.content[0].text).toContain('1 older matching entry was not included')
+  })
+
+  test('answers with the entries of a range, and with none when nothing matches', async () => {
+    const server = openedOn({
+      'laravel.log': [
+        line('2026-08-27 10:00:00', 'ERROR', 'before the range'),
+        line('2026-08-27 12:00:00', 'ERROR', 'inside the range'),
+      ].join('\n') + '\n',
+    })
+
+    const inside = await server.call('tinkr_tail_logs', {
+      level: 'error',
+      since: '2026-08-27 11:00:00',
+      until: '2026-08-27 13:00:00',
+    })
+
+    expect(inside.structuredContent.entries.map(one => one.message)).toEqual(['inside the range'])
+
+    const none = await server.call('tinkr_tail_logs', {level: 'warning'})
+
+    expect(none.isError).toBe(false)
+    expect(none.structuredContent.entries).toEqual([])
+    expect(none.content[0].text).toContain('No entry in that range matches.')
+  })
+
+  test('reads a page before a window, and says there is more before it', async () => {
+    const many = Array.from({length: 200}, (unused, at) => line('2026-08-27 10:00:00', 'INFO', `entry ${at} `.padEnd(60, '.')))
+
+    const server = openedOn({'laravel.log': many.join('\n') + '\n'})
+
+    const end = await server.call('tinkr_tail_logs', {bytes: 2048})
+    const before = await server.call('tinkr_tail_logs', {bytes: 2048, before: end.structuredContent.from})
+
+    expect(before.isError).toBe(false)
+    expect(before.structuredContent.to).toBe(end.structuredContent.from)
+    expect(before.content[0].text).toContain(`before: ${before.structuredContent.from}`)
+  })
+
+  test('reads a project that keeps its logs somewhere else', async () => {
+    logs = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-custom-'))
+
+    fs.mkdirSync(path.join(logs, 'var', 'logs'), {recursive: true})
+    fs.writeFileSync(path.join(logs, 'var', 'logs', 'app.log'), `${line('2026-08-27 12:00:00', 'INFO', 'elsewhere')}\n`)
+
+    dir = makeAppDir({
+      connections: {one: connection({id: 'one', name: 'One', path: logs})},
+      logDir: 'var/logs',
+    })
+
+    const server = opened({at: logs, dataDir: dir}).server
+    const answer = await server.call('tinkr_list_logs', {})
+
+    expect(answer.structuredContent.dir).toBe(path.join(logs, 'var', 'logs'))
+    expect(answer.structuredContent.files.map(one => one.name)).toEqual(['app.log'])
+  })
+
+  test('says the connection has no logs rather than failing', async () => {
+    const server = openedOn({})
+
+    const listed = await server.call('tinkr_list_logs', {})
+
+    expect(listed.isError).toBe(false)
+    expect(listed.structuredContent.files).toEqual([])
+    expect(listed.content[0].text).toContain('No log files are in')
+
+    const read = await server.call('tinkr_tail_logs', {})
+
+    expect(read.isError).toBe(false)
+    expect(read.content[0].text).toContain('there is nothing to read')
+  })
+
+  test('asks for a moment in the shape a log writes one', async () => {
+    const server = openedOn({'laravel.log': `${line('2026-08-27 12:00:00', 'INFO', 'one')}\n`})
+
+    const since = await server.call('tinkr_tail_logs', {since: 'yesterday'})
+
+    expect(since.isError).toBe(true)
+    expect(since.content[0].text).toMatch(/`since` has to be a moment written as "2026-08-27 11:10:52"/)
+
+    const level = await server.call('tinkr_tail_logs', {level: 'eror'})
+
+    expect(level.isError).toBe(true)
+    expect(level.content[0].text).toMatch(/is not a level a log holds/)
+  })
+
+  test('treats an empty term as no filter at all', async () => {
+    const server = openedOn({
+      'laravel.log': [
+        line('2026-08-27 11:00:00', 'INFO', 'the job ran'),
+        line('2026-08-27 12:00:00', 'ERROR', 'No certificate found'),
+      ].join('\n') + '\n',
+    })
+
+    const answer = await server.call('tinkr_tail_logs', {term: '   '})
+
+    expect(answer.isError).toBe(false)
+    expect(answer.structuredContent.filtered).toBe(false)
+    expect(answer.structuredContent.entries).toHaveLength(2)
+  })
+
+  test('keeps the levels of a list', async () => {
+    const server = openedOn({
+      'laravel.log': [
+        line('2026-08-27 11:00:00', 'INFO', 'the job ran'),
+        line('2026-08-27 11:30:00', 'WARNING', 'slow query'),
+        line('2026-08-27 12:00:00', 'ERROR', 'No certificate found'),
+      ].join('\n') + '\n',
+    })
+
+    const answer = await server.call('tinkr_tail_logs', {level: ['error', 'warning']})
+
+    expect(answer.structuredContent.entries.map(one => one.level)).toEqual(['warning', 'error'])
+  })
+
+  test('reads nothing whose name is not a log of the connection', async () => {
+    const server = openedOn({'laravel.log': `${line('2026-08-27 12:00:00', 'INFO', 'one')}\n`})
+
+    const answer = await server.call('tinkr_tail_logs', {file: '../.env'})
+
+    expect(answer.isError).toBe(true)
+    expect(answer.content[0].text).toMatch(/is not a log file/)
+  })
+})

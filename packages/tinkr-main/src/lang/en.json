@@ -255,6 +255,8 @@
     "mcp_tool_delete_snippet": "deletes a snippet of a connection",
     "mcp_tool_list_history": "lists the runs a connection has kept",
     "mcp_tool_read_run": "reads one kept run, and what it came back with",
+    "mcp_tool_list_logs": "lists the log files of a connection",
+    "mcp_tool_tail_logs": "reads a connection's logs, a window or a search at a time",
     "shortcut_ai": "AI panel",
     "shortcut_ai_description": "open the AI panel and put the cursor in its prompt",
     "log_dir": "Log files",
