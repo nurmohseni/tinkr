@@ -128,6 +128,60 @@ test.describe('the log viewer', () => {
     }
   })
 
+  test('keeps paging older entries while a level filter hides most of them', async () => {
+    const project = copyFixture()
+    const large = path.join(project, 'storage', 'logs', 'sparse.log')
+    // one warning every hundred entries: the newest page holds a handful, which
+    // is shorter than the pane, so the list has to be filled from older pages
+    const line = index => `[2026-10-20 10:${String(Math.floor(index / 60) % 60).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}] local.${index % 100 === 0 ? 'WARNING' : 'INFO'}: entry ${index}\n`
+
+    fs.writeFileSync(large, Array.from({length: 5000}, (unused, index) => line(index)).join(''))
+
+    const {app, page, close} = await launchTinkr({
+      connections: [fixtureConnection({path: project})],
+    })
+
+    try {
+      const logs = await openLogs(app, page)
+
+      await pickFile(logs, 'sparse.log')
+
+      const body = logs.locator('.logs__body')
+
+      await expect(logs.locator('.logs__foot')).toContainText('read the last')
+
+      await logs.getByRole('button', {name: 'Filter', exact: true}).click()
+
+      const filter = logs.getByRole('group', {name: 'Filter'})
+
+      for (const level of ['debug', 'info', 'notice', 'error', 'critical', 'alert', 'emergency']) {
+        const box = filter.getByLabel(level, {exact: true})
+
+        if (await box.isChecked()) {
+          await box.uncheck()
+        }
+      }
+
+      const lowest = async () => Math.min(...((await body.innerText()).match(/entry \d+/g) || [])
+        .map(number => Number(number.slice(6))))
+
+      // the matches of the newest page alone reach back a few hundred entries;
+      // older matches are only there if older pages were read under the filter
+      await expect(logs.locator('.logs__foot')).toContainText('before the end')
+      await expect.poll(lowest).toBeLessThan(4000)
+
+      const low = await lowest()
+
+      // and the top edge still reads the page before, as it does unfiltered
+      await body.evaluate(list => { list.scrollTop = 0 })
+
+      await expect.poll(lowest).toBeLessThan(low)
+    } finally {
+      await close()
+      fs.rmSync(project, {recursive: true, force: true})
+    }
+  })
+
   test('loads older pages as the list scrolls, and newer ones on the way back', async () => {
     const project = copyFixture()
     const large = path.join(project, 'storage', 'logs', 'large.log')

@@ -112,12 +112,6 @@ const LogsPanel = () => {
   const priorFrom = useRef(null)
   const loading = useRef({older: false, newer: false})
 
-  // a level or a search term is applied to the entries in hand. Paging older
-  // pages under it would drop the newest page — and the matches that may be the
-  // only reason the list is not empty — so the filtered view stays on what is
-  // loaded. A range is the service's, and pages inside it are still read.
-  const filtered = levels.length > 0 || search.trim() !== ''
-
   // another file opens on its end, as the first one did, whatever the reader
   // had scrolled to in the file they left
   useEffect(() => {
@@ -138,7 +132,7 @@ const LogsPanel = () => {
   }, [follow, interval, logs.file, followNow])
 
   const loadOlder = async () => {
-    if (filtered || loading.current.older || atStart(logs) || logs.pages.length === 0) {
+    if (loading.current.older || atStart(logs) || logs.pages.length === 0) {
       return
     }
 
@@ -235,9 +229,15 @@ const LogsPanel = () => {
     }
   }, [levels, search])
 
-  // a page can be shorter than the pane — a file with long lines, or a filter
-  // that hides most of it. Fill the pane before waiting for a scroll that cannot
-  // happen, up to the same page cap the rest of the viewer uses.
+  // a page can be shorter than the pane — a file with long lines, or a level or
+  // a search term that hides most of what it holds. Fill the pane before waiting
+  // for a scroll that cannot happen: a filtered list shorter than the pane has
+  // no scrollbar, so without this the entries behind it could never be read.
+  //
+  // It stops at the page cap the rest of the viewer uses, so a filter's fill
+  // reads back a bounded number of pages and leaves the newest page in the list:
+  // what is on screen stays the newest matches the filter found, with the ones
+  // behind them under them.
   useEffect(() => {
     const list = listRef.current
 
@@ -245,7 +245,7 @@ const LogsPanel = () => {
       return
     }
 
-    if (!filtered && logs.pages.length < maxPages && !atStart(logs) && list.scrollHeight <= list.clientHeight + edge) {
+    if (logs.pages.length < maxPages && !atStart(logs) && list.scrollHeight <= list.clientHeight + edge) {
       loadOlder()
     }
   }, [logs.pages, logs.loading, logs.loadingOlder, levels, search])
