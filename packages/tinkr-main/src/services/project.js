@@ -21,7 +21,7 @@ const {
  * classes and files that have nothing to do with what is being typed.
  *
  * The other machine is asked with a command of its own — one `php -r`, the same
- * shape services/logs puts its questions in — and not through the session the
+ * shape core's log reading puts its questions in — and not through the session the
  * connection runs in. That session is the person's own prompt to tinker: the run
  * writes into it, the terminal shows it, and a question put to it is a question
  * answered while nothing else in it may happen. A project is read to answer the

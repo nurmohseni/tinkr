@@ -255,6 +255,8 @@
     "mcp_tool_delete_snippet": "löscht ein Snippet einer Verbindung",
     "mcp_tool_list_history": "listet die Läufe, die eine Verbindung behalten hat",
     "mcp_tool_read_run": "liest einen behaltenen Lauf und was dabei herauskam",
+    "mcp_tool_list_logs": "listet die Logdateien einer Verbindung",
+    "mcp_tool_tail_logs": "liest die Logs einer Verbindung, ein Fenster oder eine Suche auf einmal",
     "shortcut_ai": "KI-Panel",
     "shortcut_ai_description": "das KI-Panel öffnen und den Cursor in seine Eingabe setzen",
     "log_dir": "Logdateien",

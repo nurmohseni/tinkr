@@ -123,6 +123,8 @@ test.describe('the MCP server', () => {
         'tinkr_delete_snippet',
         'tinkr_list_history',
         'tinkr_read_run',
+        'tinkr_list_logs',
+        'tinkr_tail_logs',
       ]))
 
       const answer = await server.request('tools/call', {
@@ -133,6 +135,27 @@ test.describe('the MCP server', () => {
       expect(answer.isError).toBe(false)
       expect(answer.structuredContent.value).toBe(2)
       expect(answer.content[0].text).toBe('Line 1: 2')
+
+      // the project's own logs, read the way the viewer reads them and scanned
+      // the way an agent looking for something does
+      const files = await server.request('tools/call', {
+        name: 'tinkr_list_logs',
+        arguments: {},
+      })
+
+      expect(files.isError).toBe(false)
+      expect(files.structuredContent.files.map(one => one.name))
+        .toEqual(expect.arrayContaining(['laravel.log', 'worker.log']))
+
+      const errors = await server.request('tools/call', {
+        name: 'tinkr_tail_logs',
+        arguments: {file: 'laravel.log', level: 'error'},
+      })
+
+      expect(errors.isError).toBe(false)
+      expect(errors.structuredContent.filtered).toBe(true)
+      expect(errors.structuredContent.entries.map(one => one.message)).toEqual(['fixture failure'])
+      expect(errors.structuredContent.entries[0].details).toContain('RuntimeException: boom')
 
       const guarded = await server.request('tools/call', {
         name: 'tinkr_run_php',

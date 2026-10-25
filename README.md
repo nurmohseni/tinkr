@@ -137,6 +137,8 @@ The directory the client starts it in is the project code runs in. No API token,
 | `tinkr_run_php_over_ssh` | The same, on a server, through one of Tinkr's SSH connections |
 | `tinkr_list_history` | The runs the app kept for a connection: the code, when it ran, how it ended |
 | `tinkr_read_run` | One kept run in full: what it returned, printed and threw |
+| `tinkr_list_logs` | The log files of a connection, newest first: name, size, when it was last written |
+| `tinkr_tail_logs` | A connection's logs: the newest window of a file, or the entries that match a level or a term |
 | `tinkr_list_connections` | The connections saved in the app, with the command each session starts with |
 | `tinkr_list_snippets` | The snippets saved for a connection |
 | `tinkr_save_snippet` | Keep code as a snippet of a connection |
@@ -152,6 +154,8 @@ History is the app's own: the last fifty runs of a connection. A client's own ru
 A transaction holds the database and nothing else, so `sandbox` is the guard to name when the code might send, queue, call or write something.
 
 **`tinkr_documentation`** is the same for a model: it answers with what the app is, what each guard holds and when to use which, what a connection is and what the production tag changes, every tool, and how to read the envelope. A model that reads it before running anything needs no prior knowledge of Tinkr.
+
+`tinkr_tail_logs` reads a log without holding it: a window of the newest bytes by default, `before`/`after` for the pages beside it, and `since`/`until` for a range of moments found in the file itself. A `level` or a `term` turns the read into a scan of the whole range, answering with the newest `limit` matches — so an error far back in a large log is still found. Reading logs is allowed on any connection, production included: it reads a file.
 
 A connection tagged **production** is refused unless the server was started on that connection (`--connection`) or with `--allow-production`. A run there is a write nobody is watching.
 

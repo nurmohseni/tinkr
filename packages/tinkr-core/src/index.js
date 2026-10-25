@@ -19,4 +19,8 @@ module.exports = Object.assign(
   require('./sshControl'),
   require('./containerCommand'),
   require('./cloud'),
+  require('./remote'),
+  // a namespace rather than flat names: `files` and `read` are what a log
+  // module calls its own, and the library already has plenty of those
+  {logs: require('./logs')},
 )

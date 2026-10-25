@@ -48,6 +48,11 @@ const topics = [
     summary: 'The envelope: blocks, value, error, queries, transaction, sandbox.',
   },
   {
+    name: 'logs',
+    title: 'The project\'s logs: windows, ranges and filters',
+    summary: 'What an entry is, what a window is, and when a filter scans the file.',
+  },
+  {
     name: 'app',
     title: 'The app the server belongs to',
     summary: 'What the window does that the tools do not, and where the files live.',
@@ -302,6 +307,19 @@ an error — the answer says it was gone — because a delete asked for twice is
 still a delete that happened. The app writes the same file, so the change is made
 under the lock both writers take.
 
+## The project's logs
+
+### \`tinkr_list_logs\`
+The log files of a connection, newest first: the name of each, its size, and when
+it was last written. Arguments: \`connection\`.
+
+### \`tinkr_tail_logs\`
+Read the end of one of them — the newest window of bytes, and the entries it
+holds — or scan the file for the entries that match a level or a term. Arguments:
+\`connection\`, \`file\`, \`bytes\`, \`before\`, \`after\`, \`since\`,
+\`until\`, \`level\`, \`term\`, \`limit\`. See \`tinkr_documentation\` with
+topic \`logs\` for what each one does to the answer.
+
 ## Finding out what is there
 
 ### \`tinkr_list_connections\`
@@ -404,6 +422,94 @@ back as soon as the command exits, not when the timeout is spent, and what it
 printed is in \`output\`.`
 
 /**
+ * The project's logs.
+ *
+ * @type {String}
+ */
+const logs = `# The project's logs
+
+A log is a file the project appends to, and it is read without being held: a
+window of it at a time, or a scan of it that keeps only what matches.
+
+## What an entry is
+
+One entry per line that starts one, and every line under it belongs to it:
+
+\`\`\`
+[2026-08-27 11:10:53] production.ERROR: No certificate found {"exception":"…"}
+[stacktrace]
+#0 /app/Models/Abonado.php(1905): …
+\`\`\`
+
+- \`at\` is the moment, as the file writes it — \`2026-08-27 11:10:53\`.
+- \`environment\` is monolog's channel (\`production\`, \`local\`, …).
+- \`level\` is \`debug\`, \`info\`, \`notice\`, \`warning\`, \`error\`,
+  \`critical\`, \`alert\` or \`emergency\`, in lowercase.
+- \`message\` is the sentence before the context.
+- \`details\` is the context and the stack trace, as the formatter wrote them.
+
+A log written as one json object per line — monolog's json formatter — is read as
+the same fields, with the rest of the object as its \`details\`. A line that
+starts nothing and has no entry above it is an entry with no level and no moment.
+
+## A window, and a scan
+
+**Without \`level\` or \`term\`** the answer is a window: the newest bytes of the
+file, the way the app's log viewer opens one. \`bytes\` is how wide it is — 32 KB
+by default, 2 MB at most. The answer says where the window sits
+(\`from\`, \`read\`, \`size\`), and the two arguments that read the pages beside
+it are:
+
+- \`before: <from>\` — the page that ends where this one starts;
+- \`after: <to>\` — the page that starts where this one ends.
+
+A window is cheap and it is what "what is happening now" means. It is a bad way
+to look for something old: a log of forty megabytes holds hundreds of windows.
+
+**With \`level\` or \`term\`** the answer is a scan: the whole file — or the range
+\`since\`/\`until\` names — is read, and the newest \`limit\` entries that match are
+the answer (100 by default, 500 at most). So \`{level: "error", limit: 5}\` is the
+last five errors in the file, however far back they are. \`older\` says how many
+matches were older than the ones answered with: it is the signal that \`limit\` or
+a range is worth tightening. \`term\` is looked for in the entry's time, level,
+message and details, without case.
+
+A filtered answer carries no \`range\`: what it read is the region it walked.
+
+## A range of moments
+
+\`since\` and \`until\` are written as the file writes a moment —
+\`2026-08-27 11:10:52\` — with no timezone, because a log has none. \`since\` is
+the first entry at or after it and \`until\` is the first entry past it; either
+may be left out. The moments are found by reading the file, not by filtering a
+window, so a range reaches entries no window holds.
+
+A range answers with the end of the range: \`{since: "2026-08-27 03:00:00"}\` is
+the newest window of what came after three o'clock, not the first one.
+
+## What it costs
+
+A window reads 32 KB. A scan reads the file, once, on the machine that holds it,
+and nothing but the matches crosses the wire: over ssh that is two round trips —
+one for where the range sits, one for the matches — and a scan of a large log is
+slower than a window and far cheaper than pulling the file across. Nothing is
+cached, so the same call twice reads the file twice.
+
+## Where the logs are, and which are not readable
+
+\`storage/logs\`, relative to the project, unless the app's preferences say
+otherwise. A local connection reads them here; a container connection reads them
+inside the container, at its own path; a server connection reads them over ssh.
+
+A **Laravel Cloud** connection has no log files this server can read: they are
+inside the environment Laravel Cloud runs, which has no filesystem here. Both
+tools say so rather than answering with a local checkout's files.
+
+Reading is allowed on **production** connections, tagged or not: it reads a file.
+Nothing in these two tools runs code of yours — a server's own file is read by
+one \`php -r\` that only reads it.`
+
+/**
  * The app itself.
  *
  * @type {String}
@@ -419,7 +525,8 @@ what the window does is knowing what the files mean.
   rendered markup, next to what the run printed. A value that is a collection or
   a list of models is a table; HTML is a frame; everything else is a tree.
 - **The queries tab** is the run's SQL with its bindings and times.
-- **The logs tab** is the project's own log files, filtered by level and term.
+- **The logs tab** is the project's own log files, filtered by level and term — the same
+  files \`tinkr_tail_logs\` reads, a window or a scan at a time.
 - **The AI panel** asks about the code in front of you, with the last answer as
   context.
 - **Snippets** are the code worth keeping, per connection.
@@ -454,6 +561,7 @@ const articles = {
   connections,
   tools,
   reading,
+  logs,
   app,
 }
 

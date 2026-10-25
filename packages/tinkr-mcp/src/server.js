@@ -1,6 +1,6 @@
 const fs = require('fs')
 
-const {runCode} = require('tinkr-core')
+const {runCode, logs: logReader} = require('tinkr-core')
 
 const app = require('./app')
 const {topics, documentation} = require('./documentation')
@@ -545,6 +545,90 @@ const limitOf = args => {
  * @param {Record<String, any>} connection
  * @return {Object}
  */
+/**
+ * A size of a file, as a person reads it.
+ *
+ * @param {Number} size
+ * @return {String}
+ */
+const bytesOf = size => {
+  const bytes = Number(size) || 0
+
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * One log entry as the lines of an answer, written the way the file wrote it:
+ * `[when] channel.LEVEL: what it said`, with the context and the stack trace
+ * indented under it.
+ *
+ * @param {Object} entry
+ * @return {String}
+ */
+const renderEntry = entry => {
+  const said = entry.level === null ? 'text' : entry.level.toUpperCase()
+  const where = entry.environment === null ? said : `${entry.environment}.${said}`
+  const lines = [`[${entry.at === null ? 'at an unknown time' : entry.at}] ${where}: ${entry.message}`]
+
+  if (entry.details !== '') {
+    lines.push(...entry.details.split('\n').map(line => `  ${line}`))
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * A read of a log as text: what was read of what there is, the entries, and what
+ * to ask next.
+ *
+ * The notes at the end are the two ways to walk a log — back through its bytes,
+ * and back through the matches of a filter — said only when there is something
+ * behind them: a caller that has reached the end of the file is not told to go
+ * further.
+ *
+ * @param {Object} answer the log's own answer, with `filtered` and `older` beside it
+ * @return {String}
+ */
+const renderLogs = answer => {
+  const lines = [answer.filtered
+    ? `${answer.file} · ${bytesOf(answer.size)} · ${answer.entries.length} ` +
+      `match${answer.entries.length === 1 ? '' : 'es'} in the ${bytesOf(answer.read)} scanned`
+    : `${answer.file} · ${bytesOf(answer.size)} · the bytes ${answer.from}–${answer.to}`]
+
+  if (answer.entries.length === 0) {
+    lines.push('', answer.filtered
+      ? 'No entry in that range matches.'
+      : 'No entries in this window.')
+  }
+
+  for (const entry of answer.entries) {
+    lines.push('', renderEntry(entry))
+  }
+
+  if (answer.older > 0) {
+    lines.push('', `${answer.older} older matching ${answer.older === 1 ? 'entry was' : 'entries were'} ` +
+      'not included: raise `limit`, or narrow the read with `since`/`until`.')
+  }
+
+  if (!answer.filtered && answer.from > 0) {
+    lines.push('', `There is more before this window: pass \`before: ${answer.from}\` for the page before it.`)
+  }
+
+  if (!answer.filtered && answer.to < answer.size) {
+    lines.push('', `There is more after it: pass \`after: ${answer.to}\` for the page after it.`)
+  }
+
+  return lines.join('\n')
+}
+
 const connectionInfo = connection => {
   const info = {
     id: connection.id,
@@ -605,10 +689,118 @@ const timeoutInput = {
     'A minute by default. A run that is given up on is stopped.',
 }
 
+const connectionInput = {
+  type: 'string',
+  description: 'The id or name of a connection saved in Tinkr. The connection this server was ' +
+    'started on when it is not given.',
+}
+
+const logFileInput = {
+  type: 'string',
+  description: 'The name of a log file of the connection, as tinkr_list_logs lists it. The ' +
+    'newest file when it is not given.',
+}
+
+const logSinceInput = {
+  type: 'string',
+  description: 'A moment to read from, written as the file stamps its entries: ' +
+    '"2026-08-27 11:10:52". The moment is found in the file itself, so a range reaches entries ' +
+    'no window holds. Open-ended when it is not given.',
+}
+
+const logUntilInput = {
+  type: 'string',
+  description: 'A moment to stop reading after, in the same shape as `since`. Open-ended when ' +
+    'it is not given.',
+}
+
+const logLevelInput = {
+  type: ['string', 'array'],
+  items: {
+    type: 'string',
+    enum: ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'],
+  },
+  description: 'A level, or a list of levels, to keep: "error" answers with the errors only. ' +
+    'A read with this or `term` is a scan: the whole file, or the range, is read and the newest ' +
+    '`limit` matching entries are the answer, so a match far back in the file is still found. ' +
+    'Without either, the answer is the newest window of bytes, as a viewer opens it.',
+}
+
+const logTermInput = {
+  type: 'string',
+  description: 'A word or phrase an entry has to contain, in any case and anywhere in it — its ' +
+    'time, level, message or details. Like `level`, it turns the read into a scan of the range.',
+}
+
+const logLimitInput = {
+  type: 'integer',
+  minimum: 1,
+  maximum: 500,
+  description: 'How many matching entries to answer with, newest last: 100 by default. Only a ' +
+    'read with `level` or `term` uses it.',
+}
+
+const logBytesInput = {
+  type: 'integer',
+  minimum: 1024,
+  maximum: 2 * 1024 * 1024,
+  description: 'How wide the window is, in bytes: 32 KB by default. Only a read without ' +
+    '`level`/`term` uses it.',
+}
+
+const logBeforeInput = {
+  type: 'integer',
+  minimum: 0,
+  description: 'A byte offset of the file to end a window at. Pass the `from` of a window to ' +
+    'read the page before it.',
+}
+
+const logAfterInput = {
+  type: 'integer',
+  minimum: 0,
+  description: 'A byte offset of the file to start a window at. Pass the `to` of a window to ' +
+    'read the page after it.',
+}
+
 const errorOutput = {
   type: ['object', 'null'],
   description: 'The exception that stopped the run, when one did.',
   properties: {class: {type: 'string'}, message: {type: 'string'}},
+}
+
+const logEntryOutput = {
+  type: 'object',
+  properties: {
+    at: {type: ['string', 'null'], description: 'When the entry was written, as the file wrote it.'},
+    environment: {type: ['string', 'null'], description: 'The channel the entry was written on.'},
+    level: {type: ['string', 'null'], description: 'The level, in lowercase. Null for a line that belongs to no entry.'},
+    message: {type: 'string'},
+    details: {type: 'string', description: 'The context and the stack trace under the message.'},
+  },
+}
+
+const logReadOutput = {
+  type: 'object',
+  properties: {
+    connection: {type: 'string'},
+    file: {type: 'string'},
+    size: {type: 'integer', description: 'How big the file is, in bytes.'},
+    from: {type: 'integer', description: 'The byte the answer starts at.'},
+    to: {type: 'integer', description: 'The byte it ends at.'},
+    read: {type: 'integer', description: 'How many bytes were read.'},
+    range: {
+      type: 'object',
+      description: 'The bytes the `since`/`until` range covers, when one was given.',
+      properties: {from: {type: 'integer'}, to: {type: 'integer'}},
+    },
+    filtered: {type: 'boolean', description: 'Whether the answer is a scan of the range rather than a window onto it.'},
+    entries: {type: 'array', items: logEntryOutput},
+    older: {
+      type: 'integer',
+      description: 'How many matching entries were older than the ones answered with.',
+    },
+    error: errorOutput,
+  },
 }
 
 const runOutput = {
@@ -827,6 +1019,71 @@ const TOOLS = [
     },
   },
   {
+    name: 'tinkr_list_logs',
+    title: 'The log files of a connection',
+    description: 'List the log files of a connection, newest first: the name of each, how big ' +
+      'it is and when it was last written. They are the project\'s own logs — `storage/logs` ' +
+      'unless the app\'s preferences say otherwise — read on the machine the project runs on: ' +
+      'here for a local or container connection, and over ssh for a server one. A Laravel ' +
+      'Cloud connection has no log files this server can read, and says so.',
+    annotations: {readOnlyHint: true, destructiveHint: false, openWorldHint: true},
+    inputSchema: {
+      type: 'object',
+      properties: {connection: connectionInput},
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        connection: {type: 'string'},
+        dir: {type: 'string', description: 'Where the logs were looked for, as that machine spells it.'},
+        files: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: {type: 'string'},
+              size: {type: 'integer'},
+              at: {type: ['string', 'null'], description: 'When it was last written, in ISO 8601.'},
+            },
+          },
+        },
+        error: errorOutput,
+      },
+    },
+  },
+  {
+    name: 'tinkr_tail_logs',
+    title: 'Read a connection\'s logs',
+    description: 'Read the end of one of a connection\'s log files: the newest window of bytes, ' +
+      'as the app\'s log viewer opens one, and the entries it holds — one per line that starts ' +
+      'one, with its context and stack trace under it. The file is never read whole: the window ' +
+      'is the newest 32 KB by default, and `before` reads the page before it. `since` and ' +
+      '`until` narrow the read to a range of moments, found in the file itself. A `level` or a ' +
+      '`term` turns the read into a scan of the whole range instead, answering with the newest ' +
+      '`limit` entries that match — which is how a rare error far back in a large file is found. ' +
+      'Reading is allowed on any connection, production included: it reads a file and runs ' +
+      'nothing of yours.',
+    annotations: {readOnlyHint: true, destructiveHint: false, openWorldHint: true},
+    inputSchema: {
+      type: 'object',
+      properties: {
+        connection: connectionInput,
+        file: logFileInput,
+        bytes: logBytesInput,
+        before: logBeforeInput,
+        after: logAfterInput,
+        since: logSinceInput,
+        until: logUntilInput,
+        level: logLevelInput,
+        term: logTermInput,
+        limit: logLimitInput,
+      },
+      additionalProperties: false,
+    },
+    outputSchema: logReadOutput,
+  },
+  {
     name: 'tinkr_list_connections',
     title: 'List the saved connections',
     description: 'List the connections saved in Tinkr: the directories and the servers the app ' +
@@ -897,6 +1154,172 @@ const TOOLS = [
     },
   },
 ]
+
+// the shape a moment is given in, which is the shape a log stamps its entries in
+const momentShape = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+
+/**
+ * A number an argument has to be: a byte offset, a width, a count.
+ *
+ * @param {String} name the argument
+ * @param {any} value
+ * @return {Number}
+ */
+const countOf = (name, value) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`\`${name}\` has to be a number, 0 or more: ${target.said(value)} is not one.`)
+  }
+
+  return Math.floor(value)
+}
+
+/**
+ * A moment an argument has to be, written as a log writes one.
+ *
+ * @param {String} name the argument
+ * @param {any} value
+ * @return {String}
+ */
+const momentOf = (name, value) => {
+  if (typeof value !== 'string' || !momentShape.test(value.trim())) {
+    throw new Error(`\`${name}\` has to be a moment written as "2026-08-27 11:10:52": ` +
+      `${target.said(value)} is not one.`)
+  }
+
+  return value.trim()
+}
+
+/**
+ * What a read of a log is asked for, out of the arguments of a call.
+ *
+ * The width is the one the app's viewer reads a page with, because an answer is
+ * read by a model and 32 KB of log lines is already a great deal of them.
+ *
+ * @param {Object} args
+ * @return {{options: Object, filtered: Boolean}} `filtered` says the answer will be
+ *   a scan of the range rather than a window onto it
+ */
+const logOptionsOf = args => {
+  const options = {}
+
+  if (args.bytes !== undefined) {
+    options.bytes = countOf('bytes', args.bytes)
+  }
+
+  if (args.before !== undefined) {
+    options.before = countOf('before', args.before)
+  }
+
+  if (args.after !== undefined) {
+    options.after = countOf('after', args.after)
+  }
+
+  if (args.since !== undefined) {
+    options.since = momentOf('since', args.since)
+  }
+
+  if (args.until !== undefined) {
+    options.until = momentOf('until', args.until)
+  }
+
+  if (args.level !== undefined) {
+    const listed = Array.isArray(args.level) ? args.level : [args.level]
+
+    if (listed.length === 0 || listed.some(one => typeof one !== 'string')) {
+      throw new Error('`level` has to be a level, or a list of them: "error", or ["error", "critical"].')
+    }
+
+    options.level = args.level
+  }
+
+  if (args.term !== undefined) {
+    if (typeof args.term !== 'string') {
+      throw new Error('`term` has to be a string: the word or phrase an entry has to contain.')
+    }
+
+    options.term = args.term
+  }
+
+  if (args.limit !== undefined) {
+    options.limit = countOf('limit', args.limit)
+  }
+
+  if (options.bytes === undefined) {
+    options.bytes = 32 * 1024
+  }
+
+  // what the reader will do with these is the reader's own rule, so it is asked
+  // rather than guessed at: an empty term is no filter, and a level a log does
+  // not have is refused here rather than answering as if it matched nothing
+  const levels = logReader.levelsOf(options.level)
+  const term = typeof options.term === 'string' ? options.term.trim() : ''
+
+  if (term === '') {
+    delete options.term
+  }
+
+  return {options, filtered: levels.length > 0 || term !== ''}
+}
+
+/**
+ * The file a call reads, and what the connection has, so that a call that named
+ * no file is answered with the newest one.
+ *
+ * @param {Object} found the resolved target
+ * @param {any} wanted the `file` argument
+ * @param {Object} settings
+ * @return {Promise<{file: String|null, dir: String}>}
+ */
+const logChoiceOf = async (found, wanted, settings) => {
+  if (wanted !== undefined && typeof wanted !== 'string') {
+    throw new Error('`file` has to be the name of a log file, as tinkr_list_logs lists it.')
+  }
+
+  const listed = await logReader.files(found.connection, settings)
+  const named = typeof wanted === 'string' ? wanted.trim() : ''
+
+  return {
+    file: named === '' ? (((listed.files || [])[0] || {}).name || null) : named,
+    dir: listed.dir,
+  }
+}
+
+/**
+ * What the reader needs from the app: where it keeps its logs, and where its own
+ * data is.
+ *
+ * @param {Object} found the resolved target
+ * @return {{logDir: String, dataDir: String|null}}
+ */
+const logSettingsOf = found => ({
+  logDir: found.dataDir ? app.logDir(found.dataDir) : logReader.defaultDir,
+  dataDir: found.dataDir || null,
+})
+
+/**
+ * The entries of a read, cut to what an answer may carry: the newest ones are
+ * what a log is read for, so the oldest go first.
+ *
+ * @param {Array<Object>} entries
+ * @return {Array<Object>}
+ */
+const boundEntries = entries => {
+  const kept = []
+  let used = 0
+
+  for (let at = entries.length - 1; at >= 0; at -= 1) {
+    const cost = JSON.stringify(entries[at]).length
+
+    if (used + cost > maxText) {
+      break
+    }
+
+    used += cost
+    kept.unshift(entries[at])
+  }
+
+  return kept
+}
 
 /**
  * The server's tools, over a target and a way to run code in it.
@@ -1174,6 +1597,85 @@ const createServer = ({
         return {
           content: [{type: 'text', text: renderRun(entry)}],
           structuredContent: bounded,
+          isError: false,
+        }
+      }
+
+      case 'tinkr_list_logs': {
+        const found = lookup(args)
+        const {dir, files} = await logReader.files(found.connection, logSettingsOf(found))
+        const listed = files.map(one => ({name: one.name, size: one.size, at: isoOf(one.at)}))
+
+        const head = `${listed.length} log ${listed.length === 1 ? 'file' : 'files'} in ${dir}, newest first:`
+        const lines = listed.length
+          ? [head, ''].concat(listed.map(one => `${one.name} · ${bytesOf(one.size)} · ${one.at || 'at an unknown time'}`))
+          : [`No log files are in ${dir}.`]
+
+        return {
+          content: [{type: 'text', text: truncate(lines.join('\n'))}],
+          structuredContent: {connection: found.connection.id, dir, files: listed},
+          isError: false,
+        }
+      }
+
+      case 'tinkr_tail_logs': {
+        const found = lookup(args)
+        const settings = logSettingsOf(found)
+        const {options, filtered} = logOptionsOf(args)
+        const {file, dir} = await logChoiceOf(found, args.file, settings)
+
+        if (file === null) {
+          return {
+            content: [{
+              type: 'text',
+              text: `No log files are in ${dir}, so there is nothing to read.`,
+            }],
+            structuredContent: {
+              connection: found.connection.id,
+              file: '',
+              size: 0,
+              from: 0,
+              to: 0,
+              read: 0,
+              filtered,
+              entries: [],
+            },
+            isError: false,
+          }
+        }
+
+        const answer = await logReader.read(found.connection, file, options, settings)
+        const all = Array.isArray(answer.entries) ? answer.entries : []
+        const entries = boundEntries(all)
+        // a read that answered with more matches than it kept is a read whose
+        // older matches are still in the file, and the answer says how many
+        const older = Math.max(Number(answer.older) || 0, 0) + (all.length - entries.length)
+        // a window says how much of it was read rather than where it ends; a
+        // scan says both, because what it read is the region it walked
+        const to = typeof answer.to === 'number' ? answer.to : answer.from + answer.read
+        const read = Object.assign({}, answer, {file, filtered, entries, older, to})
+        const structured = {
+          connection: found.connection.id,
+          file,
+          size: read.size,
+          from: read.from,
+          to,
+          read: read.read,
+          filtered,
+          entries,
+        }
+
+        if (read.range) {
+          structured.range = read.range
+        }
+
+        if (filtered) {
+          structured.older = older
+        }
+
+        return {
+          content: [{type: 'text', text: truncate(renderLogs(read))}],
+          structuredContent: structured,
           isError: false,
         }
       }

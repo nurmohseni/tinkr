@@ -110,6 +110,19 @@ const connections = dir => {
 const command = dir => (read(configFile(dir)) || {}).command_default || 'php artisan tinker'
 
 /**
+ * Where a connection keeps its log files, as the app's preferences say: relative
+ * to the project, and `storage/logs` when nobody has said otherwise.
+ *
+ * It is a preference rather than a guess because a project can keep them
+ * anywhere, and a reader that looked in the wrong directory would answer "no
+ * logs" about a project full of them.
+ *
+ * @param {String} dir
+ * @return {String}
+ */
+const logDir = dir => (read(configFile(dir)) || {}).log_dir || 'storage/logs'
+
+/**
  * @param {String} dir
  * @param {String} connectionId
  * @return {Array<Object>}
@@ -221,6 +234,7 @@ module.exports = {
   find,
   connections,
   command,
+  logDir,
   snippets,
   saveSnippet,
   deleteSnippet,

@@ -255,6 +255,8 @@
     "mcp_tool_delete_snippet": "exclui um trecho de uma conexão",
     "mcp_tool_list_history": "lista as execuções que uma conexão guardou",
     "mcp_tool_read_run": "lê uma execução guardada e o que ela retornou",
+    "mcp_tool_list_logs": "lista os arquivos de log de uma conexão",
+    "mcp_tool_tail_logs": "lê os logs de uma conexão, uma janela ou uma busca por vez",
     "shortcut_ai": "Painel de IA",
     "shortcut_ai_description": "abrir o painel de IA e colocar o cursor no campo",
     "log_dir": "Arquivos de log",
