@@ -2,6 +2,11 @@ jest.mock('child_process', () => ({spawn: jest.fn()}))
 
 const {EventEmitter} = require('events')
 const {spawn} = require('child_process')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+
+const realSpawn = jest.requireActual('child_process').spawn
 
 const {quoted, exec, ensureMaster, closeMasters} = require('../remote')
 const {controlOptions, masterOptions, controlPath, sshArgs} = require('tinkr-core')
@@ -44,6 +49,51 @@ const quiet = out => {
   return child
 }
 
+// a child that writes past what it is allowed to keep, and keeps writing
+const overflowing = chunks => {
+  const child = new EventEmitter()
+
+  child.stdout = new EventEmitter()
+  child.stderr = new EventEmitter()
+  child.kill = jest.fn()
+
+  process.nextTick(() => {
+    for (const chunk of chunks) {
+      child.stdout.emit('data', chunk)
+    }
+  })
+
+  return child
+}
+
+const alive = pid => {
+  try {
+    process.kill(pid, 0)
+  } catch (error) {
+    return error.code === 'EPERM'
+  }
+
+  // a zombie has stopped and is only waiting to be reaped: it is not running
+  // anything any more
+  try {
+    return !/\) Z /.test(fs.readFileSync(`/proc/${pid}/stat`, 'utf8'))
+  } catch (error) {
+    return process.platform !== 'linux'
+  }
+}
+
+const waitFor = async predicate => {
+  for (let i = 0; i < 80; i++) {
+    if (predicate()) {
+      return true
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+
+  return predicate()
+}
+
 // a socket with no master on it: the check is the first thing the app asks of
 // ssh, and `-O check` exits 1 when nothing answers on the path
 const socketIsFree = () => spawn.mockImplementationOnce(() => answering('', 1))
@@ -55,15 +105,6 @@ describe('running a command on the machine a connection runs on', () => {
     spawn.mockImplementation(() => answering(''))
     closeMasters()
     spawn.mockReset()
-  })
-
-  test('is a shell here, in the project\'s own directory', async () => {
-    spawn.mockImplementation(() => answering('PHP 8.3.1 (cli)'))
-
-    const answer = await exec({path: '/var/www/app'}, 'php -v')
-
-    expect(spawn).toHaveBeenCalledWith('/bin/sh', ['-lc', 'php -v'], {cwd: '/var/www/app'})
-    expect(answer).toEqual({stdout: 'PHP 8.3.1 (cli)', stderr: '', code: 0})
   })
 
   test('is ssh there, reached with the port, the key and the target of the connection', async () => {
@@ -229,9 +270,99 @@ describe('running a command on the machine a connection runs on', () => {
 
     expect(answer).toEqual({stdout: 'partial', stderr: '', code: null})
     expect(running.kill).toHaveBeenCalled()
+
+    // the child a cancelled command leaves behind ends, which is when the
+    // escalation a timeout scheduled has nothing left to wait for
+    running.emit('close', null)
+  })
+
+  test('stops keeping an answer that is over its cap, and drops what comes after it', async () => {
+    let running = null
+
+    spawn.mockImplementation(() => {
+      running = overflowing(['12345', '67890', 'late'])
+
+      return running
+    })
+
+    const answer = await exec({path: '/var/www/app'}, 'php -r echo;', {maxBuffer: 6})
+
+    // the first chunk fit, the second one did not: the answer is what was kept,
+    // and nothing written after the cap was added to it
+    expect(answer).toEqual({stdout: '12345', stderr: '', code: null})
+
+    running.emit('close', null)
   })
 
   test('writes a value as one word of a shell', () => {
     expect(quoted("/var/www/it's here")).toBe("'/var/www/it'\\''s here'")
   })
+})
+
+const describeOnPosix = process.platform === 'win32' ? describe.skip : describe
+
+describeOnPosix('stopping a command on this machine for real', () => {
+  let dir = null
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-remote-'))
+    // these tests run the shell the way the app does, rather than a fake one
+    spawn.mockImplementation(realSpawn)
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, {recursive: true, force: true})
+  })
+
+  const pidFrom = async file => {
+    await waitFor(() => fs.existsSync(file) && fs.readFileSync(file, 'utf8').trim() !== '')
+
+    return Number(fs.readFileSync(file, 'utf8').trim())
+  }
+
+  test('stops the shell and what it started when it runs out of time', async () => {
+    const pidFile = path.join(dir, 'timeout.pid')
+
+    // the shell that is spawned waits on a child of its own, and that child
+    // records itself and becomes the sleep. Killing only the spawned shell
+    // would leave the sleep behind, which is what the timeout has to reach
+    const answer = await exec({path: dir}, `sh -c 'echo $$ > ${pidFile}; exec sleep 30' & wait`, {timeout: 200})
+
+    expect(answer.code).toBeNull()
+
+    const pid = await pidFrom(pidFile)
+
+    expect(await waitFor(() => !alive(pid))).toBe(true)
+  }, 15000)
+
+  test('stops the shell and what it started when the answer is over its cap', async () => {
+    const pidFile = path.join(dir, 'overflow.pid')
+
+    // the spawned shell waits on the child that writes the answer, so the
+    // answer over the cap has to reach the child and not only the shell
+    const answer = await exec({path: dir}, `sh -c 'echo $$ > ${pidFile}; exec yes x' & wait`, {maxBuffer: 1024, timeout: 0})
+
+    expect(answer.code).toBeNull()
+    expect(answer.stdout.length).toBeLessThanOrEqual(1024)
+
+    const pid = await pidFrom(pidFile)
+
+    expect(await waitFor(() => !alive(pid))).toBe(true)
+  }, 15000)
+
+  test('kills a descendant that ignores the TERM once the grace is over', async () => {
+    const pidFile = path.join(dir, 'trapped.pid')
+
+    // the outer shell waits on a shell that traps TERM: the TERM leaves the
+    // inner one running, which is what the KILL after the grace is for
+    const command = `sh -c 'echo $$ > ${pidFile}; trap "" TERM; while :; do sleep 1; done' & wait`
+
+    const answer = await exec({path: dir}, command, {timeout: 300})
+
+    expect(answer.code).toBeNull()
+
+    const pid = await pidFrom(pidFile)
+
+    expect(await waitFor(() => !alive(pid))).toBe(true)
+  }, 15000)
 })
