@@ -25,7 +25,7 @@ jest.mock('../services/history', () => ({appendHistory: jest.fn(() => [])}))
 
 // the token a cloud run is given is the main process's secret, and a test has no
 // secrets file: what the app would have saved is what this answers with
-jest.mock('../database/secrets', () => ({cloudToken: () => 'a-cloud-token'}))
+jest.mock('../database/secrets', () => ({cloudToken: jest.fn(() => 'a-cloud-token')}))
 
 // the project of a connection over ssh is read by a command of its own, and a
 // test has no machine to reach: what another machine would answer is what this
@@ -35,11 +35,13 @@ jest.mock('../remote', () => ({
   quoted: jest.requireActual('../remote').quoted,
 }))
 
-const {runCloud, wrapRun, runOutput, typedRun} = require('tinkr-core')
+const {runCloud, wrapRun, runOutput, typedRun, SessionError, RunResultFilter} = require('tinkr-core')
 
 const {Pty} = require('../pty/Pty')
 const {exec} = require('../remote')
 const {createPty} = require('../createPty')
+const {appendHistory} = require('../services/history')
+const secrets = require('../database/secrets')
 const {readyIndex, clearRemoteIndexes} = require('../services/project')
 const {
   setEditorWindow,
@@ -69,6 +71,7 @@ describe('a run of a connection', () => {
 
     wrapRun.mockClear()
     runOutput.mockClear()
+    appendHistory.mockClear()
 
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
@@ -80,6 +83,7 @@ describe('a run of a connection', () => {
         return {dispose: jest.fn()}
       }),
       onExit: jest.fn(),
+      onCommandExit: jest.fn(),
     }))
 
     exec.mockResolvedValue({stdout: described('App\\Models\\Actor'), stderr: '', code: 0})
@@ -160,6 +164,7 @@ describe('a run of a connection', () => {
           return {dispose: jest.fn()}
         }),
         onExit: jest.fn(),
+        onCommandExit: jest.fn(),
       }
 
       return pty
@@ -192,6 +197,7 @@ describe('a run of a connection', () => {
         })),
         onData: jest.fn(() => ({dispose: jest.fn()})),
         onExit: jest.fn(),
+        onCommandExit: jest.fn(),
       }
 
       return pty
@@ -222,6 +228,7 @@ describe('a run of a connection', () => {
           ready: jest.fn(() => new Promise(() => {})),
           onData: jest.fn(() => ({dispose: jest.fn()})),
           onExit: jest.fn(),
+          onCommandExit: jest.fn(),
         }
 
         return pty
@@ -281,6 +288,7 @@ describe('a run of a connection', () => {
       )),
       onData: jest.fn(() => ({dispose: jest.fn()})),
       onExit: jest.fn(),
+      onCommandExit: jest.fn(),
     }))
 
     createPty(connection, 'the snippet')
@@ -297,6 +305,220 @@ describe('a run of a connection', () => {
     // it the way the terminal would have
     expect(answer[1].output).toBe('Could not open input file: artisan')
     expect(answer[1].value).toBe(null)
+  })
+
+  // the bug this waits against: a php killed under a run takes the answer with
+  // it, and the shell that outlives it prints the status of the line it was
+  // given. Without reading that status a run with no limit waited forever, and
+  // one with a limit waited out the whole of it
+  test('answers a run whose command exits after the session booted', async () => {
+    let exited = null
+
+    Pty.mockImplementation(() => ({
+      connect: jest.fn(),
+      type: jest.fn(() => Promise.resolve()),
+      ready: jest.fn(() => Promise.resolve()),
+      onData: jest.fn(() => ({dispose: jest.fn()})),
+      onExit: jest.fn(),
+      onCommandExit: jest.fn(cb => {
+        exited = cb
+
+        return {dispose: jest.fn()}
+      }),
+    }))
+
+    createPty(connection, 'sleep(60);', null, 0)
+
+    // the session is up, so a command exit from here is the run's own end
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(typeof exited).toBe('function')
+
+    exited(new SessionError('the session\'s command exited while the run was going (exit status 137)'))
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer[1].value).toBe(null)
+    expect(answer[1].error.class).toBe('SessionError')
+    expect(answer[1].error.message).toContain('exit status 137')
+    // the run is over, exactly once: the shell that outlived the command is
+    // still the connection's terminal, sitting at its own prompt
+    expect(appendHistory).toHaveBeenCalledTimes(1)
+  })
+
+  // the bug this waits against: the failure answer carried an empty output, so
+  // what the run had already printed before php died was wiped out of the pane
+  // by the error that explained the death
+  test('keeps what the run printed when its command exits after boot', async () => {
+    const actual = jest.requireActual('tinkr-core')
+    const filter = new actual.RunResultFilter('MARKER', 'START')
+    let exited = null
+
+    // the run's own filter and the real strip, so what is kept is read out of
+    // the stream the session printed rather than handed in
+    RunResultFilter.mockImplementationOnce(() => filter)
+    runOutput.mockImplementationOnce(actual.runOutput)
+
+    Pty.mockImplementation(() => ({
+      connect: jest.fn(),
+      type: jest.fn(() => Promise.resolve()),
+      ready: jest.fn(() => Promise.resolve()),
+      onData: jest.fn(cb => {
+        printed.push(cb)
+
+        return {dispose: jest.fn()}
+      }),
+      onExit: jest.fn(),
+      onCommandExit: jest.fn(cb => {
+        exited = cb
+
+        return {dispose: jest.fn()}
+      }),
+    }))
+
+    createPty(connection, 'the snippet', null, 0)
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    // the run started and printed, and then php was killed
+    printed[0]('START\r\nhello before the kill\r\n')
+    exited(new SessionError('the session\'s command exited while the run was going (exit status 137)'))
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer[1].error.class).toBe('SessionError')
+    expect(answer[1].output).toBe('hello before the kill')
+    expect(appendHistory).toHaveBeenCalledTimes(1)
+  })
+
+  // the envelope and the status can arrive in one chunk: the run answered, and
+  // then the command ended. The value is the answer, and the exit must not write
+  // a second one over it
+  test('keeps the answer a run printed when its command exits in the same breath', async () => {
+    let exited = null
+
+    Pty.mockImplementation(() => ({
+      connect: jest.fn(),
+      type: jest.fn(() => Promise.resolve()),
+      ready: jest.fn(() => Promise.resolve()),
+      onData: jest.fn(cb => {
+        printed.push(cb)
+
+        return {dispose: jest.fn()}
+      }),
+      onExit: jest.fn(),
+      onCommandExit: jest.fn(cb => {
+        exited = cb
+
+        return {dispose: jest.fn()}
+      }),
+    }))
+
+    createPty(connection, 'the snippet', null, 0)
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    printed[0]('the value the session printed and the status it printed with it')
+    exited(new SessionError('the session\'s command exited while the run was going'))
+
+    const answers = win.webContents.send.mock.calls.filter(([channel]) => channel === 'runResult')
+
+    expect(answers).toHaveLength(1)
+    expect(answers[0][1].value).toBe(1)
+    expect(appendHistory).toHaveBeenCalledTimes(1)
+  })
+
+  test('answers a run when the shell itself exits', async () => {
+    let gone = null
+
+    Pty.mockImplementation(() => ({
+      connect: jest.fn(),
+      type: jest.fn(() => Promise.resolve()),
+      ready: jest.fn(() => Promise.resolve()),
+      onData: jest.fn(() => ({dispose: jest.fn()})),
+      onExit: jest.fn(cb => {
+        gone = cb
+
+        return {dispose: jest.fn()}
+      }),
+      onCommandExit: jest.fn(),
+    }))
+
+    createPty(connection, 'the snippet', null, 0)
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    gone()
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer[1].error.class).toBe('SessionError')
+    expect(answer[1].error.message).toContain('session exited')
+    expect(appendHistory).toHaveBeenCalledTimes(1)
+    expect(getPtyProcess('remote')).toBe(null)
+  })
+
+  // a terminal-only session runs nothing: the command exiting or the shell
+  // going away ends the session, and there is no run whose history it would be
+  test('writes no history for a session that was booted without a run', () => {
+    let exited = null
+    let gone = null
+
+    Pty.mockImplementation(() => ({
+      connect: jest.fn(),
+      onData: jest.fn(() => ({dispose: jest.fn()})),
+      onExit: jest.fn(cb => {
+        gone = cb
+
+        return {dispose: jest.fn()}
+      }),
+      onCommandExit: jest.fn(cb => {
+        exited = cb
+
+        return {dispose: jest.fn()}
+      }),
+    }))
+
+    createPty(connection)
+
+    exited(new SessionError('the session\'s command exited while the run was going'))
+    gone()
+
+    expect(appendHistory).not.toHaveBeenCalled()
+    expect(win.webContents.send).not.toHaveBeenCalledWith('runResult', expect.anything())
+  })
+
+  test('ignores a session that was replaced before its command exited', async () => {
+    let exited = null
+
+    Pty.mockImplementation(() => ({
+      connect: jest.fn(),
+      type: jest.fn(() => Promise.resolve()),
+      ready: jest.fn(() => Promise.resolve()),
+      onData: jest.fn(cb => {
+        printed.push(cb)
+
+        return {dispose: jest.fn()}
+      }),
+      onExit: jest.fn(),
+      onCommandExit: jest.fn(cb => {
+        exited = cb
+
+        return {dispose: jest.fn()}
+      }),
+    }))
+
+    createPty(connection, 'the snippet', null, 0)
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    // a newer run took the connection's session
+    setPtyProcess('remote', null)
+
+    exited(new SessionError('the session\'s command exited while the run was going'))
+
+    expect(win.webContents.send).not.toHaveBeenCalledWith('runResult', expect.anything())
+    expect(appendHistory).not.toHaveBeenCalled()
   })
 })
 
@@ -321,6 +543,8 @@ describe('a run of a connection on Laravel Cloud', () => {
   beforeEach(() => {
     Pty.mockClear()
     runCloud.mockReset()
+    secrets.cloudToken.mockClear()
+    appendHistory.mockClear()
   })
 
   afterEach(() => {
@@ -375,7 +599,7 @@ describe('a run of a connection on Laravel Cloud', () => {
   // the handle a cloud run leaves behind is what stop, replace and close act on,
   // and a pty's kill is what they call: a handle without one is a stop that
   // threw where the panel's button is
-  test('leaves a handle whose kill stops waiting for it', () => {
+  test('leaves a handle whose kill stops waiting for it', async () => {
     setEditorWindow('cloud', {webContents: {send: jest.fn()}})
 
     let signal = null
@@ -388,6 +612,9 @@ describe('a run of a connection on Laravel Cloud', () => {
 
     createPty(cloud, 'the snippet')
 
+    // the aliases the run is wrapped with are read before it is sent
+    await new Promise(resolve => setImmediate(resolve))
+
     const handle = getPtyProcess('cloud')
 
     expect(typeof handle.kill).toBe('function')
@@ -395,6 +622,82 @@ describe('a run of a connection on Laravel Cloud', () => {
     handle.kill()
 
     expect(signal.aborted).toBe(true)
+  })
+
+  // the bug this waits against: a cloud run from a connection naming a local
+  // checkout read its aliases from a name that did not exist, so the run threw
+  // before it was sent and the pane waited for an answer nobody had asked for
+  test('sends a run whose connection names a local checkout', async () => {
+    const win = {webContents: {send: jest.fn()}}
+    const local = Object.assign({}, cloud, {path: '/a/checkout/that/is/not/here'})
+
+    setEditorWindow('cloud', win)
+    runCloud.mockResolvedValue({
+      blocks: [],
+      value: 7,
+      error: null,
+      queries: [],
+      queriesTotal: 0,
+      output: '',
+      commandId: 'cmd-7',
+    })
+
+    createPty(local, 'the snippet')
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(runCloud).toHaveBeenCalledTimes(1)
+
+    const [, , options] = runCloud.mock.calls[0]
+
+    expect(options.imports).toEqual({})
+    expect(win.webContents.send).toHaveBeenCalledWith('runResult', expect.objectContaining({value: 7}))
+  })
+
+  // a run that cannot be set up here has still registered a handle, and leaving
+  // it there would be a pending run the pane would never hear from
+  test('answers a run whose setup failed before it was sent', async () => {
+    const win = {webContents: {send: jest.fn()}}
+
+    setEditorWindow('cloud', win)
+    secrets.cloudToken.mockImplementationOnce(() => {
+      throw new Error('the secrets file could not be read')
+    })
+
+    createPty(cloud, 'the snippet')
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer[1].error.class).toBe('Error')
+    expect(answer[1].error.message).toContain('the secrets file could not be read')
+    expect(runCloud).not.toHaveBeenCalled()
+    expect(getPtyProcess('cloud')).toBe(null)
+  })
+
+  // a reconnect stops waiting for a pending run, and Laravel Cloud has no way
+  // to cancel the command it was already given: the answer says so rather than
+  // claiming the command stopped somewhere it cannot
+  test('answers an aborted run with what Laravel Cloud keeps doing', async () => {
+    const win = {webContents: {send: jest.fn()}}
+
+    setEditorWindow('cloud', win)
+    runCloud.mockRejectedValue(Object.assign(
+      new Error('The run was stopped.'),
+      {name: 'CloudError', code: 'aborted'},
+    ))
+
+    createPty(cloud, 'the snippet')
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer[1].error.class).toBe('CloudError')
+    expect(answer[1].error.message).toContain('The run was stopped.')
+    expect(answer[1].error.message).toContain('may still be running')
+    expect(getPtyProcess('cloud')).toBe(null)
   })
 
   test('answers a refused run with the error\'s own words, in the shape a failed run has', async () => {

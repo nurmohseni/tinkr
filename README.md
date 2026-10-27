@@ -77,6 +77,14 @@ xattr -dr com.apple.quarantine /Applications/Tinkr.app
 | **Snippets & history** | Save the code you reuse. Every run is kept across restarts; one click puts it back in the editor. |
 | **Tabs, each with its own answer** | Open several snippets at once: every tab keeps the result it ran, its printed output and its own run marker, so switching back finds the answer it left rather than the last one anywhere. Each connection keeps its own tabs: move to another project and back, and the documents, the code in them and a run that was going are where you left them — the run is not stopped by the move, and its answer waits for the connection. |
 
+What a run does with the code is worth knowing before the first one:
+
+- A top-level `return` ends the snippet. Statements after it do not run, and what it returned is the run's value.
+- A snippet runs once. Every statement is evaluated once rather than probed and retried, so a statement that prints, writes or sends does it once.
+- Values come back as they are: an object stays an object (an empty one is `{}`, not `[]`), a scalar stays a scalar, and a value JSON cannot carry — a resource, a recursive reference, an unsafe float — is described by a string such as `[resource: stream]`, `[recursion]` or `INF` rather than silently becoming `null` or `0`.
+- If the project's command exits while a run is going — tinker crashed, php was killed — the run ends with that exit status straight away instead of waiting out the run timeout.
+- Reconnecting a **Laravel Cloud** connection ends the wait on this side only; Laravel Cloud keeps running the command it was given.
+
 ### Read
 
 | | |

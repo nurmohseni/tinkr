@@ -280,9 +280,19 @@ const reconnectConnection = connection => {
   }
 
   const pty = getPtyProcess(connection.id)
+
   if (pty) {
     pty.kill()
-    setPtyProcess(connection.id, null)
+
+    // a cloud run's handle is what its own answer is delivered through: the
+    // abort a reconnect causes rejects the wait, and that rejection is the
+    // answer the pane needs to stop showing the run. Clearing the handle here
+    // would drop it before it could be written, leaving the pane in flight for
+    // a run that is over. Laravel Cloud keeps running the command either way,
+    // and the answer says so (see createPty's runInCloud)
+    if (!(isCloud(connection) && pty.running)) {
+      setPtyProcess(connection.id, null)
+    }
   }
 
   const win = getEditorWindow(connection.id)

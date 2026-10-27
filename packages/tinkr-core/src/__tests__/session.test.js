@@ -1,4 +1,12 @@
-const {Session, withoutPager} = require('../session')
+// a session spawned for a run is the fake terminal below rather than a shell:
+// what a run sends and what it reads are the protocol under test, not a login
+jest.mock('node-pty', () => ({spawn: jest.fn()}))
+jest.mock('default-shell', () => '/bin/sh')
+jest.mock('os-locale', () => ({sync: () => 'en-US'}))
+
+const {spawn} = require('node-pty')
+
+const {Session, SessionError, runCode, withoutPager} = require('../session')
 
 /**
  * A pty that is only listened to and written to: a session can be asked what it
@@ -6,6 +14,7 @@ const {Session, withoutPager} = require('../session')
  */
 const fakeTerminal = () => {
   const listeners = new Set()
+  const exitListeners = new Set()
 
   return {
     written: [],
@@ -14,12 +23,21 @@ const fakeTerminal = () => {
 
       return {dispose: () => listeners.delete(cb)}
     },
+    onExit(cb) {
+      exitListeners.add(cb)
+
+      return {dispose: () => exitListeners.delete(cb)}
+    },
     write(data) {
       this.written.push(data)
     },
     print(data) {
       listeners.forEach(cb => cb(data))
     },
+    exit() {
+      exitListeners.forEach(cb => cb())
+    },
+    kill() {},
   }
 }
 
@@ -363,5 +381,288 @@ describe('how a run is typed into a session', () => {
 
     expect(terminal.written).toEqual(['one\r', 'two\rthree\r'])
     expect(typed).toBe(true)
+  })
+})
+
+describe('what a session says when the command exits after it is ready', () => {
+  const givenUp = '\u001b[?2004l'
+  const taken = '\u001b[?2004h'
+
+  let session = null
+  let terminal = null
+
+  beforeEach(() => {
+    terminal = fakeTerminal()
+    session = new Session({path: '/tmp'}, {log: {error: () => {}}})
+    session.pty = terminal
+  })
+
+  // the session is up, so there is no ready() left to tell anyone: the shell
+  // prints the status of the command it was given when that command ends, and
+  // that is the only thing coming
+  const readySession = async () => {
+    const readied = session.ready()
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    terminal.print(`${taken}> `)
+
+    await readied
+    await flush()
+  }
+
+  test('reports the status of a command that exits after boot', async () => {
+    await readySession()
+
+    const exits = []
+
+    session.onCommandExit(error => exits.push(error))
+
+    // the marker, the status and its terminator are not promised to arrive in
+    // one chunk: a pty hands over what it has when it has it
+    terminal.print('the output of the command\u001b]999')
+    terminal.print('9;137\u0007')
+    await flush()
+
+    expect(exits).toHaveLength(1)
+    expect(exits[0]).toBeInstanceOf(SessionError)
+    expect(exits[0].status).toBe(137)
+    expect(exits[0].message).toContain('exit status 137')
+  })
+
+  test('does not take a frame the shell did not end with the bell', async () => {
+    await readySession()
+
+    const exits = []
+
+    session.onCommandExit(error => exits.push(error))
+
+    // the marker, the digits, but not the bell: not the frame bootSentinel
+    // prints, so it says nothing about the command
+    terminal.print('output that ends with a marker\u001b]9999;0X')
+    await flush()
+
+    expect(exits).toHaveLength(0)
+
+    // the real frame that follows is still read
+    terminal.print('\u001b]9999;0\u0007')
+    await flush()
+
+    expect(exits).toHaveLength(1)
+    expect(exits[0].status).toBe(0)
+  })
+
+  test('waits for the digits of the status to end', async () => {
+    await readySession()
+
+    const exits = []
+
+    session.onCommandExit(error => exits.push(error))
+
+    terminal.print('\u001b]9999;13')
+    await flush()
+
+    expect(exits).toHaveLength(0)
+
+    terminal.print('7\u0007')
+    await flush()
+
+    expect(exits).toHaveLength(1)
+    expect(exits[0].status).toBe(137)
+  })
+
+  test('reads a frame whose status the shell did not name', async () => {
+    await readySession()
+
+    const exits = []
+
+    session.onCommandExit(error => exits.push(error))
+
+    // the documented frame is digits and the bell; an empty status is the frame
+    // with nothing between them, and it is still the command ending
+    terminal.print('\u001b]9999;\u0007')
+    await flush()
+
+    expect(exits).toHaveLength(1)
+    expect(exits[0].status).toBe(null)
+    expect(exits[0].message).toContain('while the run was going')
+  })
+
+  test('answers a subscription made after the command exited', async () => {
+    await readySession()
+
+    terminal.print('\u001b]999')
+    terminal.print('9;0\u0007')
+    await flush()
+
+    const exits = []
+
+    session.onCommandExit(error => exits.push(error))
+    await flush()
+
+    expect(exits).toHaveLength(1)
+    expect(exits[0].status).toBe(0)
+  })
+
+  // the bug this waits against: the status can arrive in the same chunk as the
+  // value the run printed, and answering the exit first would throw the value
+  // away. The exit is delivered after every listener for that chunk has read it
+  test('delivers the exit after the rest of the chunk', async () => {
+    await readySession()
+
+    const order = []
+
+    session.onCommandExit(() => order.push('exit'))
+    session.onData(() => order.push('value'))
+
+    terminal.print('a value and a status\u001b]9999;0\u0007')
+    await flush()
+
+    expect(order).toEqual(['value', 'exit'])
+  })
+})
+
+describe('a run whose command exits', () => {
+  const givenUp = '\u001b[?2004l'
+  const taken = '\u001b[?2004h'
+  const settle = () => new Promise(resolve => setImmediate(resolve))
+
+  beforeEach(() => {
+    spawn.mockReset()
+  })
+
+  // the session reads its command's terminal as a shell does; what the run then
+  // writes and what comes back to it are what this is about
+  const boot = async terminal => {
+    spawn.mockReturnValue(terminal)
+
+    const run = runCode({path: ''}, 'return 1;', {
+      command: 'php artisan tinker',
+      timeout: 0,
+    })
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    terminal.print(`${taken}> `)
+
+    await settle()
+
+    // psysh answers each line it reads with its prompt, and the run is typed a
+    // line at a time: the fake session answers until the last line is written,
+    // which leaves no readline wait behind the test
+    for (let line = 0; line < 200; line++) {
+      if (terminal.written.some(data => data.includes('/*tinkr:end*/'))) {
+        break
+      }
+
+      terminal.print('> ')
+    }
+
+    await settle()
+
+    // the run is still going: returned in an object, because a promise returned
+    // from an async function is awaited, and the caller injects the failure the
+    // run is waiting for
+    return {run}
+  }
+
+  /**
+   * The marker the run prints before it evaluates, as the session was given it.
+   *
+   * The typed lines are base64 of the wrapper, so the wrapper is what decoding
+   * them answers: this is the marker php prints first, and printing it is what
+   * makes what follows the run's own output rather than the session booting.
+   *
+   * @param {Object} terminal
+   * @return {String}
+   */
+  const startMarkerOf = terminal => {
+    const encoded = terminal.written
+      .filter(line => line.includes('/*tinkr*/'))
+      .map(line => {
+        const piece = /'([A-Za-z0-9+/=]*)'/.exec(line)
+
+        return piece ? piece[1] : ''
+      })
+      .join('')
+    const wrapper = Buffer.from(encoded, 'base64').toString('utf8')
+    const [, first, second] = /\$tinkr_start='([^']+)'\.'([^']+)'/.exec(wrapper)
+
+    return first + second
+  }
+
+  // the bug this waits against: a run with no timeout waited forever for a php
+  // that had been killed, because the only sign it was gone was the status the
+  // shell printed after it
+  test('fails at once when php exits under a run given no timeout', async () => {
+    const terminal = fakeTerminal()
+    const {run} = await boot(terminal)
+    const failure = run.then(() => null, error => error)
+
+    terminal.print('the last thing php printed\u001b]999')
+    terminal.print('9;137\u0007')
+
+    const error = await failure
+
+    expect(error).toBeInstanceOf(SessionError)
+    expect(error.status).toBe(137)
+    expect(error.message).toContain('exit status 137')
+  })
+
+  // the bug this waits against: php printed what it printed before it was
+  // killed, and only the status said why the run stopped. The answer's output
+  // is the run's, so the pane keeps what the terminal showed instead of it
+  // being emptied by the error
+  test('keeps what the run printed before php exited', async () => {
+    const terminal = fakeTerminal()
+    const {run} = await boot(terminal)
+    const failure = run.then(() => null, error => error)
+    const start = startMarkerOf(terminal)
+
+    expect(start).toMatch(/^STRT[0-9A-F]+$/)
+
+    // the run started and printed, and then its php was killed
+    terminal.print(`${start}\r\nhello before the kill\r\n`)
+    terminal.print('\u001b]999')
+    terminal.print('9;137\u0007')
+
+    const error = await failure
+
+    expect(error).toBeInstanceOf(SessionError)
+    expect(error.status).toBe(137)
+    expect(error.output).toBe('hello before the kill')
+  })
+
+  test('keeps the command\'s words when the sentinel is split while it boots', async () => {
+    const terminal = fakeTerminal()
+
+    spawn.mockReturnValue(terminal)
+
+    const run = runCode({path: ''}, 'return 1;', {command: 'php artisan tinker', timeout: 0})
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    terminal.print('Could not open input file: artisan\r\n')
+    terminal.print('\u001b]999')
+    terminal.print('9;1\u0007')
+
+    const error = await run.then(() => null, failure => failure)
+
+    expect(error).toBeInstanceOf(SessionError)
+    expect(error.status).toBe(1)
+    expect(error.message).toContain('Could not open input file: artisan')
+  })
+
+  test('fails at once when the shell itself goes away', async () => {
+    const terminal = fakeTerminal()
+    const {run} = await boot(terminal)
+    const failure = run.then(() => null, error => error)
+
+    terminal.exit()
+
+    const error = await failure
+
+    expect(error).toBeInstanceOf(SessionError)
+    expect(error.message).toContain('session exited')
   })
 })

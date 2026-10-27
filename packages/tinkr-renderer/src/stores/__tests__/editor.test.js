@@ -1,6 +1,6 @@
 import {createStore} from 'jotai'
 
-import {confirmMutationsAtom, connectionAtom, dismissMutationsAtom, dryRunAtom, mutationGateAtom, runAtom, currentRunCodeAtom as runCodeAtom, sandboxAtom, runningAtom, stopRunAtom, settledRunAtom, activeDocumentAtom, runsAtom, setAnswer, inFlightAtom, inFlightDocumentAtom, currentResultAtom, appendOutputAtom} from '../editor'
+import {confirmMutationsAtom, connectionAtom, dismissMutationsAtom, dryRunAtom, mutationGateAtom, runAtom, currentRunCodeAtom as runCodeAtom, sandboxAtom, runningAtom, stopRunAtom, settledRunAtom, reconnectAtom, activeDocumentAtom, runsAtom, setAnswer, inFlightAtom, inFlightDocumentAtom, currentResultAtom, appendOutputAtom} from '../editor'
 
 // what the run was handed to the app as
 const sent = () => window.api.runConnection.mock.calls
@@ -329,5 +329,45 @@ describe('two tabs and their runs', () => {
 
     expect(record('one').output).toBe('one')
     expect(record('two').output).toBe('two')
+  })
+})
+
+describe('reconnecting the connection', () => {
+  let store
+
+  beforeEach(() => {
+    store = createStore()
+    store.set(activeDocumentAtom, 'doc')
+    window.api.reconnectConnection.mockClear()
+  })
+
+  // the session a reconnect replaces is the run's, and the killed session
+  // answers nothing: waiting for it would leave the button on stop forever
+  test('stops waiting for the local run the reconnect ends', () => {
+    store.set(connectionAtom, {name: 'orders'})
+    store.set(runAtom, 'sleep(60);')
+
+    expect(store.get(inFlightAtom)).not.toBe(null)
+
+    store.set(reconnectAtom)
+
+    expect(store.get(inFlightAtom)).toBe(null)
+    expect(window.api.reconnectConnection).toHaveBeenCalledTimes(1)
+  })
+
+  // a cloud run is aborted, not cancelled: the answer that says Laravel Cloud
+  // keeps going is what clears it, so the run stays in flight until then
+  test('leaves a cloud run in flight for its answer', () => {
+    store.set(connectionAtom, {name: 'cloud', is_cloud: true})
+    store.set(runAtom, 'return 1;')
+
+    const flight = store.get(inFlightAtom)
+
+    expect(flight).not.toBe(null)
+
+    store.set(reconnectAtom)
+
+    expect(store.get(inFlightAtom)).toEqual(flight)
+    expect(window.api.reconnectConnection).toHaveBeenCalledTimes(1)
   })
 })
