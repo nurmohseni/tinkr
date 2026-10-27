@@ -1,5 +1,5 @@
 jest.mock('crypto', () => ({
-  randomBytes: () => Buffer.from('000102030405', 'hex'),
+  randomBytes: jest.fn(() => Buffer.from('000102030405', 'hex')),
 }))
 jest.mock('node-pty', () => ({}))
 jest.mock('default-shell', () => '/bin/bash')
@@ -8,6 +8,7 @@ jest.mock('electron', () => ({app: {getLocale: () => 'en', getPath: () => '/tmp'
 jest.mock('electron-store', () => class Store {})
 
 const {BackgroundPty} = require('../BackgroundPty')
+const {randomBytes} = require('crypto')
 
 // what BackgroundPty asks the session to print: the marker, its reverse, and
 // the base64 of the json in between
@@ -20,11 +21,11 @@ const wrap = '\u001b[m \b'
 
 // the shape of a session: the line is echoed when it is written and again while
 // tinker reads it, then the value is printed and the prompt follows
-const session = output => [
+const session = (output, callMarker = marker) => [
   'php artisan tinker\r\n',
-  `$m='${marker}';echo $m.base64_encode(json_encode((...))).strrev($m);\r\n`,
+  `$m='${callMarker}';echo $m.base64_encode(json_encode((...))).strrev($m);\r\n`,
   'Psy Shell v0.12.8 (PHP 8.3.35 — cli) by Justin Hileman\r\n',
-  `\u001b[?2004h> $m='${marker}';echo $m.base64_encode(json_encode((...))).strrev($m);\r\n`,
+  `\u001b[?2004h> $m='${callMarker}';echo $m.base64_encode(json_encode((...))).strrev($m);\r\n`,
   '\u001b[?2004l\r\u001b[?1h\u001b=\r',
   output,
   '⏎\u001b[m\r\n\r\u001b[K\u001b[?1l\u001b>\u001b[?2004h> ',
@@ -33,17 +34,17 @@ const session = output => [
 const base64 = value => Buffer.from(value, 'utf8').toString('base64')
 
 const fakeSession = () => {
-  const listeners = []
+  const listeners = new Set()
 
   return {
     listeners,
     onData: listener => {
-      listeners.push(listener)
+      listeners.add(listener)
 
-      return {dispose: () => {}}
+      return {dispose: () => listeners.delete(listener)}
     },
-    write: () => {},
-    kill: () => {},
+    write: jest.fn(),
+    kill: jest.fn(),
   }
 }
 
@@ -55,10 +56,17 @@ const backgroundPty = () => {
 }
 
 const feed = (pty, data) => {
-  for (const listener of pty.session.listeners) {
+  for (const listener of [...pty.session.listeners]) {
     listener(data)
   }
 }
+
+const bytes = hex => Buffer.from(hex, 'hex')
+
+afterEach(() => {
+  jest.useRealTimers()
+  randomBytes.mockImplementation(() => bytes('000102030405'))
+})
 
 describe('test BackgroundPty', () => {
   test('should read the json the session printed', async () => {
@@ -116,5 +124,85 @@ describe('test BackgroundPty', () => {
     pty.kill()
 
     await expect(result).rejects.toThrow('The session was restarted, ask the form again.')
+    expect(pty.session.listeners.size).toBe(0)
+  })
+
+  test('should stop listening when the value times out, and let the next one read', async () => {
+    jest.useFakeTimers()
+
+    const pty = backgroundPty()
+    const timedOut = pty.jsonResult("function () { return ['a' => 1]; }")
+
+    expect(pty.session.listeners.size).toBe(1)
+
+    jest.advanceTimersByTime(15000)
+
+    await expect(timedOut).rejects.toThrow('Timeout, try to reconnect!')
+    expect(pty.session.listeners.size).toBe(0)
+    expect(pty.pending).toBeNull()
+
+    // the timeout is over, not the session: the next question is read normally
+    const result = pty.jsonResult("function () { return ['b' => 2]; }")
+
+    feed(pty, session(`${marker}${base64('{"b":2}')}${endMarker}`))
+
+    await expect(result).resolves.toBe('{"b":2}')
+    expect(pty.session.listeners.size).toBe(0)
+  })
+
+  test('should stop listening when a value is aborted', async () => {
+    const pty = backgroundPty()
+    const result = pty.jsonResult("function () { return ['a' => 1]; }")
+
+    pty.abort()
+
+    await expect(result).rejects.toThrow('The session was restarted, ask the form again.')
+    expect(pty.session.listeners.size).toBe(0)
+    expect(pty.pending).toBeNull()
+  })
+
+  test('should stop listening when the session cannot take the line', async () => {
+    const pty = backgroundPty()
+
+    pty.session.write.mockImplementation(() => {
+      throw new Error('the session is gone')
+    })
+
+    const result = pty.jsonResult("function () { return ['a' => 1]; }")
+
+    await expect(result).rejects.toThrow('the session is gone')
+    expect(pty.session.listeners.size).toBe(0)
+    expect(pty.pending).toBeNull()
+  })
+
+  test('should replace a value that is still being waited for', async () => {
+    randomBytes
+      .mockImplementationOnce(() => bytes('010203040506'))
+      .mockImplementationOnce(() => bytes('0a0b0c0d0e0f'))
+
+    const pty = backgroundPty()
+    const replaced = pty.jsonResult("function () { return ['a' => 1]; }")
+    const result = pty.jsonResult("function () { return ['b' => 2]; }")
+
+    await expect(replaced).rejects.toThrow('The session was restarted, ask the form again.')
+
+    // one listener, the new request's: the replaced request cannot read the
+    // session any more
+    expect(pty.session.listeners.size).toBe(1)
+
+    let settled = false
+    result.then(() => { settled = true }, () => { settled = true })
+
+    // the answer to the replaced request arrives late; it is not the answer to
+    // the new one, whose marker it does not carry
+    feed(pty, session(`${'PHPFORM010203040506'}${base64('{"a":1}')}${'605040302010MROFPHP'}`, 'PHPFORM010203040506'))
+    await Promise.resolve()
+
+    expect(settled).toBe(false)
+
+    feed(pty, session(`${'PHPFORM0A0B0C0D0E0F'}${base64('{"b":2}')}${'F0E0D0C0B0A0MROFPHP'}`, 'PHPFORM0A0B0C0D0E0F'))
+
+    await expect(result).resolves.toBe('{"b":2}')
+    expect(pty.session.listeners.size).toBe(0)
   })
 })

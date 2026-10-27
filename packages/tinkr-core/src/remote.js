@@ -24,6 +24,10 @@ const {inContainer} = require('./containerCommand')
 // will
 const defaultTimeout = 10000
 
+// how long a stopped command is given to go away on its own before what is
+// left of it — a descendant that ignores the TERM, say — is killed
+const escalationTimeout = 1000
+
 /**
  * A value as one word of a shell reads it.
  *
@@ -271,11 +275,21 @@ const run = (connection, command, {timeout = defaultTimeout, maxBuffer, dataDir 
     ? askpassEnvironment(dataDir, connection)
     : null
 
-  const child = connection && connection.is_over_ssh
+  // a local shell is made the leader of a process group of its own, so
+  // stopping it stops what the command left running behind it. Windows has no
+  // process group to signal, and a login over ssh is a client on this machine
+  // whose server is somewhere else: those are stopped as the one child they
+  // are.
+  const overSsh = Boolean(connection && connection.is_over_ssh)
+  const grouped = !overSsh && process.platform !== 'win32'
+
+  const child = overSsh
     ? spawn('ssh', [...sshArgs(connection), remote], ...(askpass
       ? [{env: Object.assign({}, process.env, askpass.env)}]
       : []))
-    : spawn('/bin/sh', ['-lc', command], {cwd: connection && connection.path})
+    : spawn('/bin/sh', ['-lc', command], grouped
+      ? {cwd: connection && connection.path, detached: true}
+      : {cwd: connection && connection.path})
 
   const cap = maxBuffer === undefined ? Infinity : maxBuffer
 
@@ -283,6 +297,8 @@ const run = (connection, command, {timeout = defaultTimeout, maxBuffer, dataDir 
   let stderr = ''
   let timer = null
   let done = false
+  let cancelled = false
+  let escalation = null
 
   // a command that was killed wrote what it wrote, and that is the answer: a
   // connection that did not finish is one the caller hears nothing more from
@@ -298,41 +314,132 @@ const run = (connection, command, {timeout = defaultTimeout, maxBuffer, dataDir 
     resolve({stdout, stderr, code})
   }
 
+  const signalGroup = signal => {
+    if (!grouped || !child.pid) {
+      return false
+    }
+
+    try {
+      // a negative id is the group the shell leads, never this process's own
+      // group and never the one the app was started in
+      process.kill(-child.pid, signal)
+
+      return true
+    } catch (e) {
+      // the group is gone, or there was none to signal
+      return false
+    }
+  }
+
+  const signalChild = signal => {
+    try {
+      child.kill(signal)
+    } catch (e) {
+      // a child that is gone needs no more signals
+    }
+  }
+
+  const groupAlive = () => {
+    if (!grouped || !child.pid) {
+      return false
+    }
+
+    try {
+      process.kill(-child.pid, 0)
+
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+
+  // stop the command and what it started. A TERM first, so a shell that was
+  // about to write still writes; a command that ignores it is killed once the
+  // grace is over, which is what keeps a trapped TERM from leaving a descendant
+  // running. The signal reaches the group the shell leads, and only that.
+  const cancel = () => {
+    if (cancelled) {
+      return
+    }
+
+    cancelled = true
+
+    if (!signalGroup('SIGTERM')) {
+      signalChild('SIGTERM')
+    }
+
+    escalation = setTimeout(() => {
+      escalation = null
+
+      // this only skips a group that is no longer there: it cannot tell a
+      // process-group id that has been reused from the one cancelled here
+      if (grouped && !groupAlive()) {
+        return
+      }
+
+      if (!signalGroup('SIGKILL')) {
+        signalChild('SIGKILL')
+      }
+    }, escalationTimeout)
+  }
+
   // an answer nobody will read in full is not one to keep in memory in full
   const room = chunk => {
     if (stdout.length + stderr.length + chunk.length <= cap) {
       return true
     }
 
-    child.kill()
+    cancel()
     finish(null)
 
     return false
   }
 
   child.stdout.on('data', chunk => {
+    if (done) {
+      return
+    }
+
     if (room(chunk)) {
       stdout += chunk
     }
   })
 
   child.stderr.on('data', chunk => {
+    if (done) {
+      return
+    }
+
     if (room(chunk)) {
       stderr += chunk
     }
   })
 
   child.on('error', error => {
+    if (done) {
+      return
+    }
+
     // a machine that could not be reached at all is one with nothing to say
     stderr += String(error.message || error)
     finish(null)
   })
 
-  child.on('close', code => finish(code))
+  // a normal end was never cancelled, so it has no group to escalate. A
+  // cancelled one may still have a descendant that ignored the TERM, so its
+  // timer stays until the group is empty; only then is it cleared
+  child.on('close', code => {
+    if (escalation && !groupAlive()) {
+      clearTimeout(escalation)
+      escalation = null
+    }
+
+    finish(code)
+  })
 
   if (timeout > 0) {
     timer = setTimeout(() => {
-      child.kill()
+      cancel()
       finish(null)
     }, timeout)
   }

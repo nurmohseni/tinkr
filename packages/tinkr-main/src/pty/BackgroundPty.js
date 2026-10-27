@@ -69,34 +69,84 @@ class BackgroundPty extends Pty {
    * @return {Promise<String>}
    */
   jsonResult(code) {
+    // a value that is still being waited for is one the form is no longer
+    // asking: the new request takes over, and the old one is told so before it
+    // can be mistaken for the new one
+    this.abort()
+
     const marker = createMarker()
 
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending = null
-        reject(new Error('Timeout, try to reconnect!'))
-      }, 15000)
+      // everything a request owns is here, so it ends with the request and not
+      // with whatever the session does next: the timer, the subscription on the
+      // session, and what has been read so far
+      const request = {marker}
 
-      let result = ''
+      let buffer = ''
+      let settled = false
+      let timer = null
+      let subscription = null
 
-      const onData = this.onData(data => {
-        result += data
+      const dispose = () => {
+        if (timer) {
+          clearTimeout(timer)
+          timer = null
+        }
 
-        const jsonString = parseResult(result, marker)
+        if (subscription) {
+          subscription.dispose()
+          subscription = null
+        }
+
+        buffer = ''
+      }
+
+      const settle = (error, value) => {
+        if (settled) {
+          return
+        }
+
+        settled = true
+        dispose()
+
+        // only the request that is still the pending one clears it: a request
+        // that was replaced cannot take the place of the one that replaced it
+        if (this.pending === request) {
+          this.pending = null
+        }
+
+        error ? reject(error) : resolve(value)
+      }
+
+      request.abort = () => settle(new Error('The session was restarted, ask the form again.'))
+
+      subscription = this.onData(data => {
+        if (settled) {
+          return
+        }
+
+        buffer += data
+
+        const jsonString = parseResult(buffer, marker)
 
         if (jsonString === null) {
           return
         }
 
-        this.pending = null
-        clearTimeout(timer)
-        onData.dispose()
-        resolve(jsonString)
+        settle(null, jsonString)
       })
 
-      this.pending = {reject, timer}
+      timer = setTimeout(() => settle(new Error('Timeout, try to reconnect!')), 15000)
 
-      this.input(`${this.jsonEncode(marker, code)}\r`)
+      this.pending = request
+
+      try {
+        this.input(`${this.jsonEncode(marker, code)}\r`)
+      } catch (error) {
+        // the session could not take the line: nothing was asked, so nothing
+        // is left waiting for an answer
+        settle(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
 
@@ -117,9 +167,7 @@ class BackgroundPty extends Pty {
       return
     }
 
-    clearTimeout(this.pending.timer)
-    this.pending.reject(new Error('The session was restarted, ask the form again.'))
-    this.pending = null
+    this.pending.abort()
   }
 }
 
