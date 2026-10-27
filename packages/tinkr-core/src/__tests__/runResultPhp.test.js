@@ -179,6 +179,142 @@ describe('splitting a run into statements', () => {
   })
 })
 
+describe('a snippet php itself would not compile', () => {
+  test('runs none of it, not even the statement before the error', () => {
+    const {payload, printed} = runPhp("echo 'SIDE_EFFECT'; $broken = ;")
+
+    // php parses the whole file before it runs the first line: the echo is never
+    // reached, and the run answers the parse error with no blocks
+    expect(printed).toBe('')
+    expect(payload.blocks).toEqual([])
+    expect(payload.value).toBe(null)
+    expect(payload.error.class).toBe('ParseError')
+    expect(payload.error.message).toContain('unexpected token')
+  })
+
+  test('rejects a syntax error inside a declaration before anything runs', () => {
+    const {payload, printed} = runPhp("echo 'SIDE_EFFECT'; function tinkrBroken() { $broken = ; }")
+
+    // the body of a declaration is part of the compilation, so its parse error
+    // stops the run before the echo as well
+    expect(printed).toBe('')
+    expect(payload.blocks).toEqual([])
+    expect(payload.error.class).toBe('ParseError')
+  })
+
+  test('still accepts a last expression without its semicolon', () => {
+    const {payload} = runPhp('$a = 1;\n$a + 1')
+
+    // a scratchpad's last line does not need the `;` a file would
+    expect(payload.error).toBe(null)
+    expect(payload.value).toBe(2)
+  })
+})
+
+describe('statement boundaries php\'s grammar asks for', () => {
+  test('keeps arithmetic after a match in the same statement', () => {
+    const {payload, printed} = runPhp('echo match(1) {1 => 2, default => 3} + 4;')
+
+    // the `}` closes the match expression, and `+ 4` is still the same
+    // statement: splitting there printed `2` and reported the `4` as a value
+    expect(printed).toBe('6')
+    expect(payload.error).toBe(null)
+    expect(payload.blocks).toHaveLength(1)
+  })
+
+  test('keeps a coalesce after a match in the same statement', () => {
+    const {payload} = runPhp("match (false) {true => 'yes', default => null} ?? 'fallback';")
+
+    expect(payload.error).toBe(null)
+    expect(payload.value).toBe('fallback')
+  })
+
+  test('keeps a call chained off an anonymous class in the same statement', () => {
+    const {payload, printed} = runPhp('echo (new class { public $x = 5; })->x;')
+
+    expect(printed).toBe('5')
+    expect(payload.error).toBe(null)
+    expect(payload.blocks).toHaveLength(1)
+  })
+
+  test('keeps a call of an anonymous function and the arithmetic after it whole', () => {
+    const {payload} = runPhp('(function () { return 2; })() * 3;')
+
+    expect(payload.error).toBe(null)
+    expect(payload.value).toBe(6)
+  })
+})
+
+describe('compile-time php in a snippet', () => {
+  test('keeps an import a comment precedes', () => {
+    const {payload, printed} = runPhp(
+      '// imports\n' +
+      'use DateTimeImmutable as AuditDate;\n' +
+      "echo (new AuditDate('2020-01-01'))->format('Y');",
+    )
+
+    // the comment is part of the statement, but the token it opens with is the
+    // `use`: the import is kept and applies to what follows it
+    expect(printed).toBe('2020')
+    expect(payload.error).toBe(null)
+  })
+
+  test('keeps function and constant imports, not only class imports', () => {
+    const {payload, printed} = runPhp(
+      'use DateTimeImmutable as AuditDate;\n' +
+      'use function strlen as tinkrLength;\n' +
+      'use const PHP_EOL as tinkrEol;\n' +
+      "echo tinkrLength((new AuditDate('2020-01-01'))->format('Y')) . (tinkrEol === \"\\n\" ? '!' : '?');",
+    )
+
+    expect(printed).toBe('4!')
+    expect(payload.error).toBe(null)
+  })
+
+  test('does not read a closure\'s own use as an import', () => {
+    const {payload} = runPhp('$n = 5;\n$f = function () use ($n) { return $n; };\n$f();')
+
+    expect(payload.error).toBe(null)
+    expect(payload.value).toBe(5)
+    expect(payload.blocks).toHaveLength(3)
+  })
+
+  test('declares an unconditional top-level function before the first statement', () => {
+    const {payload, printed} = runPhp("echo auditLater(); function auditLater() { return 'OK'; }")
+
+    // php hoists an unconditional top-level declaration when it compiles the
+    // file, so the call above the declaration answers
+    expect(printed).toBe('OK')
+    expect(payload.error).toBe(null)
+    expect(payload.blocks).toHaveLength(2)
+  })
+
+  test('does not declare a function the snippet declares conditionally', () => {
+    const {payload, printed} = runPhp(
+      'if (false) { function tinkrNeverDeclared() { return 1; } }\n' +
+      "echo function_exists('tinkrNeverDeclared') ? 'declared' : 'not-declared';",
+    )
+
+    // a declaration inside a branch is declared when the branch runs
+    expect(printed).toBe('not-declared')
+    expect(payload.error).toBe(null)
+  })
+
+  test('keeps a conditional echo, update and return', () => {
+    const {payload} = runPhp(
+      "$out = '';\n" +
+      "if (true) { $out .= 'echoed'; }\n" +
+      'if (true) { $n = 2; }\n' +
+      "if (true) { return $out . ':' . $n; }\n" +
+      "'after';",
+    )
+
+    expect(payload.error).toBe(null)
+    expect(payload.value).toBe('echoed:2')
+    expect(payload.blocks).toHaveLength(4)
+  })
+})
+
 describe('the values a run answers with', () => {
   test('normalizes the unsafe values inside an object, recursively', () => {
     const {payload} = runPhp(
@@ -308,7 +444,7 @@ describe('values php has its own json shape for', () => {
 })
 
 describe('a value that serializes itself', () => {
-  test('is asked once per block value, and the final value is that snapshot', () => {
+  test('is asked once, and the final value is that snapshot', () => {
     const {payload, tail} = runPhp(
       'class TinkrQuietCount implements \\JsonSerializable {\n' +
       '  public static $calls = 0;\n' +
@@ -318,12 +454,48 @@ describe('a value that serializes itself', () => {
       "echo '|COUNTER='.TinkrQuietCount::$calls;",
     )
 
-    // one snapshot, taken where the statement answered: the block and the run's
+    // one snapshot, taken after the snippet ended: the block and the run's
     // final value are the same one, so the serializer ran once and not once for
     // the block and once again for the value
     expect(payload.blocks[1].value).toEqual({calls: 1})
     expect(payload.value).toEqual({calls: 1})
     expect(tail).toContain('|COUNTER=1')
+  })
+
+  test('is not asked between the snippet\'s own statements', () => {
+    const {payload, printed} = runPhp(
+      '$calls = 0;\n' +
+      '$obj = new class($calls) implements \\JsonSerializable {\n' +
+      '  public $calls;\n' +
+      '  public function __construct(&$n) { $this->calls = &$n; }\n' +
+      '  public function jsonSerialize(): mixed { $this->calls += 1; return 1; }\n' +
+      '};\n' +
+      "if ($calls === 0) { echo 'GOOD'; } else { echo 'MUTATED:' . $calls; }",
+    )
+
+    // normalizing the assignment's value between two statements asked the
+    // serializer, so the counter the `if` read had already been changed
+    expect(printed).toBe('GOOD')
+    expect(payload.error).toBe(null)
+    expect(payload.blocks[1].value).toBe(1)
+  })
+
+  test('describes one object once however many blocks hold it', () => {
+    const {payload, printed} = runPhp(
+      'class TinkrLoudOnce implements \\JsonSerializable {\n' +
+      "  public function jsonSerialize(): mixed { echo 'serialized'; return ['ok' => true]; }\n" +
+      '}\n' +
+      '$one = new TinkrLoudOnce();\n' +
+      '$one;\n' +
+      '$one;',
+    )
+
+    // the same object in three statement values is one answer: a serializer that
+    // prints would otherwise print once for each block that held it
+    expect(printed).toBe('serialized')
+    expect(payload.blocks[1].value).toEqual({ok: true})
+    expect(payload.blocks[2].value).toEqual({ok: true})
+    expect(payload.value).toEqual({ok: true})
   })
 
   test('keeps what the serializer printed outside the envelope', () => {

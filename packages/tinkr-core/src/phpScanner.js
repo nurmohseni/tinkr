@@ -2,10 +2,11 @@
  * What a snippet asks the session for by name.
  *
  * A snippet is written for a scratchpad, not for a file: `Order::where('paid',
- * true)->count()` is what someone types, and `use App\Models\Order;` cannot be
- * written into an eval'd snippet. So the names in class position are read out
- * of the text here, and the classes they stand for are aliased into the session
- * before it runs (see runResult.wrapRun).
+ * true)->count()` is what someone types, with no `use App\Models\Order;` above
+ * it. So the names in class position are read out of the text here, and the
+ * classes they stand for are aliased into the session before it runs (see
+ * runResult.wrapRun). A `use` the snippet does write is kept by the wrapper
+ * itself, and is not aliased here.
  *
  * This is a targeted scan rather than a parser. It blanks everything that is
  * not code first — strings, heredocs, comments — with a small state machine, so

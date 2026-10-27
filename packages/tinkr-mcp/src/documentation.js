@@ -80,10 +80,15 @@ A run is one snippet, evaluated in a session of its own.
   ssh. It is booted for the run and killed when the run is over, so the code on
   disk is the code that runs: a class you edited a second ago is the class the
   next run loads.
-- The snippet is split by php's own tokenizer and evaluated statement by
-  statement, so every line that answered something has its own value in the
-  answer. A statement that throws stops the run there, and the statements before
-  it keep their values.
+- The snippet is parsed by php before any of it runs: a syntax error anywhere in
+  it answers with that parse error and executes nothing, which is what php does
+  with a file. A valid snippet is split by php's own tokenizer and evaluated
+  statement by statement, so every line that answered something has its own value
+  in the answer. A statement that throws stops the run there, and the statements
+  before it keep their values.
+- A top-level \`use\` statement imports the code after it, and an unconditional
+  top-level \`function\` declaration is available to the whole snippet, because
+  php compiles both before it runs the first line.
 - The answer is an envelope, not a printout: \`blocks\` (a value per statement),
   \`value\` (the last one), \`error\`, \`output\` (what the code printed), and — when
   a guard was asked for — \`queries\`, \`transaction\` and \`sandbox\`.
@@ -406,8 +411,10 @@ says what they are rather than as a \`null\` they never were:
 A plain object is written as an object, and one with no public fields is \`{}\`
 rather than \`[]\`. An enum is its backed value, or its name when it has none; a
 date, a timezone, an \`ArrayObject\` or a \`SplFixedArray\` keeps the shape php's
-own json gives it. A serializer is asked exactly once, and the value it answers
-with is what comes back: the object is not read again.
+own json gives it. A serializer is asked exactly once, after the snippet has
+ended, and the value it answers with is what comes back: the object is not read
+again, the same object in several \`blocks\` is one answer, and what the serializer
+prints or reads is its final state rather than the state of the line it was on.
 
 A php array keeps its order: an array with integer-like keys out of order comes
 back as \`{"__tinkrMap": {…}, "__tinkrKeys": ["3","1","2"]}\`, because JSON reads

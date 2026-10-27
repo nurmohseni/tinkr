@@ -120,6 +120,14 @@ describe('the result panel', () => {
     expect(render(result, 'organized')).toContain('array:1')
   })
 
+  test('reads a run that finished with nothing to show as a finished run, not a failure', () => {
+    const markup = render({value: null, error: null, output: '', imported: {}}, 'organized')
+
+    expect(markup).toContain('empty--benign')
+    expect(markup).not.toContain('role="alert"')
+    expect(markup).not.toContain('error-surface')
+  })
+
   test('reads a value one way or the other, never both at once', () => {
     // dump() both prints its value and returns it, which is what a `dump`
     // snippet does: the readings replace each other

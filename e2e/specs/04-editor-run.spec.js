@@ -75,14 +75,15 @@ test.describe('running a snippet', () => {
     }
   })
 
-  test('says nothing was returned when nothing was', async () => {
+  test('keeps a run with nothing to show as a completed run, not a failure', async () => {
     const {page, close} = await launchTinkr()
 
     try {
       await runCode(page, 'unset($nothing);')
 
-      await expect(page.getByText('This snippet did not return a value.')).toBeVisible()
-      await expect(page.getByText('It printed nothing either.')).toBeVisible()
+      await expect(page.locator('.output .empty--benign')).toBeVisible()
+      await expect(page.locator('.output .error-surface')).toHaveCount(0)
+      await expect(page.locator('.statusbar')).not.toContainText('Run failed')
     } finally {
       await close()
     }
