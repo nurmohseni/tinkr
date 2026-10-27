@@ -58,10 +58,23 @@ class Pty {
   }
 
   /**
+   * The command the shell was given has exited — php was killed or it died —
+   * whether the session is booting or a run is already going. The shell itself
+   * outlives it, so this is what says the run will never answer.
+   *
    * @param {Function} cb
+   * @return {Object} what the observer is dropped through
+   */
+  onCommandExit(cb) {
+    return this.session.onCommandExit(cb)
+  }
+
+  /**
+   * @param {Function} cb
+   * @return {Object} what the pty is listened to through, so it can be dropped
    */
   onExit(cb) {
-    this.session.onExit(cb)
+    return this.session.onExit(cb)
   }
 
   /**

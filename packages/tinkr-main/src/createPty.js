@@ -5,6 +5,7 @@ const {
   runOutput,
   isCloud,
   runCloud,
+  SessionError,
 } = require('tinkr-core')
 
 const {Pty} = require('./pty/Pty')
@@ -81,6 +82,8 @@ const createPty = (connection, code, guard = null, timeout = null) => {
   let run = null
   let filter = null
   let timer = null
+  let settled = false
+  let booted = false
 
   // whether a run is going in this session, which is what decides whether the
   // session outlives a move to another connection: a session sitting at its
@@ -92,9 +95,17 @@ const createPty = (connection, code, guard = null, timeout = null) => {
    * what it printed, and how long the whole of it took — the boot of the session
    * included, because that is the wait the person sat through.
    *
+   * Once only: a run has one answer, and a session that was replaced, stopped or
+   * timed out must not write a second one over the run that took its place.
+   *
    * @param {Object} result
    */
   const answered = result => {
+    if (settled) {
+      return
+    }
+
+    settled = true
     clearTimeout(timer)
 
     // what the run printed is the filter's; a run that never reached the
@@ -132,6 +143,39 @@ const createPty = (connection, code, guard = null, timeout = null) => {
       setPtyProcess(id, null)
       pty.kill()
     }
+  }
+
+  /**
+   * A run whose command ended — php was killed or it died — or whose shell went
+   * away, as the answer a failed run has.
+   *
+   * What the command said is the message, so the pane shows the reason rather
+   * than a wait that ended for no stated reason. `output` is given for a failure
+   * that has its own words — a command that never booted — and left out for one
+   * that ended under a run: there the run printed whatever it printed before it
+   * died, and the answer keeps that stream rather than emptying the pane
+   * (see `answered`).
+   *
+   * @param {Error} error
+   * @param {String} [output]
+   */
+  const failed = (error, output) => {
+    const answer = {
+      blocks: [],
+      value: null,
+      error: {
+        class: error && error.name === 'SessionError' ? 'SessionError' : 'Error',
+        message: error && error.message ? error.message : String(error),
+      },
+      queries: [],
+      queriesTotal: 0,
+    }
+
+    if (output !== undefined) {
+      answer.output = output
+    }
+
+    answered(answer)
   }
 
   /**
@@ -209,20 +253,64 @@ const createPty = (connection, code, guard = null, timeout = null) => {
     }
   })
 
+  // the command the shell was given has exited: php was killed or it died, and
+  // the run will never answer. The status the shell printed is the answer,
+  // instead of a timeout. The session may have been replaced by a newer run or
+  // stopped already, and a run that answered from the same chunk (see
+  // Session#noteCommandExit) is the answer, so only the run still going here is
+  // answered. A session booting is not: ready() answers it with what the
+  // command said. A terminal-only session runs nothing and has nothing to write
+  // into its history
+  pty.onCommandExit(error => {
+    // the command is gone: its timer has nothing left to time out
+    clearTimeout(timer)
+
+    if (!booted || settled || !pty.running || getPtyProcess(id) !== pty) {
+      return
+    }
+
+    // the shell outlived the command and is at its own prompt, so the session
+    // stays as the terminal it is; what ended is the run. It is answered once,
+    // and a later run replaces the session the way any run does
+    failed(error)
+  })
+
   pty.onExit(() => {
+    clearTimeout(timer)
+
     if (onData) {
       onData.dispose()
     }
+
+    if (getPtyProcess(id) !== pty) {
+      return
+    }
+
+    setPtyProcess(id, null)
+
+    // a shell that went away under a run ends it just as promptly as a command
+    // that exited: nothing is coming from a session that is gone
+    if (settled || !pty.running) {
+      return
+    }
+
+    failed(new SessionError('the session exited while the run was going'))
   })
 
   setPtyProcess(id, pty)
 
   if (code) {
     pty.ready()
-      // the run is built once its aliases are known, because they are part of
-      // what is written: the wrapping is the same either way, and what it aliases
-      // is what the lookup answered
-      .then(() => imports)
+      // the command took the terminal, so a command exit from here on is the
+      // run's own end rather than a boot that failed
+      .then(() => {
+        booted = true
+
+        // the run is built once its aliases are known, because they are part of
+        // what is written: the wrapping is the same either way, and what it
+        // aliases is what the lookup answered
+        return imports
+      })
       .then(aliases => {
         // the session may have been replaced, closed, or stopped for taking too
         // long while it was booting or while its aliases were being read
@@ -245,14 +333,13 @@ const createPty = (connection, code, guard = null, timeout = null) => {
           return
         }
 
-        answered({
-          blocks: [],
-          value: null,
-          error: {class: 'SessionError', message: error.message},
-          queries: [],
-          queriesTotal: 0,
-          output: error.output || '',
-        })
+        // a command that never booted speaks for itself; one that failed after
+        // the run started keeps what the run printed (see `failed`)
+        if (booted) {
+          failed(error)
+        } else {
+          failed(error, error.output || '')
+        }
       })
   }
 }
@@ -297,22 +384,6 @@ const runInCloud = (connection, code, guard, timeout) => {
   handle.running = true
 
   setPtyProcess(id, handle)
-
-  const options = {
-    token: secrets.cloudToken(dataDir()),
-    guard,
-    signal: stop.signal,
-    // a cloud connection's project is inside Laravel Cloud, where this machine
-    // cannot read composer's files: the classes a snippet names are read from
-    // the local checkout the connection names, if it names one, which is the
-    // only copy of the project this side has (see classIndex.importsFor)
-    imports: connection.path ? importsFor(connection.path, code) : {},
-  }
-
-  // nothing given is Laravel Cloud's own default rather than a run with no end
-  if (timeout > 0) {
-    options.timeout = timeout
-  }
 
   /**
    * The run's answer, as the pane, the history and the index read it.
@@ -359,12 +430,28 @@ const runInCloud = (connection, code, guard, timeout) => {
     win.webContents.send('historyConnection', history)
   }
 
-  runCloud(connection, code, options).then(result => settled(result), error => {
-    // a timeout, a stop and a command Laravel Cloud refused all arrive here, and
-    // each says its own reason in its message: the shape is the one every failed
-    // run has, so the pane and the history read it the same way. What a failed
-    // command printed is already the message's own words (see tinkr-core's
-    // runCloud), so the run's output is nothing of its own here
+  /**
+   * The run's answer when it did not come back: a timeout, a stop, a command
+   * Laravel Cloud refused, or a command that could not be set up here.
+   *
+   * Each says its own reason in its message, and the shape is the one every
+   * failed run has, so the pane and the history read it the same way. What a
+   * failed command printed is already the message's own words (see tinkr-core's
+   * runCloud), so the run's output is nothing of its own here.
+   *
+   * A run that was stopped — by Stop, or by a reconnect that ends this wait —
+   * is aborted here while Laravel Cloud keeps going: the message says so rather
+   * than leaving the pane with a run that only "stopped" somewhere it cannot.
+   *
+   * @param {Error} error
+   */
+  const failed = error => {
+    const message = error && error.message ? error.message : String(error)
+    const aborted = error && error.code === 'aborted'
+    const honest = aborted && !/keeps running/i.test(message)
+      ? `${message} Laravel Cloud may still be running what it started.`
+      : message
+
     settled({
       blocks: [],
       value: null,
@@ -373,13 +460,56 @@ const runInCloud = (connection, code, guard, timeout) => {
         // and reading the name rather than the constructor keeps that true even
         // when the core module is loaded twice
         class: (error && error.name) || 'Error',
-        message: error && error.message ? error.message : String(error),
+        message: honest,
       },
       queries: [],
       queriesTotal: 0,
       output: '',
     })
-  })
+  }
+
+  let options = null
+
+  try {
+    options = {
+      token: secrets.cloudToken(dataDir()),
+      guard,
+      signal: stop.signal,
+    }
+
+    // nothing given is Laravel Cloud's own default rather than a run with no end
+    if (timeout > 0) {
+      options.timeout = timeout
+    }
+  } catch (error) {
+    // a token that cannot be read is a run that cannot be sent: the handle it
+    // registered is answered through the same finalizer as every other failure
+    // rather than left as the connection's pending run
+    failed(error)
+
+    return
+  }
+
+  // a cloud connection's project is inside Laravel Cloud, where this machine
+  // cannot read composer's files: the classes a snippet names are read from the
+  // local checkout the connection names, if it names one, which is the only copy
+  // of the project this side has (see services/project importsForRun)
+  const aliases = connection.path ? importsForRun(connection, code) : Promise.resolve({})
+
+  Promise.resolve(aliases)
+    .then(imports => {
+      // a run that was replaced while its aliases were being read is not sent:
+      // its handle is not the connection's any more, and its answer belongs to
+      // nobody
+      if (getPtyProcess(id) !== handle) {
+        return
+      }
+
+      options.imports = imports
+
+      return runCloud(connection, code, options)
+    })
+    .then(result => settled(result), failed)
 }
 
 module.exports = {

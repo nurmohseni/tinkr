@@ -93,6 +93,30 @@ const bootMarker = '\u001b]9999;'
 const bootSentinel = String.raw`;printf '\033]9999;%s\007' $?`
 
 /**
+ * The longest tail of `text` that could still become the status marker.
+ *
+ * A pty hands over what it has when it has it, so a chunk can end in the middle
+ * of the marker, after whatever the command printed: the tail that matters is
+ * the longest one that is a prefix of the marker, not the last few characters
+ * of the chunk. Holding a fixed-length slice loses a short marker that follows
+ * ordinary output in the same chunk.
+ *
+ * @param {String} text
+ * @return {String}
+ */
+const heldMarker = text => {
+  for (let length = Math.min(bootMarker.length - 1, text.length); length > 0; length--) {
+    const suffix = text.slice(-length)
+
+    if (bootMarker.startsWith(suffix)) {
+      return suffix
+    }
+  }
+
+  return ''
+}
+
+/**
  * How much of what the command printed is kept for the failure it explains.
  *
  * The text is what a developer would read at a terminal, and it is the answer a
@@ -144,6 +168,25 @@ const sessionFailureMessage = (output, status) => {
 
   return `the session's command exited before it was ready${code}: ${output}`
 }
+
+/**
+ * What a session says when the command it was given exits while a run is going.
+ *
+ * The shell is what the session is, and it outlives the command: a php that was
+ * killed, that crashed, or that ended under a run leaves the shell at its prompt
+ * and prints the command's status before it. That status is the difference
+ * between a run that is still working and one that will never answer, and it
+ * names the failure in the terms a developer reading the terminal would see.
+ *
+ * @param {Number|null} status the status the shell reported, or null
+ * @return {SessionError}
+ */
+const commandExitError = status => new SessionError(
+  status === null
+    ? 'the session\'s command exited while the run was going'
+    : `the session's command exited while the run was going (exit status ${status})`,
+  {status},
+)
 
 /**
  * What a session says when a command was handed the terminal and nothing ever
@@ -209,6 +252,16 @@ class Session {
     this.log = log
     this.dataDir = dataDir
     this.pty = null
+    // the command the shell was given, and how it ended: what the shell prints
+    // when it exits (see bootMarker) is watched for from the first byte, because
+    // a command can exit before the caller has anything to subscribe with
+    this.exitObserver = null
+    this.exitOrigin = null
+    this.exitBuffer = ''
+    this.exitOutput = ''
+    this.commandExit = null
+    this.exitNotified = false
+    this.exitListeners = new Set()
   }
 
   /**
@@ -286,6 +339,11 @@ class Session {
       return
     }
 
+    // watched from before the line is written: a command that exits at once
+    // prints its status before anyone has subscribed, and that status is the
+    // only thing that says the session will never answer
+    this.watchCommandExit()
+
     if (this.connection.is_over_ssh) {
       // the command travels inside the ssh line rather than being typed after
       // it: ssh's own prompts — a host key to accept, a password to type — read
@@ -304,6 +362,142 @@ class Session {
   }
 
   /**
+   * Watch the session's stream for the status the shell prints when the command
+   * it was given has exited, and keep watching after the session is ready.
+   *
+   * The shell outlives the command: when php is killed — by a stop, by a run
+   * that outlived its time, or by the machine — the shell is still there and
+   * prints the status sentinel of the line it was given (see bootMarker). That
+   * status is the only thing coming that says the run will never answer, so it
+   * is read for the whole life of the session rather than only while it boots.
+   *
+   * The listener is installed once, before the command is written, so a command
+   * that exits immediately is not missed between the write and a caller's
+   * subscription. What it found is kept for a subscription that arrives later
+   * (see onCommandExit).
+   */
+  watchCommandExit() {
+    const pty = this.pty
+
+    if (!pty || (this.exitObserver && this.exitOrigin === pty)) {
+      return
+    }
+
+    if (this.exitObserver) {
+      this.exitObserver.dispose()
+    }
+
+    this.exitOrigin = pty
+    this.exitBuffer = ''
+    this.exitObserver = pty.onData(data => this.noteCommandExit(data))
+  }
+
+  /**
+   * Read the stream for the status sentinel of the command the shell was given.
+   *
+   * The sentinel is watched across chunks: a pty hands over what it has when it
+   * has it, and the marker, the digits and the bell can each end one chunk and
+   * begin the next. What may be the start of a marker is held back until the
+   * next chunk completes it or rules it out.
+   *
+   * @param {String} data
+   */
+  noteCommandExit(data) {
+    if (this.commandExit) {
+      return
+    }
+
+    const buffer = `${this.exitBuffer}${data}`
+    const at = buffer.indexOf(bootMarker)
+
+    if (at === -1) {
+      // the longest tail that could still become the marker is what is held:
+      // the chunk's last few characters are not, when the marker follows the
+      // command's output in the same chunk
+      this.exitBuffer = heldMarker(buffer)
+
+      return
+    }
+
+    const rest = buffer.slice(at + bootMarker.length)
+    const end = rest.search(/\D/)
+
+    // the status is digits and the bell (see bootSentinel): a chunk that stops
+    // among the digits is the frame continuing, and anything but the bell after
+    // them is not the frame the shell prints at all — the marker never appears
+    // in a project's output (see bootMarker)
+    if (end === -1) {
+      this.exitBuffer = buffer.slice(at)
+
+      return
+    }
+
+    if (rest[end] !== '\u0007') {
+      this.exitBuffer = ''
+
+      return
+    }
+
+    const digits = rest.slice(0, end)
+
+    this.exitBuffer = ''
+    // what came before the sentinel in this chunk, which is output of the
+    // command that just ended: the boot carries it into its own failure (see
+    // ready), and a run has already printed it to its pane
+    this.exitOutput = buffer.slice(0, at)
+    this.commandExit = commandExitError(digits === '' ? null : Number(digits))
+
+    // deferred rather than called here: this listener was installed before any
+    // other, so a run's envelope in the same chunk would otherwise be read
+    // after the exit had already answered the run. Deferring lets every listener
+    // for this chunk — the filter that reads the value — finish first
+    Promise.resolve().then(() => this.notifyCommandExit())
+  }
+
+  /**
+   * Tell everyone waiting for the command's exit, once.
+   */
+  notifyCommandExit() {
+    if (this.exitNotified) {
+      return
+    }
+
+    this.exitNotified = true
+
+    const listeners = Array.from(this.exitListeners)
+
+    this.exitListeners.clear()
+    listeners.forEach(cb => cb(this.commandExit))
+  }
+
+  /**
+   * Answer once the command the shell was given has exited, after the session
+   * is ready as well as before it.
+   *
+   * The session keeps watching from the moment it starts, so a subscription made
+   * after the exit still hears about it. The answer is delivered on a later turn
+   * of the event loop, so the caller that subscribes has finished setting its own
+   * listeners up, and so that anything read from the same chunk — a run's
+   * envelope — is read first (see noteCommandExit).
+   *
+   * @param {Function} cb
+   * @return {Object} what the observer is dropped through
+   */
+  onCommandExit(cb) {
+    this.exitListeners.add(cb)
+
+    if (this.commandExit && this.exitNotified) {
+      Promise.resolve().then(() => {
+        if (this.exitListeners.delete(cb)) {
+          cb(this.commandExit)
+        }
+      })
+    }
+
+    return {dispose: () => this.exitListeners.delete(cb)}
+  }
+
+  /**
    * @param {Function} cb
    * @return {Object} what the pty is listened to through, so it can be dropped
    */
@@ -312,10 +506,13 @@ class Session {
   }
 
   /**
+   * A real end of the pty: the shell itself went away.
+   *
    * @param {Function} cb
+   * @return {Object} what the pty is listened to through, so it can be dropped
    */
   onExit(cb) {
-    this.pty.onExit(cb)
+    return this.pty.onExit(cb)
   }
 
   /**
@@ -373,6 +570,22 @@ class Session {
         return
       }
 
+      // a session built by hand — a test, or a caller that set its own pty —
+      // has no observer yet, and the status of the command is read by the same
+      // watcher either way
+      this.watchCommandExit()
+
+      // the command may have exited before this wait began: the watcher reads
+      // from the first byte, so what it already knows is the whole answer
+      if (this.commandExit) {
+        const status = this.commandExit.status
+        const output = stripSessionNotes(this.exitOutput).replace(/\r\n/g, '\n').trim()
+
+        reject(new SessionError(sessionFailureMessage(output, status), {output, status}))
+
+        return
+      }
+
       let limit = null
       let listener = null
       let handedBack = false
@@ -399,20 +612,15 @@ class Session {
 
       listener = pty.onData(data => {
         // the shell printed the status of the command it was given, so the
-        // command has exited and the terminal is the shell's again
-        const sentinel = data.lastIndexOf(bootMarker)
-
-        if (sentinel !== -1) {
-          // the shell's printf writes the status right after the marker, and
-          // nothing but digits comes before its terminator
-          const rest = data.slice(sentinel + bootMarker.length)
-          const end = rest.search(/\D/)
-          const digits = end === -1 ? rest : rest.slice(0, end)
+        // command has exited and the terminal is the shell's again. The watcher
+        // installed above reads the sentinel across chunks and was called with
+        // this chunk before this listener was, so the exit is already known
+        if (this.commandExit) {
           // what the command printed follows the handover and precedes the
           // status, and it is the whole of the answer when there is none
-          booted += data.slice(0, sentinel)
+          booted += this.exitOutput
 
-          fail(digits === '' ? null : Number(digits))
+          fail(this.commandExit.status)
 
           return
         }
@@ -609,6 +817,16 @@ class Session {
 
     this.pty = null
 
+    // the session is ending: a status the dying command prints as it goes is
+    // not an answer to anything
+    if (this.exitObserver) {
+      this.exitObserver.dispose()
+    }
+
+    this.exitObserver = null
+    this.exitOrigin = null
+    this.exitListeners.clear()
+
     // the interrupt has to reach php while it is still the foreground process,
     // and `exit();` only means anything once the interrupt has put psysh back at
     // its prompt — so the keys are sent on a timer long enough for each to be
@@ -683,7 +901,9 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  *   Cloud token for a cloud connection, which is read from that same data
  *   directory when the caller has none. `signal` stops a run, `fetch` replaces
  *   the one a cloud run talks to the API with, and `interval` is how often it
- *   asks how the command is going
+ *   asks how the command is going. `timeout` is how long the run may take, and
+ *   zero is no limit: the run is still answered when its command exits (see
+ *   Session#onCommandExit)
  * @return {Promise<{value: any, blocks: Array, error: Object|null,
  *   queries: Array, queriesTotal: Number, imported?: Object,
  *   transaction?: Object, output: String, commandId?: String}>}
@@ -730,6 +950,7 @@ const runCode = (connection, code, options = {}) => {
 
   return new Promise((resolve, reject) => {
     let settled = false
+    let booted = false
 
     /**
      * @param {Error|null} error
@@ -753,10 +974,12 @@ const runCode = (connection, code, options = {}) => {
       resolve(result)
     }
 
-    const timer = setTimeout(
-      () => finish(new Error(`the session did not answer within ${timeout}ms`)),
-      timeout,
-    )
+    // a timeout of zero or less is a run given no limit, which is what the
+    // preference says when it is cleared: a run whose command dies is still
+    // answered, because the status of that command is watched for below
+    const timer = timeout > 0
+      ? setTimeout(() => finish(new Error(`the session did not answer within ${timeout}ms`)), timeout)
+      : null
 
     session.start(command)
 
@@ -774,6 +997,24 @@ const runCode = (connection, code, options = {}) => {
       }
     })
 
+    // the command the shell was given has exited: php was killed, it crashed,
+    // or it ended. Nothing is coming from it any more, and this is the answer —
+    // the status the shell printed, instead of waiting out a timeout that is no
+    // longer the reason nothing came back. A session that never booted is
+    // answered by ready() with the command's own words, so this listens from
+    // the moment the session is up
+    session.onCommandExit(error => {
+      if (!booted) {
+        return
+      }
+
+      // what the run printed before php died is part of its answer: the error
+      // says how it ended, and it does not replace the output it left
+      error.output = runOutput(filter)
+
+      finish(error)
+    })
+
     // the run goes in once the command is reading the terminal: handed over
     // before that, anything past the terminal's own buffer is dropped and the
     // run is parsed in half. See Session#ready
@@ -782,13 +1023,23 @@ const runCode = (connection, code, options = {}) => {
         return
       }
 
+      booted = true
+
       // a line at a time: one line of the whole run is more than libedit reads
       // (see runResult.typedRun)
       return session.type(typedRun(run.code))
     }).catch(error => finish(error))
 
     session.onExit(() => {
-      finish(new Error('the session exited before it answered'))
+      const error = new SessionError('the session exited before it answered')
+
+      // a shell that went away after the run started leaves what the run
+      // printed in the filter, the same as a command exit does
+      if (booted) {
+        error.output = runOutput(filter)
+      }
+
+      finish(error)
     })
   })
 }

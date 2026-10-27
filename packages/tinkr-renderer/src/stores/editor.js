@@ -343,6 +343,15 @@ const reconnectAtom = atom(null, (get, set, code) => {
 
   const connection = get(connectionAtom)
 
+  // a session's run is ended by the reconnect that replaces the session, and
+  // nothing is coming back from it: the window is not waiting for a run any
+  // more. A cloud run is the exception — its wait is aborted, and the answer
+  // that says Laravel Cloud keeps going is still on its way, which is what
+  // clears the run (see services/connections reconnectConnection)
+  if (!(connection && connection.is_cloud)) {
+    set(inFlightAtom, null)
+  }
+
   reconnectConnection(connection)
 })
 
