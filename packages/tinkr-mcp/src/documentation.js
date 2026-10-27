@@ -398,7 +398,16 @@ says what they are rather than as a \`null\` they never were:
 - \`INF\`, \`-INF\`, \`NAN\` for a float that is not finite;
 - the digits, as a string, for an integer past 2^53 (javascript would round it);
 - \`0x…\` with the bytes in hex, for a string that is not UTF-8;
+- \`[resource: <type>]\` for a resource;
+- \`[recursion]\` for a value that refers back to itself, and
+  \`[deeper than 12 levels]\` for one nested past the limit;
 - a sentence, for an object that throws from its own \`jsonSerialize\`.
+
+A plain object is written as an object, and one with no public fields is \`{}\`
+rather than \`[]\`. An enum is its backed value, or its name when it has none; a
+date, a timezone, an \`ArrayObject\` or a \`SplFixedArray\` keeps the shape php's
+own json gives it. A serializer is asked exactly once, and the value it answers
+with is what comes back: the object is not read again.
 
 A php array keeps its order: an array with integer-like keys out of order comes
 back as \`{"__tinkrMap": {…}, "__tinkrKeys": ["3","1","2"]}\`, because JSON reads

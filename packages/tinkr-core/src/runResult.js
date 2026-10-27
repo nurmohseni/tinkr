@@ -93,7 +93,7 @@ const importBlock = entries => {
  */
 const SPLIT_BLOCKS = [
   "$tinkr_tokens=token_get_all('<?php '.$tinkr_code);$tinkr_total=count($tinkr_tokens);",
-  '$tinkr_stmts=[];$tinkr_stmt=\'\';$tinkr_line=0;$tinkr_l=1;$tinkr_stack=[];$tinkr_prev=null;',
+  '$tinkr_stmts=[];$tinkr_stmt=\'\';$tinkr_line=0;$tinkr_l=1;$tinkr_stack=[];$tinkr_prev=null;$tinkr_do=false;',
   // the blocks written with php's alternative syntax that are open: inside one,
   // a `;` ends a line of the block and not the statement, which is the whole of
   // `foreach (…): … endforeach;`. `$tinkr_ctl` is the keyword whose header is
@@ -106,6 +106,10 @@ const SPLIT_BLOCKS = [
   // of them: a declaration — `class A { … }` — is followed by a statement of its
   // own, and the line after one can open with a parenthesis
   "$tinkr_next=function($tinkr_all,$tinkr_i,$tinkr_count){for($tinkr_j=$tinkr_i+1;$tinkr_j<$tinkr_count;$tinkr_j++){$tinkr_t=$tinkr_all[$tinkr_j];if(is_array($tinkr_t)&&($tinkr_t[0]===T_WHITESPACE||$tinkr_t[0]===T_COMMENT||$tinkr_t[0]===T_DOC_COMMENT)){continue;}$tinkr_v=is_array($tinkr_t)?$tinkr_t[0]:$tinkr_t;return in_array($tinkr_v,[')',']',';',',','.','=','??','?',':','->','?->','::',T_OBJECT_OPERATOR,T_NULLSAFE_OBJECT_OPERATOR,T_DOUBLE_COLON,T_ELSE,T_ELSEIF,T_CATCH,T_FINALLY,T_WHILE,T_INSTANCEOF],true);}return false;};",
+  // the token that follows a `;` at the top level, and nothing else: a
+  // continuation only belongs to the statement when it is one of these, which is
+  // why this asks for the token itself and not whether it could continue
+  '$tinkr_follow=function($tinkr_all,$tinkr_i,$tinkr_count){for($tinkr_j=$tinkr_i+1;$tinkr_j<$tinkr_count;$tinkr_j++){$tinkr_t=$tinkr_all[$tinkr_j];if(is_array($tinkr_t)&&($tinkr_t[0]===T_WHITESPACE||$tinkr_t[0]===T_COMMENT||$tinkr_t[0]===T_DOC_COMMENT)){continue;}return is_array($tinkr_t)?$tinkr_t[0]:$tinkr_t;}return null;};',
   'for($tinkr_i=0;$tinkr_i<$tinkr_total;$tinkr_i++){',
   '$tinkr_token=$tinkr_tokens[$tinkr_i];',
   '$tinkr_text=is_array($tinkr_token)?$tinkr_token[1]:$tinkr_token;',
@@ -123,6 +127,10 @@ const SPLIT_BLOCKS = [
   // and an `elseif (…):` continues the one it is in
   "if($tinkr_significant&&$tinkr_ctl_closed){if($tinkr_word===':'&&$tinkr_ctl!==T_ELSEIF){$tinkr_alt++;}$tinkr_ctl=null;$tinkr_ctl_closed=false;}",
   'if(!$tinkr_stack&&in_array($tinkr_id,[T_IF,T_ELSEIF,T_FOREACH,T_FOR,T_WHILE,T_SWITCH,T_DECLARE],true)){$tinkr_ctl=$tinkr_id;}',
+  // a `while` after a top-level `;` is the `while` of a `do` whose body had no
+  // braces, and the `;` after the body belongs to that statement: any other
+  // `while` after a `;` is a statement of its own
+  'if(!$tinkr_stack&&$tinkr_id===T_DO){$tinkr_do=true;}',
   'if(!$tinkr_stack&&$tinkr_alt>0&&in_array($tinkr_id,[T_ENDIF,T_ENDFOREACH,T_ENDFOR,T_ENDWHILE,T_ENDSWITCH,T_ENDDECLARE],true)){$tinkr_alt--;}',
   // an interpolated `"{$a}"` opens a brace with a token of its own, and its `}`
   // is punctuation like any other: the stack is what tells the two apart, so the
@@ -138,11 +146,15 @@ const SPLIT_BLOCKS = [
   // the `}` that closes a name belongs to the statement, and one that closes a
   // block only ends it when nothing can follow it
   "if($tinkr_word==='}'&&(!$tinkr_stack)&&$tinkr_alt===0&&$tinkr_closed==='{'&&!$tinkr_next($tinkr_tokens,$tinkr_i,$tinkr_total)){" +
-  "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];$tinkr_stmt='';$tinkr_line=0;}}" +
+  "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;}}" +
   // a `;` on its own is no statement: evaluated, it would answer null over the
-  // value of the one before it
+  // value of the one before it. And a `;` that a continuation follows is not the
+  // end of the statement either: an unbraced `if (…) echo 1; else echo 2;` is
+  // one statement, not two, and so is `do echo 1; while (…);`
   "if(!$tinkr_stack&&$tinkr_alt===0&&$tinkr_word===';'){" +
-  "if(trim($tinkr_stmt)!==';'){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}$tinkr_stmt='';$tinkr_line=0;}" +
+  '$tinkr_following=$tinkr_follow($tinkr_tokens,$tinkr_i,$tinkr_total);' +
+  'if($tinkr_following===T_ELSE||$tinkr_following===T_ELSEIF||$tinkr_following===T_CATCH||$tinkr_following===T_FINALLY||($tinkr_do&&$tinkr_following===T_WHILE)){continue;}' +
+  "if(trim($tinkr_stmt)!==';'){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;}" +
   // the token before a `{` is what says which kind of brace it is
   'if($tinkr_significant){$tinkr_prev=$tinkr_id===null?$tinkr_text:$tinkr_id;}',
   '}',
@@ -157,6 +169,29 @@ const SPLIT_BLOCKS = [
  * with the ones before it standing. That is what running the snippet would have
  * done, and it is what the pane reads: `$tinkr_error` is the failure of the
  * whole run, and the blocks before it are what the run got through.
+ *
+ * Whether a statement is an expression is decided before any of it runs: php's
+ * own tokenizer is asked whether `return <statement>` is syntax, and only the
+ * answer chooses between `eval('return …')` and `eval(…)`. The older wrapper
+ * chose by running the expression and catching the `ParseError` that was not
+ * one, which ran the statement twice whenever it was an expression that threw —
+ * `risky()` printed once for the probe and once for the retry. A `ParseError`
+ * thrown while the statement runs is now the run's error, not a guess at its
+ * shape.
+ *
+ * A statement that is not an expression is given a trailing internal flag: it
+ * is appended on a line of its own, so a `//` comment at the end of the
+ * statement cannot swallow it, and a top-level `return` — inside an `if`, a
+ * loop, wherever the snippet wrote it — stops the eval before the assignment.
+ * The flag being false is what says the snippet returned, so the loop stops
+ * there with the returned value as the run's answer. A `return` inside a
+ * closure or a function is that function's own and leaves the flag alone.
+ *
+ * Each block's value is normalized once here, at the boundary it was answered
+ * at, and the run's final value is that same snapshot: an object's
+ * `jsonSerialize` is asked once, and a value whose serialization prints stays
+ * printed once. The raw value is not kept, and nothing re-normalizes what this
+ * loop already normalized.
  *
  * It is one string per line for reading, and it is one line to php: the wrapped
  * command is a single line, which is what every block of the wrapper has to
@@ -175,18 +210,30 @@ const EVAL_BLOCKS = [
     "if(substr(rtrim($tinkr_uses),-1)!==';'){$tinkr_uses.=';';}" +
     "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>null];continue;}",
   'if(substr($tinkr_source,-1)!==\';\'){$tinkr_source.="\\n;";}',
-  '$tinkr_block_error=null;',
+  '$tinkr_block_error=null;$tinkr_completed=false;$tinkr_expression=false;',
+  // syntax only: nothing of the statement runs to find out what it is, so a
+  // statement that throws while it runs is never run a second time. A source
+  // that cannot be parsed at all is left to the statement form, which reports
+  // the parse error as the run's own
+  "try{token_get_all('<?php '.$tinkr_uses.'return '.$tinkr_source,TOKEN_PARSE);$tinkr_expression=true;}" +
+    'catch(\\Throwable $tinkr_preflight){$tinkr_expression=false;}',
   'try{',
-  "try{$tinkr_value=eval($tinkr_uses.'return '.$tinkr_source);}",
-  'catch(\\ParseError $tinkr_parse){$tinkr_value=eval($tinkr_uses.$tinkr_source);}',
+  "$tinkr_value=$tinkr_expression?eval($tinkr_uses.'return '.$tinkr_source):" +
+    "eval($tinkr_uses.$tinkr_source.\"\\n\".'$tinkr_completed=true;');",
   '}catch(\\Throwable $tinkr_failure){',
+  '$tinkr_value=null;$tinkr_completed=false;' +
   // the exception's own words, and the one it was thrown from: a `previous`
   // is where the real cause usually is
   "$tinkr_block_error=['class'=>get_class($tinkr_failure),'message'=>$tinkr_failure->getMessage()];" +
     "if($tinkr_failure->getPrevious()!==null){$tinkr_block_error['previous']=['class'=>get_class($tinkr_failure->getPrevious()),'message'=>$tinkr_failure->getPrevious()->getMessage()];}",
   '}',
+  // the block's value as the envelope will carry it, and the final value is
+  // this snapshot when this is the last block
+  '$tinkr_value=$tinkr_safe($tinkr_value);',
   "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>$tinkr_block_error];",
   'if($tinkr_block_error!==null){$tinkr_error=$tinkr_block_error;break;}',
+  // a statement that returned left the flag false, and the snippet ended there
+  'if(!$tinkr_completed&&!$tinkr_expression){break;}',
   '}',
 ]
 
@@ -381,11 +428,27 @@ const sandboxFinish = sandbox.finish
  * they are, and the order they were in travels beside them, because javascript
  * reads integer-like keys back in numeric order.
  *
+ * An object is walked like an array, and written back as an object so the
+ * fields it has are the fields that come back, and an object with none is `{}`
+ * and not `[]`. An internal class php's own json has a shape for keeps that
+ * shape: a date and a timezone are their `date`/`timezone_type`/`timezone`
+ * properties, an `ArrayObject` is its storage written as an object, and an
+ * `SplFixedArray` is its elements written as a list. Their values are walked
+ * too, so an unsafe scalar inside one is described rather than turned into a 0,
+ * and a private or protected field is never exposed by the cast that reads them.
+ * A `JsonSerializable` is asked for its value exactly once — here, at the
+ * boundary the run answered at — and its answer is walked the same way; handing
+ * the object itself to the envelope's `json_encode` would ask it again, and a
+ * serializer that prints would print twice. A serializer that throws, a value
+ * that refers back to itself, and one nested deeper than the limit are all
+ * described instead of walked: there would otherwise be no envelope at all.
+ *
  * @param {any} value
  * @param {Number} [depth] how far in the walk has gone, which bounds it
  * @return {any}
  */
-const SAFE_ENCODE = '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe){' +
+const SAFE_ENCODE = '$tinkr_seen=[];' +
+  '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe,&$tinkr_seen){' +
   'if($tinkr_d>12){return "[deeper than 12 levels]";}' +
   // a float that cannot be written: json_encode writes INF and NAN as 0
   'if(is_float($tinkr_v)){if(is_nan($tinkr_v)){return "NAN";}if(is_infinite($tinkr_v)){return $tinkr_v>0?"INF":"-INF";}return $tinkr_v;}' +
@@ -395,6 +458,8 @@ const SAFE_ENCODE = '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe){
   // a string that is not UTF-8 is dropped by json_encode: it is shown as the
   // bytes it is, which is what a hex dump would say
   'if(is_string($tinkr_v)){if(!preg_match("//u",$tinkr_v)){return "0x".bin2hex($tinkr_v);}return $tinkr_v;}' +
+  // a resource has no json form at all: json_encode writes null
+  'if(is_resource($tinkr_v)){return "[resource: ".get_resource_type($tinkr_v)."]";}' +
   'if(is_array($tinkr_v)){$tinkr_out=[];' +
   'foreach($tinkr_v as $tinkr_k=>$tinkr_item){$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
   // a list reads back as a list. A map with integer-like keys does not: JSON
@@ -403,10 +468,50 @@ const SAFE_ENCODE = '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe){
   '$tinkr_int=false;foreach(array_keys($tinkr_v) as $tinkr_k){if(is_int($tinkr_k)){$tinkr_int=true;break;}}' +
   'return $tinkr_int&&array_keys($tinkr_v)!==range(0,count($tinkr_v)-1)' +
   '?["__tinkrMap"=>$tinkr_out,"__tinkrKeys"=>array_map("strval",array_keys($tinkr_v))]:$tinkr_out;}' +
-  // a value that throws from its own serialization is described by its class:
-  // asking it again would throw again, and there would be no envelope at all
-  'if($tinkr_v instanceof \\JsonSerializable){try{json_encode($tinkr_v);return $tinkr_v;}' +
-  'catch(\\Throwable $tinkr_e){return "[".get_class($tinkr_v)." could not be serialized: ".$tinkr_e->getMessage()."]";}}' +
+  // the serializer's answer is what the run had, and it is walked like any
+  // other: the object itself is never handed on, so json_encode cannot ask it
+  // a second time
+  'if($tinkr_v instanceof \\JsonSerializable){' +
+  'foreach($tinkr_seen as $tinkr_seen_one){if($tinkr_seen_one===$tinkr_v){return "[recursion]";}}' +
+  '$tinkr_seen[]=$tinkr_v;' +
+  'try{$tinkr_serialized=$tinkr_v->jsonSerialize();}' +
+  'catch(\\Throwable $tinkr_e){array_pop($tinkr_seen);return "[".get_class($tinkr_v)." could not be serialized: ".$tinkr_e->getMessage()."]";}' +
+  '$tinkr_serialized=$tinkr_safe($tinkr_serialized,$tinkr_d+1);array_pop($tinkr_seen);return $tinkr_serialized;}' +
+  // an enum is an object, but its fields are not its value: a backed one's json
+  // value is its value, and a pure one has no value json could write (it came
+  // out as a 0), so it is named rather than reported as a value it never had.
+  // A serializer it implements was asked above, because that is the answer the
+  // enum itself chose
+  'if($tinkr_v instanceof \\UnitEnum){return $tinkr_v instanceof \\BackedEnum?$tinkr_safe($tinkr_v->value,$tinkr_d+1):$tinkr_v->name;}' +
+  // a plain object is walked field by field, but an internal one is not plain:
+  // php's own json has a shape for several of them, and that shape is kept
+  'if(is_object($tinkr_v)){' +
+  'foreach($tinkr_seen as $tinkr_seen_one){if($tinkr_seen_one===$tinkr_v){return "[recursion]";}}' +
+  '$tinkr_seen[]=$tinkr_v;$tinkr_out=[];' +
+  // a date and a timezone are the properties php itself exposes for them —
+  // date, timezone_type, timezone — plus whatever public fields a subclass
+  // added. The cast is that same table; a mangled name is a private or
+  // protected field, which is not the value a run answered with
+  'if($tinkr_v instanceof \\DateTimeInterface||$tinkr_v instanceof \\DateTimeZone){' +
+  'foreach((array)$tinkr_v as $tinkr_k=>$tinkr_item){$tinkr_k=(string)$tinkr_k;' +
+  'if($tinkr_k!==""&&$tinkr_k[0]==="\\0"){continue;}' +
+  '$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
+  '$tinkr_out=(object)$tinkr_out;}' +
+  // an ArrayObject is its storage written as an object, which is what json
+  // wrote for it whatever its keys were: the storage's own values are walked,
+  // so an unsafe scalar inside it is described and not turned into a 0
+  'elseif($tinkr_v instanceof \\ArrayObject||$tinkr_v instanceof \\ArrayIterator){' +
+  'foreach($tinkr_v->getArrayCopy() as $tinkr_k=>$tinkr_item){$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
+  '$tinkr_out=(object)$tinkr_out;}' +
+  // a SplFixedArray is its elements written as a list
+  'elseif($tinkr_v instanceof \\SplFixedArray){' +
+  'foreach($tinkr_v->toArray() as $tinkr_item){$tinkr_out[]=$tinkr_safe($tinkr_item,$tinkr_d+1);}}' +
+  // anything else is the public fields it has, put back together as an object:
+  // `(object)[]` is `{}`, and an array of the fields would have read as a list
+  'else{' +
+  'foreach(get_object_vars($tinkr_v) as $tinkr_k=>$tinkr_item){$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
+  '$tinkr_out=(object)$tinkr_out;}' +
+  'array_pop($tinkr_seen);return $tinkr_out;}' +
   'return $tinkr_v;};'
 
 /**
@@ -485,7 +590,13 @@ const guardFinish = "$tinkr_tx_outcome='failed';$tinkr_tx_open=false;" +
  * @return {{print: String, shutdown: String}} both lines
  */
 const printer = (keys, close = '') => {
-  const echo = `echo $tinkr,"@",base64_encode(json_encode(${keys},JSON_PARTIAL_OUTPUT_ON_ERROR)),"@";`
+  // the whole envelope is computed before either marker is printed: a value that
+  // prints while it is being written — a serializer's own `echo`, a warning from
+  // one — then lands before the marker, where it is the run's output. Printed
+  // between the markers instead, it would corrupt the base64 and the run would
+  // have no answer at all
+  const echo = `$tinkr_payload=base64_encode(json_encode(${keys},JSON_PARTIAL_OUTPUT_ON_ERROR));` +
+    'echo $tinkr,"@",$tinkr_payload,"@";'
   const ended = '$tinkr_last=error_get_last();' +
     'if($tinkr_error===null&&$tinkr_last!==null&&in_array($tinkr_last["type"],' +
     '[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR,E_USER_ERROR,E_RECOVERABLE_ERROR],true)){' +
@@ -528,7 +639,9 @@ const printer = (keys, close = '') => {
  * or a `for (;;)` away from what counting semicolons would say. Every statement
  * is evaluated in turn — an expression as its value, a `dump` call as what it
  * returned, a loop as nothing — and the run stops at the first one that throws,
- * which is what running the snippet would have done.
+ * which is what running the snippet would have done. Whether a statement is an
+ * expression is answered by the tokenizer before it runs (see EVAL_BLOCKS), so a
+ * statement that throws while it runs is never run again to find its shape.
  *
  * eval keeps the scope of the session, so what one statement assigns is what the
  * next one reads, and the variables of earlier runs are visible too. php wants
@@ -583,11 +696,15 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
   const mode = guard === 'commit' ? 'commit' : (guard === 'rollback' || sandbox ? 'rollback' : null)
   const keys = [
     '[',
-    // what every statement answered, with the line of the statement that did
-    "'blocks'=>$tinkr_safe($tinkr_results),",
+    // what every statement answered, with the line of the statement that did.
+    // Each value was normalized once, where the statement answered it, and is
+    // not walked again: a second walk would ask a serializer a second time and
+    // would read the map shape the first walk wrote as an ordinary array
+    "'blocks'=>$tinkr_results,",
     // a run that ended in an error returned nothing, whatever the statement
-    // before the one that threw had left in the variable
-    "'value'=>$tinkr_error!==null?null:$tinkr_safe($tinkr_value),",
+    // before the one that threw had left in the variable. The value is the last
+    // block's snapshot, kept rather than made again
+    "'value'=>$tinkr_error!==null?null:$tinkr_value,",
     "'error'=>$tinkr_error,",
     "'queries'=>$tinkr_safe($tinkr_queries),'queriesTotal'=>$tinkr_query_total",
     // what the run's own names resolved to. It is always an object: a project
