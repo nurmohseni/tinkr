@@ -81,7 +81,9 @@ What a run does with the code is worth knowing before the first one:
 
 - A top-level `return` ends the snippet. Statements after it do not run, and what it returned is the run's value.
 - A snippet runs once. Every statement is evaluated once rather than probed and retried, so a statement that prints, writes or sends does it once.
-- Values come back as they are: an object stays an object (an empty one is `{}`, not `[]`), a scalar stays a scalar, and a value JSON cannot carry — a resource, a recursive reference, an unsafe float — is described by a string such as `[resource: stream]`, `[recursion]` or `INF` rather than silently becoming `null` or `0`.
+- A snippet is parsed before it runs. A syntax error anywhere in it — including inside a function or class declaration — answers with that parse error and executes nothing, which is what php does with a file. A last line without its `;` is still accepted.
+- A top-level `use` statement is an import for the code after it, and an unconditional top-level `function` declaration is available to the whole snippet: both are compiled before php runs the first line, and the snippet behaves the same way.
+- Values come back as they are: an object stays an object (an empty one is `{}`, not `[]`), a scalar stays a scalar, and a value JSON cannot carry — a resource, a recursive reference, an unsafe float — is described by a string such as `[resource: stream]`, `[recursion]` or `INF` rather than silently becoming `null` or `0`. An object is described after the snippet has ended, so a `jsonSerialize` that prints prints once and reads its final state, and the same object returned by several statements is serialized once.
 - If the project's command exits while a run is going — tinker crashed, php was killed — the run ends with that exit status straight away instead of waiting out the run timeout.
 - Reconnecting a **Laravel Cloud** connection ends the wait on this side only; Laravel Cloud keeps running the command it was given.
 

@@ -268,12 +268,15 @@ Failure.propTypes = {
   }).isRequired,
 }
 
-/** The run finished with nothing to draw: no value, and nothing printed either. */
+/**
+ * A finished run with nothing to draw. A block may never have run, and a value
+ * inside one is only shown when it is returned or printed.
+ */
 const NothingReturned = () => (
   <div className='empty empty--benign'>
     <Outcome kind='printed'/>
     <p><FormattedMessage id='result.nothing_returned'/></p>
-    <p className='muted'><FormattedMessage id='result.nothing_printed'/></p>
+    <p className='muted'><FormattedMessage id='result.nothing_help'/></p>
   </div>
 )
 

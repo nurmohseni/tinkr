@@ -46,9 +46,13 @@ const phpString = value => `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
  * The php that puts the classes the snippet named into the session, by their
  * short name, before the snippet runs.
  *
- * A `use` statement cannot be written into an eval'd snippet, but `class_alias`
- * is a function called at run time, so `class_alias('App\Models\Order',
- * 'Order')` is what a missing `use App\Models\Order;` would have done.
+ * A `use` statement the snippet writes is kept and applied by the evaluation
+ * itself (see EVAL_BLOCKS), but it is the snippet that wrote it: a name the
+ * project's index resolved for a bare `Order::where(…)` has no such statement,
+ * and `class_alias('App\Models\Order', 'Order')` is what a missing `use
+ * App\Models\Order;` would have done. It is a function called at run time, so
+ * the alias is visible to every statement of the run rather than only to the
+ * eval it was written in.
  *
  * A name the session already answers to is left alone — what `Carbon`, `Str`
  * and php's own names are, and what a class the session ran earlier is — and a
@@ -100,6 +104,23 @@ const SPLIT_BLOCKS = [
   // being read, and `$tinkr_ctl_closed` says its `)` has been: a `:` next is
   // what opens the block
   '$tinkr_alt=0;$tinkr_ctl=null;$tinkr_ctl_closed=false;',
+  // what a statement opens with, which is how a `use` is told from a closure's
+  // own `use (...)` and how an unconditional declaration is told from code:
+  // comments, whitespace and attributes are skipped, so `// why\nuse A;` and
+  // `#[Attr] function f() {}` keep their first real token. `$tinkr_ctxs` is the
+  // significant token before each open `(`, so a `{` after its `)` knows
+  // whether the braces belong to a control structure or to an expression —
+  // `match (…) { … }`, an anonymous function, an anonymous class — and
+  // `$tinkr_fn_*`/`$tinkr_class_expr` carry that same answer past a return
+  // type or an `implements` list
+  '$tinkr_head=null;$tinkr_attr=0;$tinkr_ctxs=[];$tinkr_paren_ctx=null;$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;',
+  // the `&` of `function &()` and the `readonly` of a readonly class are tokens
+  // only from php 8.1 on: on an older php they are punctuation or a name, and
+  // asking for the constant would be an error the run never recovers from
+  '$tinkr_amps=[];' +
+    "if(defined('T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG')){$tinkr_amps[]=T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG;}" +
+    "if(defined('T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG')){$tinkr_amps[]=T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG;}" +
+    "$tinkr_readonly=defined('T_READONLY')?T_READONLY:-1;",
   // what can follow a `}` and still belong to the same statement: the `;` that
   // ends it, an index, a chained call, an operator. Anything else ends the
   // statement at the brace, which is what `if (…) { … }` needs. A `(` is not one
@@ -110,6 +131,12 @@ const SPLIT_BLOCKS = [
   // continuation only belongs to the statement when it is one of these, which is
   // why this asks for the token itself and not whether it could continue
   '$tinkr_follow=function($tinkr_all,$tinkr_i,$tinkr_count){for($tinkr_j=$tinkr_i+1;$tinkr_j<$tinkr_count;$tinkr_j++){$tinkr_t=$tinkr_all[$tinkr_j];if(is_array($tinkr_t)&&($tinkr_t[0]===T_WHITESPACE||$tinkr_t[0]===T_COMMENT||$tinkr_t[0]===T_DOC_COMMENT)){continue;}return is_array($tinkr_t)?$tinkr_t[0]:$tinkr_t;}return null;};',
+  // a boundary is only taken where php itself agrees the statement is whole:
+  // the tokenizer is asked to parse what has been read as a statement, and a
+  // piece php cannot parse — a brace that belongs to an expression, some newer
+  // grammar — is kept in the statement rather than cut off as syntax php would
+  // have rejected
+  "$tinkr_parses=function($tinkr_source){try{token_get_all('<?php '.$tinkr_source,TOKEN_PARSE);return true;}catch(\\Throwable $tinkr_parse_failure){return false;}};",
   'for($tinkr_i=0;$tinkr_i<$tinkr_total;$tinkr_i++){',
   '$tinkr_token=$tinkr_tokens[$tinkr_i];',
   '$tinkr_text=is_array($tinkr_token)?$tinkr_token[1]:$tinkr_token;',
@@ -123,6 +150,28 @@ const SPLIT_BLOCKS = [
   '$tinkr_stmt.=$tinkr_text;',
   '$tinkr_word=($tinkr_id===null)?trim($tinkr_text):null;',
   '$tinkr_significant=$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT;',
+  // the first real token of the statement: an attribute is skipped with the
+  // brackets it opens, so what a declaration starts with is what is left
+  'if($tinkr_head===null){' +
+    "if($tinkr_attr>0){if($tinkr_id===T_ATTRIBUTE||$tinkr_word==='['){$tinkr_attr++;}elseif($tinkr_word===']'){$tinkr_attr--;}}" +
+    'elseif($tinkr_id===T_ATTRIBUTE){$tinkr_attr=1;}' +
+    'elseif($tinkr_significant){$tinkr_head=($tinkr_id===null)?$tinkr_text:$tinkr_id;}' +
+    '}',
+  // which kind of header a `{` belongs to. A `function` is anonymous unless a
+  // name follows it — `function &()` included — and `new class` is an
+  // expression; both carry past a return type, a constructor's arguments and an
+  // `implements` list until their brace is met
+  'if($tinkr_significant){' +
+    'if($tinkr_id===T_FUNCTION){$tinkr_fn_open=true;$tinkr_fn_named=false;$tinkr_fn_slot=true;}' +
+    "elseif($tinkr_fn_slot&&($tinkr_word==='&'||in_array($tinkr_id,$tinkr_amps,true))){}" +
+    'elseif($tinkr_fn_slot){$tinkr_fn_slot=false;if($tinkr_id===T_STRING){$tinkr_fn_named=true;}}' +
+    'if($tinkr_id===T_NEW){$tinkr_new_pending=true;}' +
+    'elseif($tinkr_new_pending){' +
+      'if($tinkr_id===$tinkr_readonly){}' +
+      'elseif($tinkr_id===T_CLASS){$tinkr_class_expr=true;$tinkr_new_pending=false;}' +
+      'else{$tinkr_new_pending=false;}' +
+    '}' +
+    '}',
   // the token after a control header's `)`: a `:` opens an alternative block,
   // and an `elseif (…):` continues the one it is in
   "if($tinkr_significant&&$tinkr_ctl_closed){if($tinkr_word===':'&&$tinkr_ctl!==T_ELSEIF){$tinkr_alt++;}$tinkr_ctl=null;$tinkr_ctl_closed=false;}",
@@ -137,16 +186,29 @@ const SPLIT_BLOCKS = [
   // brace that closes an interpolation is not read as the end of a statement.
   // A counter cannot: `"v{$a}"` and `if (…) { … }` both come back to zero.
   // `$o->{'f'.'oo'}` is a third kind, a name spelled at run time: it is marked
-  // like an interpolation, because a `}` there closes a name and not a block
-  "if($tinkr_word==='('||$tinkr_word==='['){$tinkr_stack[]=$tinkr_word;}" +
-  "elseif($tinkr_word==='{'){$tinkr_stack[]=in_array($tinkr_prev,['->','?->','::','$',T_OBJECT_OPERATOR,T_NULLSAFE_OBJECT_OPERATOR,T_DOUBLE_COLON,T_VARIABLE],true)?'@':'{';}" +
+  // like an interpolation, because a `}` there closes a name and not a block.
+  // A brace belonging to an expression — `match (…) { … }`, an anonymous
+  // function, an anonymous class — is marked a fourth way: php's grammar lets it
+  // be followed by any operator, so a statement never ends at that brace and
+  // `echo match (1) { 1 => 2, default => 3 } + 4;` stays one statement
+  "if($tinkr_word==='('){$tinkr_stack[]='(';$tinkr_ctxs[]=$tinkr_prev;}" +
+  "elseif($tinkr_word==='['){$tinkr_stack[]='[';}" +
+  "elseif($tinkr_word==='{'){" +
+  "$tinkr_kind='{';" +
+  "if(in_array($tinkr_prev,['->','?->','::','$',T_OBJECT_OPERATOR,T_NULLSAFE_OBJECT_OPERATOR,T_DOUBLE_COLON,T_VARIABLE],true)){$tinkr_kind='@';}" +
+  "elseif($tinkr_prev===')'&&($tinkr_paren_ctx===T_MATCH||$tinkr_paren_ctx===T_USE||($tinkr_paren_ctx===T_FUNCTION&&!$tinkr_fn_named))){$tinkr_kind='{e';}" +
+  "elseif($tinkr_fn_open&&!$tinkr_fn_named){$tinkr_kind='{e';}" +
+  "elseif($tinkr_class_expr){$tinkr_kind='{e';}" +
+  '$tinkr_stack[]=$tinkr_kind;' +
+  '$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;}' +
   'elseif($tinkr_id===T_CURLY_OPEN||$tinkr_id===T_DOLLAR_OPEN_CURLY_BRACES){$tinkr_stack[]=\'@\';}' +
   "elseif($tinkr_word===')'||$tinkr_word===']'||$tinkr_word==='}'){$tinkr_closed=array_pop($tinkr_stack);" +
+  "if($tinkr_word===')'){$tinkr_paren_ctx=array_pop($tinkr_ctxs);}" +
   "if($tinkr_word===')'&&!$tinkr_stack&&$tinkr_ctl!==null){$tinkr_ctl_closed=true;}" +
   // the `}` that closes a name belongs to the statement, and one that closes a
-  // block only ends it when nothing can follow it
-  "if($tinkr_word==='}'&&(!$tinkr_stack)&&$tinkr_alt===0&&$tinkr_closed==='{'&&!$tinkr_next($tinkr_tokens,$tinkr_i,$tinkr_total)){" +
-  "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;}}" +
+  // block only ends it when nothing can follow it and php parses what was read
+  "if($tinkr_word==='}'&&(!$tinkr_stack)&&$tinkr_alt===0&&$tinkr_closed==='{'&&!$tinkr_next($tinkr_tokens,$tinkr_i,$tinkr_total)&&$tinkr_parses($tinkr_stmt)){" +
+  "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt,'head'=>$tinkr_head];$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;$tinkr_head=null;$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;}}" +
   // a `;` on its own is no statement: evaluated, it would answer null over the
   // value of the one before it. And a `;` that a continuation follows is not the
   // end of the statement either: an unbraced `if (…) echo 1; else echo 2;` is
@@ -154,12 +216,37 @@ const SPLIT_BLOCKS = [
   "if(!$tinkr_stack&&$tinkr_alt===0&&$tinkr_word===';'){" +
   '$tinkr_following=$tinkr_follow($tinkr_tokens,$tinkr_i,$tinkr_total);' +
   'if($tinkr_following===T_ELSE||$tinkr_following===T_ELSEIF||$tinkr_following===T_CATCH||$tinkr_following===T_FINALLY||($tinkr_do&&$tinkr_following===T_WHILE)){continue;}' +
-  "if(trim($tinkr_stmt)!==';'){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;}" +
+  "if(trim($tinkr_stmt)!==';'){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt,'head'=>$tinkr_head];}$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;$tinkr_head=null;$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;}" +
   // the token before a `{` is what says which kind of brace it is
   'if($tinkr_significant){$tinkr_prev=$tinkr_id===null?$tinkr_text:$tinkr_id;}',
   '}',
-  "if(trim($tinkr_stmt)!==''){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt];}",
+  "if(trim($tinkr_stmt)!==''){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt,'head'=>$tinkr_head];}",
 ]
+
+/**
+ * The php that rejects a snippet php itself would not compile.
+ *
+ * Every statement is evaluated on its own, but a snippet is not one: php parses
+ * the whole file before it runs the first line, so `echo 'x'; $broken = ;`
+ * prints nothing at all. The tokenizer is asked to parse the whole snippet before
+ * any of it is executed, and a snippet it rejects is answered with that parse
+ * error and no blocks. Nothing of the snippet has run — not an earlier statement,
+ * and not the user code an import's autoloader would go on to execute.
+ *
+ * A snippet whose last expression has no `;` is a scratchpad line rather than a
+ * file, so the parse is tried once more with the semicolon php needs: that is the
+ * one the wrapper appends to such a statement. When both fail, the reported error
+ * is the one the code the wrapper would have run reports.
+ *
+ * @type {String}
+ */
+const VALIDATE_BLOCK = "try{token_get_all('<?php '.$tinkr_code,TOKEN_PARSE);}" +
+  'catch(\\Throwable $tinkr_parse_failure){' +
+  "try{token_get_all('<?php '.$tinkr_code.\"\\n;\",TOKEN_PARSE);}" +
+  'catch(\\Throwable $tinkr_parse_error){' +
+  "$tinkr_error=['class'=>get_class($tinkr_parse_error),'message'=>$tinkr_parse_error->getMessage()];" +
+  "if($tinkr_parse_error->getPrevious()!==null){$tinkr_error['previous']=['class'=>get_class($tinkr_parse_error->getPrevious()),'message'=>$tinkr_parse_error->getPrevious()->getMessage()];}" +
+  '}}'
 
 /**
  * The loop that evaluates what the splitter found, one statement at a time.
@@ -169,6 +256,21 @@ const SPLIT_BLOCKS = [
  * with the ones before it standing. That is what running the snippet would have
  * done, and it is what the pane reads: `$tinkr_error` is the failure of the
  * whole run, and the blocks before it are what the run got through.
+ *
+ * An unconditional top-level function declaration is declared before the first
+ * statement runs, because php compiles the whole file before it runs any of it:
+ * `echo f(); function f() { return 'ok'; }` answers `ok` in php, and a snippet
+ * that declares a function and calls it above the declaration is the same
+ * snippet. Only a statement whose first token is `function` is one of those — a
+ * declaration inside an `if`, a closure assigned to a variable, and a `use
+ * function` import are not — and it is declared with the imports written before
+ * it, which are the ones its body was compiled with in a file too.
+ *
+ * A `use` statement is compile-time as well, and every statement is its own
+ * eval, so it is accumulated and written in front of what comes after it. It is
+ * recognized by the token the statement opens with, not by its text: a comment
+ * before it, a grouped import, `use function`/`use const`, and a closure's own
+ * `use (...)` inside a statement all land on the right side of that.
  *
  * Whether a statement is an expression is decided before any of it runs: php's
  * own tokenizer is asked whether `return <statement>` is syntax, and only the
@@ -187,28 +289,50 @@ const SPLIT_BLOCKS = [
  * there with the returned value as the run's answer. A `return` inside a
  * closure or a function is that function's own and leaves the flag alone.
  *
- * Each block's value is normalized once here, at the boundary it was answered
- * at, and the run's final value is that same snapshot: an object's
- * `jsonSerialize` is asked once, and a value whose serialization prints stays
- * printed once. The raw value is not kept, and nothing re-normalizes what this
- * loop already normalized.
+ * The raw value of a block is kept until the snippet has ended, and only then
+ * normalized: normalization is user code (`jsonSerialize`, an object's own
+ * fields) and asking it between two statements changed what the next one saw —
+ * a serializer that counts its calls was asked before the statement that read
+ * the counter. Scalars and arrays are snapshots taken when their statement
+ * answered, because php copies an array to write to it; an object is the object
+ * the snippet left, so it is described once, in its final state, and the same
+ * object in two blocks is serialized once rather than twice. The final value is
+ * the last block's snapshot, not a second walk over it.
  *
  * It is one string per line for reading, and it is one line to php: the wrapped
  * command is a single line, which is what every block of the wrapper has to
  * keep being.
  */
 const EVAL_BLOCKS = [
-  '$tinkr_results=[];$tinkr_value=null;$tinkr_uses=false;',
-  'foreach($tinkr_stmts as $tinkr_one){',
-  "$tinkr_query_line=$tinkr_one['line'];",
+  '$tinkr_results=[];$tinkr_value=null;$tinkr_uses=\'\';$tinkr_hoisted=[];$tinkr_last=null;',
+  // the declarations first: what php compiles before it runs the first line,
+  // compiled with the imports that precede each of them and nothing else
+  'foreach($tinkr_stmts as $tinkr_i=>$tinkr_one){',
   "$tinkr_source=rtrim($tinkr_one['code']);",
-  // a `use` is compiled with the code it is written in, and every statement is
-  // its own eval, so a use is kept and written in front of what comes after it:
-  // without that, `use Illuminate\Support\Collection;` is gone by the time the
-  // statement that names `Collection` runs
-  "if(preg_match('/^\\s*use\\s/i',$tinkr_source)===1){$tinkr_uses=($tinkr_uses?:'').$tinkr_source;" +
-    "if(substr(rtrim($tinkr_uses),-1)!==';'){$tinkr_uses.=';';}" +
-    "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>null];continue;}",
+  "if($tinkr_one['head']===T_USE){if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}$tinkr_uses.=$tinkr_source;continue;}",
+  "if($tinkr_one['head']!==T_FUNCTION){continue;}",
+  'try{eval($tinkr_uses.$tinkr_source);$tinkr_hoisted[$tinkr_i]=true;}' +
+    "catch(\\Throwable $tinkr_hoist_failure){$tinkr_error=['class'=>get_class($tinkr_hoist_failure),'message'=>$tinkr_hoist_failure->getMessage()];" +
+    "if($tinkr_hoist_failure->getPrevious()!==null){$tinkr_error['previous']=['class'=>get_class($tinkr_hoist_failure->getPrevious()),'message'=>$tinkr_hoist_failure->getPrevious()->getMessage()];}break;}",
+  '}',
+  // a declaration that could not be made stopped the run before it began, as a
+  // file that cannot be compiled would
+  'if($tinkr_error===null){',
+  '$tinkr_uses=\'\';',
+  '$tinkr_i=-1;',
+  'foreach($tinkr_stmts as $tinkr_one){',
+  '$tinkr_i++;',
+  "$tinkr_query_line=$tinkr_one['line'];",
+  // the declaration was made before the first statement, and is recorded where
+  // the snippet wrote it
+  "if(isset($tinkr_hoisted[$tinkr_i])){$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>null,'error'=>null];continue;}",
+  "$tinkr_source=rtrim($tinkr_one['code']);",
+  // a `use` is compile-time, and every statement is its own eval: it is kept by
+  // the token the statement opens with — not a regular expression — and written
+  // in front of what comes after it, so a comment before it does not hide it and
+  // a closure's own `use (...)` is not mistaken for one
+  "if($tinkr_one['head']===T_USE){if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}$tinkr_uses.=$tinkr_source;" +
+    "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>null,'error'=>null];continue;}",
   'if(substr($tinkr_source,-1)!==\';\'){$tinkr_source.="\\n;";}',
   '$tinkr_block_error=null;$tinkr_completed=false;$tinkr_expression=false;',
   // syntax only: nothing of the statement runs to find out what it is, so a
@@ -227,14 +351,23 @@ const EVAL_BLOCKS = [
   "$tinkr_block_error=['class'=>get_class($tinkr_failure),'message'=>$tinkr_failure->getMessage()];" +
     "if($tinkr_failure->getPrevious()!==null){$tinkr_block_error['previous']=['class'=>get_class($tinkr_failure->getPrevious()),'message'=>$tinkr_failure->getPrevious()->getMessage()];}",
   '}',
-  // the block's value as the envelope will carry it, and the final value is
-  // this snapshot when this is the last block
-  '$tinkr_value=$tinkr_safe($tinkr_value);',
-  "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>$tinkr_block_error];",
+  // the raw value stays raw until the snippet has ended: a serializer asked
+  // here would run between two of the snippet's own statements
+  "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>$tinkr_block_error];$tinkr_last=count($tinkr_results)-1;",
   'if($tinkr_block_error!==null){$tinkr_error=$tinkr_block_error;break;}',
   // a statement that returned left the flag false, and the snippet ended there
   'if(!$tinkr_completed&&!$tinkr_expression){break;}',
   '}',
+  '}',
+  // the snippet has ended, so every block can be described once: the same object
+  // is serialized once however many blocks hold it, arrays are the snapshots
+  // their statements answered with, and the run's final value is the last
+  // block's snapshot rather than a second walk over the same object. A query a
+  // serializer runs now belongs to no statement of the snippet, so it is on line
+  // 0; what it prints lands before the envelope, with the run's own output
+  '$tinkr_query_line=0;' +
+  "foreach($tinkr_results as $tinkr_i=>$tinkr_block){if($tinkr_block['error']===null){$tinkr_results[$tinkr_i]['value']=$tinkr_safe($tinkr_block['value']);}}",
+  "if($tinkr_error!==null){$tinkr_value=null;}elseif($tinkr_last!==null){$tinkr_value=$tinkr_results[$tinkr_last]['value'];}else{$tinkr_value=null;}",
 ]
 
 /**
@@ -436,19 +569,23 @@ const sandboxFinish = sandbox.finish
  * `SplFixedArray` is its elements written as a list. Their values are walked
  * too, so an unsafe scalar inside one is described rather than turned into a 0,
  * and a private or protected field is never exposed by the cast that reads them.
- * A `JsonSerializable` is asked for its value exactly once — here, at the
- * boundary the run answered at — and its answer is walked the same way; handing
- * the object itself to the envelope's `json_encode` would ask it again, and a
- * serializer that prints would print twice. A serializer that throws, a value
- * that refers back to itself, and one nested deeper than the limit are all
- * described instead of walked: there would otherwise be no envelope at all.
+ * A `JsonSerializable` is asked for its value exactly once, after the snippet
+ * has ended, and its answer is walked the same way; handing the object itself
+ * to the envelope's `json_encode` would ask it again, and a serializer that
+ * prints would print twice. The same object is described once however many
+ * statement values hold it, so what a serializer prints, and what state it
+ * reads, is its final one. A serializer that throws, a value that refers back
+ * to itself, and one nested deeper than the limit are all described instead of
+ * walked: there would otherwise be no envelope at all. The cache keeps the
+ * object until its answer is written, so the id it is filed under cannot be
+ * reused by a later object.
  *
  * @param {any} value
  * @param {Number} [depth] how far in the walk has gone, which bounds it
  * @return {any}
  */
-const SAFE_ENCODE = '$tinkr_seen=[];' +
-  '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe,&$tinkr_seen){' +
+const SAFE_ENCODE = '$tinkr_cache=[];' +
+  '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe,&$tinkr_cache){' +
   'if($tinkr_d>12){return "[deeper than 12 levels]";}' +
   // a float that cannot be written: json_encode writes INF and NAN as 0
   'if(is_float($tinkr_v)){if(is_nan($tinkr_v)){return "NAN";}if(is_infinite($tinkr_v)){return $tinkr_v>0?"INF":"-INF";}return $tinkr_v;}' +
@@ -468,26 +605,29 @@ const SAFE_ENCODE = '$tinkr_seen=[];' +
   '$tinkr_int=false;foreach(array_keys($tinkr_v) as $tinkr_k){if(is_int($tinkr_k)){$tinkr_int=true;break;}}' +
   'return $tinkr_int&&array_keys($tinkr_v)!==range(0,count($tinkr_v)-1)' +
   '?["__tinkrMap"=>$tinkr_out,"__tinkrKeys"=>array_map("strval",array_keys($tinkr_v))]:$tinkr_out;}' +
+  'if(is_object($tinkr_v)){' +
+  // one answer per object, however many blocks held it. The cache keeps the
+  // object itself, so its id cannot be reused while an answer is remembered,
+  // and a walk that meets an object it is still walking is the recursion it is
+  '$tinkr_id=spl_object_id($tinkr_v);' +
+  'if(isset($tinkr_cache[$tinkr_id])){$tinkr_hit=$tinkr_cache[$tinkr_id];return $tinkr_hit["done"]?$tinkr_hit["v"]:"[recursion]";}' +
+  '$tinkr_cache[$tinkr_id]=["o"=>$tinkr_v,"v"=>null,"done"=>false];' +
   // the serializer's answer is what the run had, and it is walked like any
   // other: the object itself is never handed on, so json_encode cannot ask it
   // a second time
   'if($tinkr_v instanceof \\JsonSerializable){' +
-  'foreach($tinkr_seen as $tinkr_seen_one){if($tinkr_seen_one===$tinkr_v){return "[recursion]";}}' +
-  '$tinkr_seen[]=$tinkr_v;' +
   'try{$tinkr_serialized=$tinkr_v->jsonSerialize();}' +
-  'catch(\\Throwable $tinkr_e){array_pop($tinkr_seen);return "[".get_class($tinkr_v)." could not be serialized: ".$tinkr_e->getMessage()."]";}' +
-  '$tinkr_serialized=$tinkr_safe($tinkr_serialized,$tinkr_d+1);array_pop($tinkr_seen);return $tinkr_serialized;}' +
+  'catch(\\Throwable $tinkr_e){$tinkr_answer="[".get_class($tinkr_v)." could not be serialized: ".$tinkr_e->getMessage()."]";$tinkr_cache[$tinkr_id]["v"]=$tinkr_answer;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_answer;}' +
+  '$tinkr_answer=$tinkr_safe($tinkr_serialized,$tinkr_d+1);$tinkr_cache[$tinkr_id]["v"]=$tinkr_answer;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_answer;}' +
   // an enum is an object, but its fields are not its value: a backed one's json
   // value is its value, and a pure one has no value json could write (it came
   // out as a 0), so it is named rather than reported as a value it never had.
   // A serializer it implements was asked above, because that is the answer the
   // enum itself chose
-  'if($tinkr_v instanceof \\UnitEnum){return $tinkr_v instanceof \\BackedEnum?$tinkr_safe($tinkr_v->value,$tinkr_d+1):$tinkr_v->name;}' +
+  'if($tinkr_v instanceof \\UnitEnum){$tinkr_answer=$tinkr_v instanceof \\BackedEnum?$tinkr_safe($tinkr_v->value,$tinkr_d+1):$tinkr_v->name;$tinkr_cache[$tinkr_id]["v"]=$tinkr_answer;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_answer;}' +
   // a plain object is walked field by field, but an internal one is not plain:
   // php's own json has a shape for several of them, and that shape is kept
-  'if(is_object($tinkr_v)){' +
-  'foreach($tinkr_seen as $tinkr_seen_one){if($tinkr_seen_one===$tinkr_v){return "[recursion]";}}' +
-  '$tinkr_seen[]=$tinkr_v;$tinkr_out=[];' +
+  '$tinkr_out=[];' +
   // a date and a timezone are the properties php itself exposes for them —
   // date, timezone_type, timezone — plus whatever public fields a subclass
   // added. The cast is that same table; a mangled name is a private or
@@ -511,7 +651,7 @@ const SAFE_ENCODE = '$tinkr_seen=[];' +
   'else{' +
   'foreach(get_object_vars($tinkr_v) as $tinkr_k=>$tinkr_item){$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
   '$tinkr_out=(object)$tinkr_out;}' +
-  'array_pop($tinkr_seen);return $tinkr_out;}' +
+  '$tinkr_cache[$tinkr_id]["v"]=$tinkr_out;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_out;}' +
   'return $tinkr_v;};'
 
 /**
@@ -620,12 +760,19 @@ const printer = (keys, close = '') => {
      * spent it.
      */
     shutdown: 'register_shutdown_function(function()use(&$tinkr_sent,&$tinkr_results,&$tinkr_value,&$tinkr_error,' +
-      '&$tinkr_queries,&$tinkr_query_total,&$tinkr_imported,&$tinkr_transaction,&$tinkr_safe,$tinkr' +
+      '&$tinkr_queries,&$tinkr_query_total,&$tinkr_query_line,&$tinkr_imported,&$tinkr_transaction,&$tinkr_safe,$tinkr' +
       (close
         ? ',&$tinkr_db,&$tinkr_tx,&$tinkr_tx_armed,&$tinkr_tx_error,&$tinkr_tx_mode,&$tinkr_tx_level,' +
         '&$tinkr_query_connections'
         : '') + '){' +
-      `if($tinkr_sent){return;}${ended}$tinkr_value=null;` +
+      `if($tinkr_sent){return;}${ended}` +
+      // the run left through exit(), dd() or a fatal before the loop could
+      // describe what it had answered, so its blocks are described here, once
+      // each: they are the same values the normal path would have walked, and
+      // a query a serializer runs belongs to no statement of the snippet
+      '$tinkr_query_line=0;' +
+      "foreach($tinkr_results as $tinkr_i=>$tinkr_block){if($tinkr_block['error']===null){$tinkr_results[$tinkr_i]['value']=$tinkr_safe($tinkr_block['value']);}}" +
+      '$tinkr_value=null;' +
       (close ? 'if($tinkr_tx_armed&&!isset($tinkr_transaction)){' + close + '}' : '') +
       `${echo}});`,
   }
@@ -635,13 +782,23 @@ const printer = (keys, close = '') => {
  * Wrap a snippet so the session prints what every statement in it answered.
  *
  * The snippet is passed as base64 so nothing in it has to be escaped, and php
- * splits it with its own tokenizer: where a statement ends is a string, a heredoc
- * or a `for (;;)` away from what counting semicolons would say. Every statement
- * is evaluated in turn — an expression as its value, a `dump` call as what it
- * returned, a loop as nothing — and the run stops at the first one that throws,
- * which is what running the snippet would have done. Whether a statement is an
- * expression is answered by the tokenizer before it runs (see EVAL_BLOCKS), so a
- * statement that throws while it runs is never run again to find its shape.
+ * parses the whole of it before any of it runs: a snippet with a syntax error
+ * anywhere in it executes nothing, which is what php does with a file. A valid
+ * snippet is split with php's own tokenizer: where a statement ends is a string,
+ * a heredoc, a `for (;;)` or the brace of a `match` away from what counting
+ * semicolons would say, and a brace that closes an expression never ends a
+ * statement (see SPLIT_BLOCKS). Every statement is evaluated in turn — an
+ * expression as its value, a `dump` call as what it returned, a loop as nothing —
+ * and the run stops at the first one that throws, which is what running the
+ * snippet would have done. Whether a statement is an expression is answered by
+ * the tokenizer before it runs (see EVAL_BLOCKS), so a statement that throws
+ * while it runs is never run again to find its shape.
+ *
+ * A `use` statement and an unconditional top-level function declaration are
+ * compile-time in php: the import applies to the code after it, and the function
+ * is callable before its declaration is reached. Both are handled where the
+ * statements are evaluated, by the token each statement opens with rather than
+ * by its text (see EVAL_BLOCKS).
  *
  * eval keeps the scope of the session, so what one statement assigns is what the
  * next one reads, and the variables of earlier runs are visible too. php wants
@@ -697,9 +854,9 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
   const keys = [
     '[',
     // what every statement answered, with the line of the statement that did.
-    // Each value was normalized once, where the statement answered it, and is
-    // not walked again: a second walk would ask a serializer a second time and
-    // would read the map shape the first walk wrote as an ordinary array
+    // Each value was normalized once, after the snippet ended, and is not walked
+    // again: a second walk would ask a serializer a second time and would read
+    // the map shape the first walk wrote as an ordinary array
     "'blocks'=>$tinkr_results,",
     // a run that ended in an error returned nothing, whatever the statement
     // before the one that threw had left in the variable. The value is the last
@@ -737,28 +894,46 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
       // the values that cannot be written as themselves are written as what
       // they are, so nothing comes back as a null it never was
       SAFE_ENCODE,
-      '$tinkr_error=null;$tinkr_sent=false;$tinkr_imported=[];',
+      // what the envelope reads, present even when the snippet is rejected
+      // before it runs: the run's error, and the empty answers it then has
+      '$tinkr_error=null;$tinkr_sent=false;$tinkr_imported=[];$tinkr_results=[];$tinkr_value=null;' +
+        '$tinkr_queries=[];$tinkr_query_total=0;' +
+        // the guard's own names, so its close is still read when nothing of the
+        // snippet ran
+        (mode ? `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=null;$tinkr_tx_mode='${mode}';$tinkr_tx_level=0;$tinkr_query_connections=[];` : '') +
+        (sandbox ? '$tinkr_effects=[];$tinkr_sandbox=[];' : ''),
       // from here to the envelope, an interrupt ends the run (see INTERRUPT_ARM)
       INTERRUPT_ARM,
       deadline.arm,
-      importBlock(entries),
+      // the whole snippet is parsed before a line of it runs: php compiles a
+      // file before it executes it, and a snippet with a syntax error anywhere
+      // in it executes nothing (see VALIDATE_BLOCK)
+      VALIDATE_BLOCK,
       // the pane reads the run from here: everything the session printed before
       // this line is the session booting
       'echo $tinkr_start;',
       // a run that leaves early — exit(), dd(), a fatal — still answers, which
       // is what the shutdown function is for
       shutdown,
+      // nothing of the snippet runs when the snippet itself would not compile,
+      // and none of what it would have touched — an import's autoloader, the
+      // event listener, the sandbox's drivers — is touched either
+      'if($tinkr_error===null){',
       // the queries are collected from before the first statement runs, and the
       // listener stays for as long as the session does
       QUERY_BLOCK,
       // the side effects are swapped for recorders before anything runs: the
       // mailer, the queues, the http client, the disks, the cache and the log
       sandboxArm(guard),
+      // the classes the snippet named by their short names are aliased before
+      // its body is compiled
+      importBlock(entries),
       ...SPLIT_BLOCKS,
       // the transaction is open before the first statement of the run, and it is
       // closed after the last one, whether that last one returned or threw
       mode ? guardArm(mode) : '',
       ...EVAL_BLOCKS,
+      '}',
       // the close and the sandbox's report, in that order: the transaction is
       // closed first, then what the run caught is counted
       closing,
