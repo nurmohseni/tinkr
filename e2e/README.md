@@ -74,7 +74,7 @@ stays untouched.
 | `10-production-gate` | a write held behind the production question, cancel, run anyway, unguardable dry run, guarded ordinary write |
 | `11-preferences` | theme, layout, statements, timeout, close prompt, command and log defaults, shortcut recorder, locale switch, lab form switch/prefix |
 | `12-ai` | the panel against a local OpenAI-shaped server, apply and discard, `@` project files, the two context switches, settings check |
-| `13-logs` | file rail, entries and details, level/search/time filters, follow, bounded infinite scrolling over a file larger than one window |
+| `13-logs` | file rail, entries and details, file-wide level/search/time filters, live-follow continuation updates, bounded bidirectional scrolling with stable row positions, and direction reversal during a delayed real file read |
 | `14-update` | available and downloaded update prompts, the missing-php warning |
 | `15-container-ssh` | container discovery and a run inside a real container; a real sshd with key auth and a run over ssh; the log viewer over both |
 | `16-mcp` | the bundled server, the connection a client runs in, the entry, a client configuration written, the tools, copy |

@@ -526,11 +526,11 @@ button.tree-nav__row {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
+    overflow-anchor: none;
     padding: var(--s1) 0;
 }
 
-/* the pages are kept as separate blocks so a page prepended above the reader
-   can be measured and the scroll moved by its height */
+/* Page blocks retain row identities while the opposite end is evicted. */
 .logs__page {
     display: block;
 }

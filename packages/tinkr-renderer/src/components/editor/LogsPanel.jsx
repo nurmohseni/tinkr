@@ -7,6 +7,7 @@ import LogsFilter from './LogsFilter'
 import {
   atEnd,
   atStart,
+  cancelLogPageAtom,
   followLogAtom,
   logsAtom,
   logsFollowAtom,
@@ -17,7 +18,6 @@ import {
   maxPages,
   newerLogAtom,
   olderLogAtom,
-  passesLevel,
   readLogAtom,
 } from '../../stores/logs'
 
@@ -54,8 +54,8 @@ const badgeOf = level => {
  * written as, and what it said. The context and the stack trace under it are
  * opened rather than summarised, because that is where a stack trace is read.
  */
-const Entry = ({entry}) => (
-  <details className='log'>
+const Entry = ({entry, id}) => (
+  <details className='log' data-entry={id}>
     <summary className='log__row'>
       <span className='log__at faint'>{entry.at || '—'}</span>
       <span className={badgeOf(entry.level)}>{entry.level || 'text'}</span>
@@ -70,6 +70,7 @@ const Entry = ({entry}) => (
 
 Entry.propTypes = {
   entry: PropTypes.object.isRequired,
+  id: PropTypes.string.isRequired,
 }
 
 /**
@@ -94,33 +95,33 @@ const LogsPanel = () => {
   const read = useSetAtom(readLogAtom)
   const older = useSetAtom(olderLogAtom)
   const newer = useSetAtom(newerLogAtom)
+  const cancelPage = useSetAtom(cancelLogPageAtom)
   const followNow = useSetAtom(followLogAtom)
   const levels = useAtomValue(logsLevelsAtom)
   const ranged = useAtomValue(logsRangedAtom)
   const [filtering, setFiltering] = useState(false)
   const [search, setSearch] = useAtom(logsSearchAtom)
+  const [searchInput, setSearchInput] = useState(search)
   const [follow, setFollow] = useAtom(logsFollowAtom)
-  // not named setInterval: that name is the timer below, and a setter in its
-  // place turned following into a store write that never read anything
   const [interval, setPollInterval] = useAtom(logsIntervalAtom)
   const listRef = useRef()
   const pinned = useRef(true)
-  const firstLoad = useRef(true)
-  // what the layout should do after a page lands: 'older' keeps the entry that
-  // was under the eye where it was, 'newer' holds the foot
-  const intent = useRef(null)
-  const priorFrom = useRef(null)
-  const loading = useRef({older: false, newer: false})
+  const anchor = useRef(null)
+  const request = useRef(null)
+  const view = useRef(logs.revision)
+  const restoredTop = useRef(null)
+  const busy = logs.loading || searchInput !== search
 
-  // another file opens on its end, as the first one did, whatever the reader
-  // had scrolled to in the file they left
   useEffect(() => {
-    pinned.current = true
-    firstLoad.current = true
-    intent.current = null
-  }, [logs.file])
+    if (searchInput === search) {
+      return undefined
+    }
 
-  // following: the file is being appended to, so the end is read again
+    const timer = setTimeout(() => setSearch(searchInput), 200)
+
+    return () => clearTimeout(timer)
+  }, [searchInput, search, setSearch])
+
   useEffect(() => {
     if (!follow || logs.file === '') {
       return undefined
@@ -131,143 +132,132 @@ const LogsPanel = () => {
     return () => clearInterval(timer)
   }, [follow, interval, logs.file, followNow])
 
-  const loadOlder = async () => {
-    if (loading.current.older || atStart(logs) || logs.pages.length === 0) {
-      return
+  const remember = () => {
+    const list = listRef.current
+    const top = list.getBoundingClientRect().top
+    anchor.current = null
+
+    for (const row of list.querySelectorAll('[data-entry]')) {
+      const box = row.getBoundingClientRect()
+
+      if (box.bottom > top) {
+        anchor.current = {key: row.dataset.entry, top: box.top - top}
+        break
+      }
     }
-
-    loading.current.older = true
-    intent.current = 'older'
-    priorFrom.current = logs.pages[0].from
-
-    await older()
-
-    loading.current.older = false
   }
 
-  const loadNewer = async () => {
-    if (loading.current.newer || atEnd(logs) || logs.pages.length === 0) {
+  const loadPage = async (side, cancelled = false) => {
+    if (busy || logs.error || (!cancelled && (logs.loadingOlder || logs.loadingNewer)) ||
+      request.current || logs.pages.length === 0 ||
+      (side === 'older' ? atStart(logs) : atEnd(logs))) {
       return
     }
 
-    loading.current.newer = true
-    intent.current = 'newer'
+    const pending = {side}
 
-    await newer()
+    request.current = pending
+    remember()
 
-    loading.current.newer = false
+    try {
+      await (side === 'older' ? older() : newer())
+    } finally {
+      if (request.current === pending) {
+        request.current = null
+      }
+    }
   }
 
   const handleScroll = () => {
     const list = listRef.current
 
-    if (!list) {
+    // A restoration is not a new request to read the opposite edge.
+    if (restoredTop.current !== null && Math.abs(list.scrollTop - restoredTop.current) < 1) {
+      restoredTop.current = null
       return
     }
 
-    const top = list.scrollTop <= edge
-    const bottom = list.scrollHeight - list.scrollTop - list.clientHeight <= edge
+    restoredTop.current = null
+    const distance = list.scrollHeight - list.scrollTop - list.clientHeight
 
-    pinned.current = bottom
+    pinned.current = distance <= 1
+    let cancelled = false
 
-    // following is watching the tail; a reader who has left it is not following
-    // any more, and the switch says so rather than pulling them back
-    if (follow && !bottom) {
+    if (request.current) {
+      const reversed = request.current.side === 'older'
+        ? distance <= edge && list.scrollTop > edge
+        : list.scrollTop <= edge && distance > edge
+
+      if (reversed) {
+        cancelPage()
+        request.current = null
+        anchor.current = null
+        cancelled = true
+      } else {
+        remember()
+      }
+    }
+
+    if (follow && !pinned.current) {
       setFollow(false)
+
+      if (logs.loadingNewer && !request.current) {
+        cancelPage()
+        cancelled = true
+      }
     }
 
-    if (top) {
-      loadOlder()
-    }
-
-    if (bottom) {
-      loadNewer()
+    if (list.scrollTop <= edge) {
+      loadPage('older', cancelled)
+    } else if (distance <= edge) {
+      loadPage('newer', cancelled)
     }
   }
 
-  // a page that lands above the one under the eye must not move it: the pages
-  // that were prepended are measured, and the scroll is moved by their height.
-  // A page that lands below keeps the foot in view, which is where a reader
-  // loading newer entries is.
   useLayoutEffect(() => {
     const list = listRef.current
 
+    if (view.current !== logs.revision) {
+      view.current = logs.revision
+      pinned.current = true
+      anchor.current = null
+      request.current = null
+    }
+
     if (!list) {
       return
     }
 
-    if (intent.current === 'older') {
-      let added = 0
+    const saved = anchor.current
+    const row = saved && list.querySelector(`[data-entry="${saved.key}"]`)
 
-      for (const page of list.querySelectorAll('[data-page]')) {
-        if (priorFrom.current !== null && Number(page.dataset.page) < priorFrom.current) {
-          added += page.offsetHeight
-        }
-      }
-
-      if (added > 0) {
-        list.scrollTop += added
-      }
-    } else if (intent.current === 'newer') {
-      list.scrollTop = list.scrollHeight
-    } else if (firstLoad.current || pinned.current) {
+    if (row) {
+      list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - saved.top
+    } else if (pinned.current) {
       list.scrollTop = list.scrollHeight
     }
 
-    firstLoad.current = false
-    intent.current = null
-    priorFrom.current = null
-  }, [logs.pages])
+    restoredTop.current = list.scrollTop
+    anchor.current = null
+  }, [logs.pages, logs.revision])
 
-  // a filter that leaves a shorter list is read under the eye, not moved to the
-  // foot unless the reader was at the foot
+  // A short result has no scrollbar to trigger the next read. Filtered pages
+  // contain matching entries, not a fixed byte slice that can hide every match.
   useEffect(() => {
     const list = listRef.current
 
-    if (list && pinned.current) {
-      list.scrollTop = list.scrollHeight
+    if (list && !busy && !logs.error && !logs.loadingOlder && !logs.loadingNewer &&
+      logs.pages.length > 0 && logs.pages.length < maxPages && !atStart(logs) &&
+      list.scrollHeight <= list.clientHeight + edge) {
+      loadPage('older')
     }
-  }, [levels, search])
+  })
 
-  // a page can be shorter than the pane — a file with long lines, or a level or
-  // a search term that hides most of what it holds. Fill the pane before waiting
-  // for a scroll that cannot happen: a filtered list shorter than the pane has
-  // no scrollbar, so without this the entries behind it could never be read.
-  //
-  // It stops at the page cap the rest of the viewer uses, so a filter's fill
-  // reads back a bounded number of pages and leaves the newest page in the list:
-  // what is on screen stays the newest matches the filter found, with the ones
-  // behind them under them.
-  useEffect(() => {
-    const list = listRef.current
-
-    if (!list || logs.loading || logs.loadingOlder || logs.pages.length === 0) {
-      return
-    }
-
-    if (logs.pages.length < maxPages && !atStart(logs) && list.scrollHeight <= list.clientHeight + edge) {
-      loadOlder()
-    }
-  }, [logs.pages, logs.loading, logs.loadingOlder, levels, search])
-
-  const term = search.trim().toLowerCase()
-  const visible = entry => {
-    if (entry.level !== null && !passesLevel(levels, entry.level)) {
-      return false
-    }
-
-    if (term === '') {
-      return true
-    }
-
-    return `${entry.at} ${entry.level} ${entry.message} ${entry.details}`.toLowerCase().includes(term)
-  }
-
-  const shown = logs.entries.filter(visible)
+  const shown = logs.entries
 
   const again = () => {
     pinned.current = true
-    intent.current = null
+    anchor.current = null
     read()
   }
 
@@ -277,7 +267,7 @@ const LogsPanel = () => {
         <div className='logs__row'>
           <div className='logs__filter'>
             <button
-              className={ranged ? 'btn btn--secondary btn--sm is-on' : 'btn btn--secondary btn--sm'}
+              className={ranged || levels.length > 0 || search !== '' ? 'btn btn--secondary btn--sm is-on' : 'btn btn--secondary btn--sm'}
               type='button'
               aria-expanded={filtering}
               aria-label={intl.formatMessage({id: 'editor.logs_filter'})}
@@ -292,10 +282,10 @@ const LogsPanel = () => {
           <input
             className='input'
             type='search'
-            value={search}
+            value={searchInput}
             placeholder={intl.formatMessage({id: 'editor.logs_search'})}
             aria-label={intl.formatMessage({id: 'editor.logs_search'})}
-            onChange={event => setSearch(event.target.value)}
+            onChange={event => setSearchInput(event.target.value)}
           />
 
           <span className='grow'/>
@@ -319,10 +309,9 @@ const LogsPanel = () => {
 
                   setFollow(on)
 
-                  // following is watching the tail; turning it on away from the
-                  // tail goes there rather than waiting for a read of a file
-                  // whose end is not on screen
-                  if (on && !atEnd(logs)) {
+                  // Following always resumes at the newest matching entry,
+                  // even when the held pages reach the tail but the viewport does not.
+                  if (on) {
                     again()
                   }
                 }}
@@ -354,23 +343,23 @@ const LogsPanel = () => {
         </div>
       </div>
 
-      <div className='logs__body' ref={listRef} onScroll={handleScroll}>
+      <div className='logs__body' ref={listRef} onScroll={handleScroll} aria-busy={busy || logs.loadingOlder || logs.loadingNewer}>
         {logs.error !== '' && <p className='logs__note error'>{logs.error}</p>}
 
-        {logs.error === '' && logs.file === '' && (
+        {!busy && logs.error === '' && logs.file === '' && (
           <p className='logs__note'>
             <FormattedMessage id='editor.logs_pick'/>
           </p>
         )}
 
-        {logs.file !== '' && shown.length === 0 && (
+        {!busy && logs.error === '' && logs.file !== '' && shown.length === 0 && (
           <p className='logs__note'>
             <FormattedMessage id='editor.logs_no_entries'/>
           </p>
         )}
 
         {logs.pages.map(page => {
-          const entries = page.entries.filter(visible)
+          const entries = page.entries
 
           if (entries.length === 0) {
             return null
@@ -379,7 +368,7 @@ const LogsPanel = () => {
           return (
             <div className='logs__page' data-page={page.from} key={page.from}>
               {entries.map((entry, index) => (
-                <Entry key={`${page.from}-${index}`} entry={entry}/>
+                <Entry key={`${page.from}-${index}`} id={`${page.from}-${index}`} entry={entry}/>
               ))}
             </div>
           )
@@ -388,27 +377,29 @@ const LogsPanel = () => {
 
       <div className='logs__foot'>
         <span className='logs__read faint truncate'>
-          {logs.loadingOlder
-            ? <FormattedMessage id='editor.logs_loading_older'/>
-            : logs.loadingNewer
-              ? <FormattedMessage id='editor.logs_loading_newer'/>
-              : atEnd(logs)
-                ? (
-                  <FormattedMessage
-                    id='editor.logs_read_of'
-                    values={{read: kb(logs.read), size: kb(logs.size)}}
-                  />
-                )
-                : (
-                  <FormattedMessage
-                    id='editor.logs_read_of_before'
-                    values={{
-                      read: kb(logs.read),
-                      back: kb(logs.size - logs.from - logs.read),
-                      size: kb(logs.size),
-                    }}
-                  />
-                )}
+          {busy
+            ? <FormattedMessage id='editor.logs_reading'/>
+            : logs.loadingOlder
+              ? <FormattedMessage id='editor.logs_loading_older'/>
+              : logs.loadingNewer
+                ? <FormattedMessage id='editor.logs_loading_newer'/>
+                : atEnd(logs)
+                  ? (
+                    <FormattedMessage
+                      id='editor.logs_read_of'
+                      values={{read: kb(logs.read), size: kb(logs.size)}}
+                    />
+                    )
+                  : (
+                    <FormattedMessage
+                      id='editor.logs_read_of_before'
+                      values={{
+                        read: kb(logs.read),
+                        back: kb(logs.size - logs.from - logs.read),
+                        size: kb(logs.size),
+                      }}
+                    />
+                    )}
         </span>
 
         {logs.file !== '' && atStart(logs) && !atEnd(logs) && (

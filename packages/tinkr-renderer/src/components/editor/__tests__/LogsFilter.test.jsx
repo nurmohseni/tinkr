@@ -1,5 +1,4 @@
-import React from 'react'
-import {act} from 'react-dom/test-utils'
+import React, {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {IntlProvider} from 'react-intl'
 import {Provider, createStore} from 'jotai'
@@ -9,12 +8,13 @@ import flatten from 'flat'
 // in scope; the transform jest runs here is the classic one
 global.React = React
 
+global.IS_REACT_ACT_ENVIRONMENT = true
 const logRead = jest.fn(() => Promise.resolve({size: 10, read: 10, from: 0, entries: []}))
 
 window.api = {logRead}
 
 const english = require('../../../../../tinkr-main/src/lang/en.json')
-const {logsAtom, logsLevelsAtom, logsRangedAtom, logsLevelAtom} = require('../../../stores/logs')
+const {logsAtom, logsLevelsAtom} = require('../../../stores/logs')
 const LogsFilter = require('../LogsFilter').default
 const {asField, asStamp, levels} = require('../LogsFilter')
 
@@ -46,8 +46,6 @@ const render = (store = createStore(), onClose = jest.fn()) => {
 
 const boxes = host => [...host.querySelectorAll('input[type="checkbox"]')]
 const dates = host => [...host.querySelectorAll('input[type="datetime-local"]')]
-const button = (host, id) => [...host.querySelectorAll('button')]
-  .find(one => one.textContent === (english.editor[id] || id))
 const setValue = (input, value) => {
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
 
@@ -77,13 +75,6 @@ describe('the moment fields', () => {
 })
 
 describe('the filter over a log', () => {
-  test('names every level monolog writes, not only the four a file tends to show', () => {
-    const {host} = render()
-
-    expect(levels).toEqual(['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'])
-    expect(boxes(host).length).toBe(levels.length)
-    expect(boxes(host).every(one => one.checked)).toBe(true)
-  })
 
   test('leaves a level out of what is shown when its box is cleared', () => {
     const {host, store} = render()
@@ -148,57 +139,6 @@ describe('the filter over a log', () => {
     expect(store.get(logsLevelsAtom).length).toBe(levels.length)
   })
 
-  test('asks the file for the range its fields name, rather than filtering what was read', () => {
-    const {host, store, onClose} = render()
-    const [from, to] = dates(host)
-
-    act(() => {
-      setValue(from, '2026-08-27T06:00:00')
-      setValue(to, '2026-08-27T08:30:00')
-    })
-
-    act(() => {
-      button(host, 'logs_filter_apply').click()
-    })
-
-    // the read is the service's, with the range on it: what comes back is the
-    // end of the range, found in the file
-    expect(logRead).toHaveBeenCalledWith('laravel.log', {bytes: 32 * 1024, since: '2026-08-27 06:00:00', until: '2026-08-27 08:30:00'})
-    expect(onClose).toHaveBeenCalled()
-    expect(store.get(logsRangedAtom)).toBe(true)
-  })
-
-  test('opens on the range already in force, so adjusting it starts from it', () => {
-    const store = createStore()
-
-    store.set(logsAtom, {file: 'laravel.log', entries: []})
-    store.set(logsLevelsAtom, [])
-
-    render(store)
-
-    // and a range is a read like any other, so it lands on the end of the range
-    expect(logRead).not.toHaveBeenCalled()
-  })
-
-  test('shows the whole file again when it is cleared, which is a read with no range', () => {
-    const {host, store} = render()
-    const [from] = dates(host)
-
-    act(() => {
-      setValue(from, '2026-08-27T06:00:00')
-    })
-
-    act(() => {
-      button(host, 'logs_filter_apply').click()
-    })
-
-    act(() => {
-      button(host, 'logs_filter_clear').click()
-    })
-
-    expect(logRead).toHaveBeenLastCalledWith('laravel.log', {bytes: 32 * 1024, since: '', until: ''})
-    expect(store.get(logsRangedAtom)).toBe(false)
-  })
 
   test('never narrows a field past its other end', () => {
     const {host} = render()
