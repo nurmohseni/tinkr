@@ -93,6 +93,14 @@ test.describe('the log viewer', () => {
       await expect(body).not.toContainText('daily job finished')
 
       await logs.getByRole('button', {name: 'Filter'}).click()
+      const emptyRange = logs.getByRole('group', {name: 'Filter'})
+      await emptyRange.getByLabel('to').fill('')
+      await emptyRange.getByLabel('from').fill('2027-01-01T00:00')
+      await emptyRange.getByRole('button', {name: 'Apply'}).click()
+      await expect(logs.locator('.logs__body')).toHaveAttribute('aria-busy', 'false')
+      await expect(logs.locator('details.log')).toHaveCount(0)
+
+      await logs.getByRole('button', {name: 'Filter'}).click()
       await logs.getByRole('group', {name: 'Filter'}).getByRole('button', {name: 'Whole file'}).click()
       await logs.getByRole('button', {name: 'Filter'}).click()
       await logs.getByRole('group', {name: 'Filter'}).getByLabel('debug', {exact: true}).check()
@@ -122,18 +130,36 @@ test.describe('the log viewer', () => {
       await expect(logs.locator('.logs__body')).toContainText('appended while following', {timeout: 15_000})
 
       await expect(logs.getByLabel('Follow')).toBeChecked()
+
+      await logs.getByRole('searchbox').fill('appended while following')
+      await expect(logs.locator('.log__message')).toHaveText(['appended while following'])
+
+      fs.appendFileSync(
+        path.join(project, 'storage', 'logs', 'laravel.log'),
+        '[stacktrace]\n#0 continuation appended after the header\n',
+      )
+
+      const appended = logs.locator('details.log').filter({hasText: 'appended while following'})
+      await expect(appended).toHaveCount(1)
+      await expect(appended.locator('pre')).toContainText('continuation appended after the header')
+      await appended.locator('summary').click()
+      await expect(appended.locator('pre')).toBeVisible()
+
+      await logs.getByRole('searchbox').fill('arriving needle')
+      await expect(logs.locator('details.log')).toHaveCount(0)
+      fs.appendFileSync(path.join(project, 'storage', 'logs', 'laravel.log'), '#1 arriving needle\n')
+      await expect(logs.locator('.log__message')).toHaveText(['appended while following'])
+      await expect(logs.locator('.log__details')).toContainText('#1 arriving needle')
     } finally {
       await close()
       fs.rmSync(project, {recursive: true, force: true})
     }
   })
 
-  test('keeps paging older entries while a level filter hides most of them', async () => {
+  test('finds sparse level and search matches beyond the loaded byte window', async () => {
     const project = copyFixture()
     const large = path.join(project, 'storage', 'logs', 'sparse.log')
-    // one warning every hundred entries: the newest page holds a handful, which
-    // is shorter than the pane, so the list has to be filled from older pages
-    const line = index => `[2026-10-20 10:${String(Math.floor(index / 60) % 60).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}] local.${index % 100 === 0 ? 'WARNING' : 'INFO'}: entry ${index}\n`
+    const line = index => `[2026-10-20 10:00:00] local.${index % 100 === 0 ? 'WARNING' : 'INFO'}: entry ${index}\n`
 
     fs.writeFileSync(large, Array.from({length: 5000}, (unused, index) => line(index)).join(''))
 
@@ -162,20 +188,25 @@ test.describe('the log viewer', () => {
         }
       }
 
-      const lowest = async () => Math.min(...((await body.innerText()).match(/entry \d+/g) || [])
-        .map(number => Number(number.slice(6))))
+      await filter.getByLabel('warning', {exact: true}).press('Escape')
+      await expect(logs.locator('details.log')).toHaveCount(50)
+      await expect(body).toContainText('entry 0')
+      await expect(body).toContainText('entry 4900')
+      await expect(body).not.toContainText('entry 4999')
 
-      // the matches of the newest page alone reach back a few hundred entries;
-      // older matches are only there if older pages were read under the filter
-      await expect(logs.locator('.logs__foot')).toContainText('before the end')
-      await expect.poll(lowest).toBeLessThan(4000)
+      await logs.getByRole('searchbox').fill('entry 100')
+      await expect(logs.locator('.log__message')).toHaveText(['entry 100', 'entry 1000'])
+      await logs.getByRole('searchbox').fill('does not exist')
+      await expect(logs.locator('.logs__body')).toHaveAttribute('aria-busy', 'false')
+      await expect(logs.locator('details.log')).toHaveCount(0)
+      await logs.getByRole('searchbox').fill('')
+      await expect(logs.locator('details.log')).toHaveCount(50)
 
-      const low = await lowest()
-
-      // and the top edge still reads the page before, as it does unfiltered
-      await body.evaluate(list => { list.scrollTop = 0 })
-
-      await expect.poll(lowest).toBeLessThan(low)
+      await logs.getByRole('button', {name: 'Filter', exact: true}).click()
+      await logs.getByRole('group', {name: 'Filter'}).getByLabel('warning', {exact: true}).uncheck()
+      await expect(logs.locator('details.log')).toHaveCount(0)
+      await logs.getByRole('group', {name: 'Filter'}).getByLabel('warning', {exact: true}).check()
+      await expect(logs.locator('details.log')).toHaveCount(50)
     } finally {
       await close()
       fs.rmSync(project, {recursive: true, force: true})
@@ -203,27 +234,105 @@ test.describe('the log viewer', () => {
       await expect(logs.locator('.logs__foot')).toContainText('read the last')
       await expect(body).toContainText('entry 4999')
 
-      const lowest = async () => Math.min(...((await body.innerText()).match(/entry \d+/g) || [])
-        .map(number => Number(number.slice(6))))
+      const step = async side => {
+        const before = await body.evaluate((list, direction) => {
+          list.scrollTop = direction === 'older' ? 0 : list.scrollHeight
+          const top = list.getBoundingClientRect().top
+          const row = Array.from(list.querySelectorAll('[data-entry]'))
+            .find(one => one.getBoundingClientRect().bottom > top)
+          const pages = list.querySelectorAll('[data-page]')
 
-      let low = await lowest()
+          return {
+            from: Number(pages[0].dataset.page),
+            to: Number(pages[pages.length - 1].dataset.page),
+            key: row.dataset.entry,
+            y: row.getBoundingClientRect().top,
+          }
+        }, side)
 
-      // the top edge is the trigger; the page it reads is joined above, and the
-      // entry that was under the eye stays where it was
-      for (let at = 0; at < 5; at++) {
-        await body.evaluate(list => { list.scrollTop = 0 })
-        await expect.poll(lowest).toBeLessThan(low)
-        low = await lowest()
+        const boundary = () => body.evaluate((list, direction) => {
+          const pages = list.querySelectorAll('[data-page]')
+          return Number(pages[direction === 'older' ? 0 : pages.length - 1].dataset.page)
+        }, side)
+
+        if (side === 'older') {
+          await expect.poll(boundary).toBeLessThan(before.from)
+        } else {
+          await expect.poll(boundary).toBeGreaterThan(before.to)
+        }
+
+        const y = await body.locator(`[data-entry="${before.key}"]`).evaluate(row => row.getBoundingClientRect().top)
+        expect(Math.abs(y - before.y)).toBeLessThan(1)
+        expect(await body.locator('[data-page]').count()).toBeLessThanOrEqual(4)
       }
 
-      // the cap has dropped the newest page by now, so the list is not at the end
-      await expect(logs.locator('.logs__foot')).toContainText('before the end')
+      for (let at = 0; at < 5; at++) {
+        await step('older')
+      }
+
       await expect(body).not.toContainText('entry 4999')
 
-      // the bottom edge reads the page after the held end, and the newest entry
-      // comes back
-      await body.evaluate(list => { list.scrollTop = list.scrollHeight })
-      await expect(logs.locator('.logs__foot')).toContainText('read the last', {timeout: 15_000})
+      for (let at = 0; at < 2; at++) {
+        await step('newer')
+      }
+
+      await expect(body).toContainText('entry 4999')
+
+      // Matching-entry pagination takes the same path with a different cursor
+      // width: 100 matches, rather than 32 KB of raw bytes.
+      await logs.getByRole('searchbox').fill('entry ')
+      await expect(logs.locator('details.log')).toHaveCount(100)
+
+      for (let at = 0; at < 5; at++) {
+        await step('older')
+      }
+
+      await expect(body).not.toContainText('entry 4999')
+
+      for (let at = 0; at < 2; at++) {
+        await step('newer')
+      }
+
+      await expect(body).toContainText('entry 4999')
+
+      // Delay the real file read to exercise the direction change an SSH
+      // connection can make visible. No log answer is replaced by a mock.
+      await app.evaluate(({ipcMain}) => {
+        const original = ipcMain._invokeHandlers.get('logRead')
+        globalThis.delayedLogReadFinished = false
+        ipcMain.removeHandler('logRead')
+        ipcMain.handle('logRead', async (...args) => {
+          const delayed = args[3].before != null
+
+          if (delayed) {
+            await new Promise(resolve => setTimeout(resolve, 600))
+          }
+
+          const answer = await original(...args)
+
+          if (delayed) {
+            globalThis.delayedLogReadFinished = true
+          }
+
+          return answer
+        })
+      })
+
+      await body.evaluate(list => { list.scrollTop = 0 })
+      await expect(body).toHaveAttribute('aria-busy', 'true')
+      const returned = await body.evaluate(list => {
+        list.scrollTop = list.scrollHeight
+        const top = list.getBoundingClientRect().top
+        const row = Array.from(list.querySelectorAll('[data-entry]'))
+          .find(one => one.getBoundingClientRect().bottom > top)
+
+        return {key: row.dataset.entry, y: row.getBoundingClientRect().top}
+      })
+
+      await expect.poll(() => app.evaluate(() => globalThis.delayedLogReadFinished)).toBe(true)
+      const returnedY = await body.locator(`[data-entry="${returned.key}"]`)
+        .evaluate(row => row.getBoundingClientRect().top)
+      expect(Math.abs(returnedY - returned.y)).toBeLessThan(1)
       await expect(body).toContainText('entry 4999')
     } finally {
       await close()

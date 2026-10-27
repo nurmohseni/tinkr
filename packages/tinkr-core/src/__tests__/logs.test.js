@@ -6,7 +6,7 @@ const path = require('path')
 const {EventEmitter} = require('events')
 const {spawn} = require('child_process')
 
-const {files, parse, read, dirOf, stampOf} = require('../logs')
+const {files, parse, read, dirOf, stampOf, levels} = require('../logs')
 
 const line = (at, environment, level, rest) => `[${at}] ${environment}.${level}: ${rest}`
 
@@ -688,5 +688,547 @@ describe('a filtered read of a log', () => {
     expect(answer.entries).toEqual([])
     expect(answer.older).toBe(0)
     expect(answer.read).toBe(0)
+  })
+})
+
+describe('a page of whole entries', () => {
+  let root = ''
+
+  const messages = count => Array.from({length: count}, (unused, at) => `entry ${at} `.padEnd(90, '.'))
+
+  const textOf = count => messages(count)
+    .map((message, at) => line(`2026-08-27 10:${String(at).padStart(2, '0')}:00`, 'production', 'INFO', message))
+    .join('\n') + '\n'
+
+  const write = text => fs.writeFileSync(path.join(root, 'storage', 'logs', 'laravel.log'), text)
+
+  const local = () => ({path: root, is_over_ssh: false})
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-page-'))
+    fs.mkdirSync(path.join(root, 'storage', 'logs'), {recursive: true})
+  })
+
+  afterEach(() => fs.rmSync(root, {recursive: true, force: true}))
+
+  test('begins and ends on entry headers, so no entry is cut in two', async () => {
+    write(textOf(40))
+
+    const answer = await read(local(), 'laravel.log', {paginate: true, bytes: 1024})
+    const whole = fs.readFileSync(path.join(root, 'storage', 'logs', 'laravel.log'))
+
+    expect(answer.from + answer.read).toBe(answer.size)
+    expect(answer.read).toBeGreaterThanOrEqual(1024)
+    // a page starts on a line an entry starts on, never in the middle of one
+    expect(whole.slice(answer.from, answer.from + 1).toString()).toBe('[')
+    expect(answer.entries.length).toBeGreaterThan(0)
+    expect(answer.entries.every(one => /^entry \d+ /.test(one.message))).toBe(true)
+    expect(answer.entries[answer.entries.length - 1].message.startsWith('entry 39 ')).toBe(true)
+  })
+
+  test('walks back and forward over the same entry starts without gaps or repeats', async () => {
+    write(textOf(30))
+
+    const backward = []
+    const pages = []
+    let before
+
+    for (;;) {
+      const page = await read(local(), 'laravel.log', {paginate: true, bytes: 1024, before})
+
+      expect(page.entries.every(one => /^entry \d+ /.test(one.message))).toBe(true)
+
+      if (page.read === 0) {
+        break
+      }
+
+      pages.unshift(page)
+      backward.unshift(...page.entries.map(one => one.message))
+
+      if (page.from === 0) {
+        break
+      }
+
+      before = page.from
+    }
+
+    // every page ends where the one above it begins: the bytes are contiguous
+    for (let at = 1; at < pages.length; at++) {
+      expect(pages[at - 1].from + pages[at - 1].read).toBe(pages[at].from)
+    }
+
+    expect(backward).toEqual(messages(30))
+    expect(new Set(backward).size).toBe(backward.length)
+
+    const forward = []
+    let after = 0
+
+    for (;;) {
+      const page = await read(local(), 'laravel.log', {paginate: true, bytes: 1024, after})
+
+      if (page.read === 0) {
+        break
+      }
+
+      expect(page.from).toBe(after)
+
+      forward.push(...page.entries.map(one => one.message))
+      after = page.from + page.read
+    }
+
+    expect(forward).toEqual(backward)
+  })
+
+  test('moves a before that lands inside an entry back to the entry header', async () => {
+    write(textOf(6))
+
+    const whole = fs.readFileSync(path.join(root, 'storage', 'logs', 'laravel.log'))
+    const at = whole.indexOf('entry 3 ') + 5
+    const page = await read(local(), 'laravel.log', {paginate: true, bytes: 1024, before: at})
+
+    // the page ends at the header of the entry the byte is in, not inside it
+    expect(page.from + page.read).toBeLessThanOrEqual(at)
+    expect(whole.slice(page.from, page.from + 1).toString()).toBe('[')
+    expect(page.entries.every(one => /^entry \d+ /.test(one.message))).toBe(true)
+
+    const newer = await read(local(), 'laravel.log', {paginate: true, bytes: 1024, after: page.from + page.read})
+
+    expect(newer.from).toBe(page.from + page.read)
+    expect([...page.entries, ...newer.entries].map(one => one.message)).toEqual(messages(6))
+  })
+
+  test('keeps one entry larger than the page whole, details included', async () => {
+    const details = Array.from({length: 4000}, (unused, at) => `#${at} /app/frame.php(1): go()`)
+    const text = `${line('2026-08-27 10:00:00', 'production', 'ERROR', 'huge')}\n${details.join('\n')}\n` +
+      `${line('2026-08-27 10:01:00', 'production', 'INFO', 'after')}\n`
+
+    write(text)
+
+    const answer = await read(local(), 'laravel.log', {paginate: true, bytes: 1024})
+
+    expect(answer.entries.map(one => one.message)).toEqual(['huge', 'after'])
+    expect(answer.entries[0].details.split('\n')).toEqual(details)
+    expect(answer.read).toBeGreaterThan(1024)
+  })
+
+  test('starts an overlap page at the header of a cursor that is no longer a page boundary', async () => {
+    const first = `${line('2026-08-27 12:00:00', 'production', 'INFO', 'first')}\n`
+    const second = line('2026-08-27 12:01:00', 'production', 'INFO', 'second')
+
+    write(first + second.slice(0, second.length - 2))
+
+    const page = await read(local(), 'laravel.log', {paginate: true, bytes: 4096})
+    const after = page.from + page.read
+
+    // the second entry was half written; the file now ends it and adds one
+    write(`${first}${second}\n${line('2026-08-27 12:02:00', 'production', 'INFO', 'third')}\n`)
+
+    const next = await read(local(), 'laravel.log', {paginate: true, bytes: 4096, after})
+
+    // the tail of the page that ended in a partial entry is read again from
+    // that entry's header, so the completed entry is not lost or shown twice
+    expect(next.from).toBeLessThan(after)
+    expect(next.entries.map(one => one.message)).toEqual(['second', 'third'])
+    expect(next.entries[0].details).toBe('')
+    expect(next.from).toBe(Buffer.byteLength(first))
+  })
+
+  test('re-reads a completed header or continuation from the entry it belongs to', async () => {
+    const header = line('2026-08-27 12:00:00', 'production', 'ERROR', 'boom')
+    const first = `${header}\n#0 frame one`
+
+    write(first)
+
+    const page = await read(local(), 'laravel.log', {paginate: true, bytes: 4096})
+    const after = page.from + page.read
+
+    write(`${first}\n#1 frame two`)
+
+    const continued = await read(local(), 'laravel.log', {paginate: true, bytes: 4096, after})
+
+    expect(continued.from).toBe(0)
+    expect(continued.entries).toEqual([{
+      at: '2026-08-27 12:00:00',
+      environment: 'production',
+      level: 'error',
+      message: 'boom',
+      details: '#0 frame one\n#1 frame two',
+    }])
+
+    // a header that was cut short is an entry once its line is complete
+    const cut = `${line('2026-08-27 12:00:00', 'production', 'INFO', 'first')}\n${header.slice(0, header.indexOf(': '))}`
+
+    write(cut)
+
+    const before = await read(local(), 'laravel.log', {paginate: true, bytes: 4096})
+    const cursor = before.from + before.read
+
+    write(`${line('2026-08-27 12:00:00', 'production', 'INFO', 'first')}\n${header}\n`)
+
+    const completed = await read(local(), 'laravel.log', {paginate: true, bytes: 4096, after: cursor})
+
+    expect(completed.from).toBeLessThan(cursor)
+    expect(completed.entries.map(one => one.message)).toEqual(['boom'])
+  })
+
+  test('answers with an empty page at the end of the file without overlapping', async () => {
+    write(textOf(3))
+
+    const answer = await read(local(), 'laravel.log', {paginate: true, bytes: 1024, after: textOf(3).length})
+
+    expect(answer).toEqual({
+      file: 'laravel.log',
+      size: textOf(3).length,
+      from: textOf(3).length,
+      read: 0,
+      range: {from: 0, to: textOf(3).length},
+      entries: [],
+    })
+  })
+
+  test('keeps a multi-byte character whole when its line crosses a read chunk', async () => {
+    const header = line('2026-08-27 12:00:00', 'production', 'ERROR', 'wide')
+    const pad = 'x'.repeat(65536 - Buffer.byteLength(header) - 2)
+    const details = `${pad}é${'y'.repeat(200)}`
+
+    write(`${header}\n${details}\n${line('2026-08-27 12:01:00', 'production', 'INFO', 'after')}\n`)
+
+    const answer = await read(local(), 'laravel.log', {paginate: true, term: 'wide', limit: 1})
+
+    expect(answer.entries).toHaveLength(1)
+    expect(answer.entries[0].details).toBe(details)
+    expect(answer.entries[0].details).toContain('é')
+  })
+})
+
+describe('a filtered page of whole entries', () => {
+  let root = ''
+
+  const lineAt = at => line(`2026-08-27 10:${String(at).padStart(2, '0')}:00`, 'production', at % 2 === 0 ? 'ERROR' : 'INFO', at % 2 === 0 ? `boom ${at}` : `chatter ${at}`)
+
+  const write = lines => fs.writeFileSync(path.join(root, 'storage', 'logs', 'laravel.log'), lines.join('\n') + '\n')
+
+  const local = () => ({path: root, is_over_ssh: false})
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-fpage-'))
+    fs.mkdirSync(path.join(root, 'storage', 'logs'), {recursive: true})
+  })
+
+  afterEach(() => fs.rmSync(root, {recursive: true, force: true}))
+
+  test('walks back over matches without skipping or repeating one', async () => {
+    write(Array.from({length: 24}, (unused, at) => lineAt(at)))
+
+    const wanted = Array.from({length: 24}, (unused, at) => at)
+      .filter(at => at % 2 === 0)
+      .map(at => `boom ${at}`)
+    const pages = []
+    let before
+
+    for (;;) {
+      const page = await read(local(), 'laravel.log', {paginate: true, term: 'boom', limit: 3, before})
+
+      if (page.read === 0) {
+        break
+      }
+
+      expect(page.entries.every(one => /^boom \d+$/.test(one.message))).toBe(true)
+
+      pages.unshift(page)
+
+      if (page.from === 0) {
+        break
+      }
+
+      before = page.from
+    }
+
+    for (let at = 1; at < pages.length; at++) {
+      expect(pages[at - 1].from + pages[at - 1].read).toBe(pages[at].from)
+      expect(pages[at - 1].to).toBe(pages[at].from)
+    }
+
+    const seen = pages.flatMap(page => page.entries.map(one => one.message))
+
+    expect(seen).toEqual(wanted)
+    expect(new Set(seen).size).toBe(seen.length)
+  })
+
+  test('walks forward over the oldest matches, ending each page at the first omitted one', async () => {
+    write(Array.from({length: 24}, (unused, at) => lineAt(at)))
+
+    const wanted = Array.from({length: 24}, (unused, at) => at)
+      .filter(at => at % 2 === 0)
+      .map(at => `boom ${at}`)
+    const seen = []
+    let after = 0
+
+    for (;;) {
+      const page = await read(local(), 'laravel.log', {paginate: true, term: 'boom', limit: 3, after})
+
+      if (page.read === 0) {
+        break
+      }
+
+      expect(page.from).toBe(after)
+      expect(page.entries.length).toBeLessThanOrEqual(3)
+
+      seen.push(...page.entries.map(one => one.message))
+      after = page.to
+    }
+
+    expect(seen).toEqual(wanted)
+    expect(new Set(seen).size).toBe(seen.length)
+  })
+
+  test('pages more matches than one page holds, in both directions', async () => {
+    const messages = Array.from({length: 150}, (unused, at) => `boom ${at}`)
+    const lines = Array.from({length: 150}, (unused, at) => line(
+      '2026-08-27 10:00:00',
+      'production',
+      'ERROR',
+      `boom ${at}`,
+    ))
+
+    write(lines)
+
+    const backward = []
+    let before
+
+    for (;;) {
+      const page = await read(local(), 'laravel.log', {paginate: true, term: 'boom', before})
+
+      if (page.read === 0) {
+        break
+      }
+
+      expect(page.entries.length).toBeLessThanOrEqual(100)
+
+      backward.unshift(...page.entries.map(one => one.message))
+
+      if (page.from === 0) {
+        break
+      }
+
+      before = page.from
+    }
+
+    expect(backward).toEqual(messages)
+
+    const forward = []
+    let after = 0
+
+    for (;;) {
+      const page = await read(local(), 'laravel.log', {paginate: true, term: 'boom', after})
+
+      if (page.read === 0) {
+        break
+      }
+
+      expect(page.entries.length).toBeLessThanOrEqual(100)
+
+      forward.push(...page.entries.map(one => one.message))
+      after = page.to
+    }
+
+    expect(forward).toEqual(messages)
+  })
+
+  test('finds an entry that starts matching when its details finish arriving', async () => {
+    const file = path.join(root, 'storage', 'logs', 'laravel.log')
+    const first = `${line('2026-08-27 10:00:00', 'production', 'ERROR', 'prior needle')}\n`
+    const tail = `${line('2026-08-27 10:01:00', 'production', 'INFO', 'new tail')}\n#0 partial`
+    fs.writeFileSync(file, first + tail)
+
+    const page = await read(local(), 'laravel.log', {paginate: true, term: 'needle'})
+    expect(page.entries.map(one => one.message)).toEqual(['prior needle'])
+    const after = page.from + page.read
+    fs.appendFileSync(file, ' needle complete\n')
+
+    const next = await read(local(), 'laravel.log', {paginate: true, term: 'needle', after})
+
+    expect(next.from).toBe(Buffer.byteLength(first))
+    expect(next.from).toBeLessThan(after)
+    expect(next.entries.map(one => one.message)).toEqual(['new tail'])
+    expect(next.entries[0].details).toBe('#0 partial needle complete')
+  })
+
+  test('finds a match behind the newest page, and pages to it', async () => {
+    const filler = Array.from({length: 3000}, (unused, at) => line(`2026-08-27 11:00:00`, 'production', 'INFO', `filler ${at} `.padEnd(80, '.')))
+
+    write([line('2026-08-27 10:00:00', 'production', 'ERROR', 'ancient needle'), ...filler, line('2026-08-27 12:00:00', 'production', 'ERROR', 'recent needle')])
+
+    const newest = await read(local(), 'laravel.log', {paginate: true, term: 'needle', limit: 1})
+
+    expect(newest.entries.map(one => one.message)).toEqual(['recent needle'])
+    expect(newest.older).toBe(1)
+
+    const older = await read(local(), 'laravel.log', {paginate: true, term: 'needle', limit: 1, before: newest.from})
+
+    expect(older.entries.map(one => one.message)).toEqual(['ancient needle'])
+    expect(older.from).toBe(0)
+
+    // the same behind-the-page reach for a level filter: the filler is all INFO
+    const levelNewest = await read(local(), 'laravel.log', {paginate: true, excludeLevels: ['info'], limit: 1})
+
+    expect(levelNewest.entries.map(one => one.message)).toEqual(['recent needle'])
+
+    const levelOlder = await read(local(), 'laravel.log', {paginate: true, excludeLevels: ['info'], limit: 1, before: levelNewest.from})
+
+    expect(levelOlder.entries.map(one => one.message)).toEqual(['ancient needle'])
+  })
+
+  test('advances over a region with no matches instead of stalling', async () => {
+    write(Array.from({length: 10}, (unused, at) => lineAt(at)))
+
+    const forward = await read(local(), 'laravel.log', {paginate: true, term: 'nothing here', after: 0})
+
+    expect(forward.entries).toEqual([])
+    expect(forward.from).toBe(0)
+    expect(forward.read).toBe(forward.size)
+    expect(forward.to).toBe(forward.size)
+
+    const backward = await read(local(), 'laravel.log', {paginate: true, term: 'nothing here'})
+
+    expect(backward.entries).toEqual([])
+    expect(backward.from).toBe(0)
+    expect(backward.read).toBe(backward.size)
+  })
+
+  test('excludes levels without dropping the lines that have none', async () => {
+    write([
+      'a log file that is not laravel\'s',
+      line('2026-08-27 10:00:00', 'production', 'ERROR', 'bad'),
+      line('2026-08-27 10:01:00', 'production', 'INFO', 'good'),
+      line('2026-08-27 10:02:00', 'production', 'WARNING', 'eh'),
+    ])
+
+    const all = await read(local(), 'laravel.log', {paginate: true, bytes: 4096, excludeLevels: [], term: ''})
+
+    expect(all.entries.map(one => one.message)).toEqual(['a log file that is not laravel\'s', 'bad', 'good', 'eh'])
+
+    const noInfo = await read(local(), 'laravel.log', {paginate: true, bytes: 4096, excludeLevels: ['info']})
+
+    expect(noInfo.entries.map(one => one.message)).toEqual(['a log file that is not laravel\'s', 'bad', 'eh'])
+
+    // excluding everything known leaves the unformatted text, not every level
+    const none = await read(local(), 'laravel.log', {paginate: true, bytes: 4096, excludeLevels: levels})
+
+    expect(none.entries.map(one => one.message)).toEqual(['a log file that is not laravel\'s'])
+
+    const upper = await read(local(), 'laravel.log', {paginate: true, bytes: 4096, excludeLevels: ['ERROR']})
+
+    expect(upper.entries.map(one => one.message)).toEqual(['a log file that is not laravel\'s', 'good', 'eh'])
+  })
+
+  test('refuses an excluded level monolog does not have', () => {
+    write([lineAt(0)])
+
+    expect(() => read(local(), 'laravel.log', {paginate: true, excludeLevels: ['eror']})).toThrow(/is not a level a log holds/)
+  })
+
+  test('keeps pages inside the range a since and until name', async () => {
+    const lines = Array.from({length: 24}, (unused, at) => line(
+      `2026-08-27 ${String(Math.floor(at / 2)).padStart(2, '0')}:${at % 2 === 0 ? '00' : '30'}:00`,
+      'production',
+      at % 2 === 0 ? 'ERROR' : 'INFO',
+      at % 2 === 0 ? `boom ${at}` : `chatter ${at}`,
+    ))
+
+    write(lines)
+
+    const newest = await read(local(), 'laravel.log', {paginate: true, term: 'boom', since: '2026-08-27 04:00:00', until: '2026-08-27 07:30:00', limit: 2})
+
+    expect(newest.range).toEqual({from: expect.any(Number), to: expect.any(Number)})
+    expect(newest.entries.every(one => one.at >= '2026-08-27 04:00:00' && one.at <= '2026-08-27 07:30:00')).toBe(true)
+
+    const older = await read(local(), 'laravel.log', {paginate: true, term: 'boom', since: '2026-08-27 04:00:00', until: '2026-08-27 07:30:00', limit: 2, before: newest.from})
+
+    expect(older.entries.every(one => one.at >= '2026-08-27 04:00:00' && one.at <= '2026-08-27 07:30:00')).toBe(true)
+    expect(older.to).toBe(newest.from)
+  })
+})
+
+describe('a page of whole entries on another machine', () => {
+  const connection = {
+    path: '/var/www/app',
+    is_over_ssh: true,
+    ssh_server: '192.168.1.1',
+    ssh_user: 'root',
+  }
+
+  beforeEach(() => spawn.mockReset())
+
+  test('is asked for as a page and read from the text it answers with', async () => {
+    const text = `${line('2026-08-27 11:10:52', 'local', 'INFO', 'first')}\n${line('2026-08-27 11:10:53', 'local', 'INFO', 'second')}\n`
+    const size = Buffer.byteLength(text)
+    const start = Buffer.byteLength(line('2026-08-27 11:10:52', 'local', 'INFO', 'first')) + 1
+
+    spawn.mockImplementation(() => answering(JSON.stringify({
+      size, from: 0, to: size, start, end: size, text: text.slice(start), whole: true,
+    })))
+
+    const answer = await read(connection, 'laravel.log', {paginate: true, bytes: 1024})
+
+    expect(answer).toEqual({
+      file: 'laravel.log',
+      size,
+      from: start,
+      read: size - start,
+      range: {from: 0, to: size},
+      entries: [{
+        at: '2026-08-27 11:10:53',
+        environment: 'local',
+        level: 'info',
+        message: 'second',
+        details: '',
+      }],
+    })
+  })
+
+  test('is filtered and paged on that machine, and its offsets are the page', async () => {
+    const size = 4096
+    const edge = JSON.stringify({size, from: 0, to: size, start: 0, text: ''})
+    const page = JSON.stringify({
+      size,
+      from: 1024,
+      to: 2045,
+      entries: [{at: '2026-08-27 11:10:53', environment: 'production', level: 'error', message: 'boom', details: ''}],
+      older: 2,
+    })
+
+    spawn.mockImplementation((command, args = []) => {
+      if (args.includes('-O')) {
+        return answering('', 1)
+      }
+
+      if (args.includes('-f')) {
+        return answering('')
+      }
+
+      const question = args[args.length - 1] || ''
+
+      return answering(question.includes('$tinkr_exclude') ? page : edge)
+    })
+
+    const answer = await read(connection, 'laravel.log', {paginate: true, term: 'boom', limit: 3, before: 2045})
+
+    expect(answer).toEqual({
+      file: 'laravel.log',
+      size,
+      from: 1024,
+      to: 2045,
+      read: 1021,
+      range: {from: 0, to: size},
+      entries: [{
+        at: '2026-08-27 11:10:53',
+        environment: 'production',
+        level: 'error',
+        message: 'boom',
+        details: '',
+      }],
+      older: 2,
+    })
   })
 })

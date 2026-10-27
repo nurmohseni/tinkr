@@ -93,7 +93,9 @@ What a run does with the code is worth knowing before the first one:
 | **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
 | **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. |
 | **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. Laravel Cloud cannot cancel a command it was given, so stopping a Cloud run ends the wait and says the command keeps running there. A run also gives up on its own after the **run timeout** you set in Settings, so a snippet that never returns cannot hold the session. While a run is going the editor is read-only, the button counts the wait, and the answer reports how long the whole of it took. |
-| **Log viewer** | Your app's logs (`storage/logs` or anywhere) in a window of their own, so the editor keeps its width. Filter by any of monolog's eight levels, by a term, and by a span of time. Follow a file live, or scroll back through it: pages load as you reach the edges, and only a bounded window is held. |
+| **Log viewer** | Your app's logs (`storage/logs` or anywhere) in a window of their own. Level, text and time filters search the file, not just loaded pages. Scroll in either direction with your place preserved and only a bounded window held; messages and stack traces stay together across pages. Follow live, including details that arrive after an entry's header. |
+
+Log searches scan the selected file or time range on the connection's host. They can take longer than ordinary paging on a large file, but only matching entries are returned. Changing the file or filters supersedes pending reads; reversing direction discards a pending page rather than evicting what you returned to.
 
 ### Ask
 
