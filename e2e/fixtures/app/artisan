@@ -352,6 +352,20 @@ function collect($items = [])
     return new TinkrFixtureCollection($items);
 }
 
+// psysh never lets a line the code prints reach php's own writer: it buffers the
+// output, a chunk at a time, and writes it to its output stream itself (see
+// psysh's ExecutionCleanupState). That is not a detail here. The app starts the
+// session with `-d cli.pager=cat` (see Session's withoutPager), and with the
+// readline extension loaded php's writer copies everything it is handed into
+// that pager as well as onto the terminal — so a plain `echo` arrives twice, the
+// second copy a 4 KB stdio buffer behind, spliced into whatever comes next. The
+// fixture writes the way psysh does, so it answers the way psysh does.
+ob_start(function ($out) {
+    fwrite(STDOUT, $out);
+
+    return '';
+}, 1);
+
 // `tinker --execute=<code>` is how a Laravel Cloud run reaches a project: one
 // command, one eval, and the process ends. The code is evaluated here, at the
 // top level, which is the scope the interactive loop's own eval runs in — so the
