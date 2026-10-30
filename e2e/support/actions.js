@@ -52,7 +52,7 @@ const runEditor = async (page, {expectResult = true} = {}) => {
   await button.click()
 
   if (expectResult) {
-    await expect(page.locator('.output .result-summary, .output .error-surface, .output .empty--benign').first())
+    await expect(page.locator('.output .result-summary:visible, .output .error-surface:visible, .output .empty--benign:visible').first())
       .toBeVisible({timeout: 60_000})
   }
 

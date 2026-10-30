@@ -81,7 +81,7 @@ test.describe('running a snippet', () => {
     try {
       await runCode(page, 'unset($nothing);')
 
-      await expect(page.locator('.output .empty--benign')).toBeVisible()
+      await expect(page.locator('.output .empty--benign:visible')).toBeVisible()
       await expect(page.locator('.output .error-surface')).toHaveCount(0)
       await expect(page.locator('.statusbar')).not.toContainText('Run failed')
     } finally {

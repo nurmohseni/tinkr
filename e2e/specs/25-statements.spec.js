@@ -37,8 +37,9 @@ test.describe('splitting a run into statements', () => {
     const {page, close} = await launchTinkr()
 
     try {
-      // the `;` after a block's `}` belongs to it, so the value is the match's
-      await runCode(page, "match (true) {\n  2 > 1 => 'matched-gt',\n  default => 'matched-le',\n};")
+      // The semicolon after the match's closing brace belongs to the expression.
+      // Keep the opening brace off a line end so Monaco does not auto-close it.
+      await runCode(page, "match (true) { 2 > 1 => 'matched-gt',\n  default => 'matched-le',\n};")
       await expect(page.locator('.output')).toContainText('matched-gt')
 
       // a declaration ends at its `}`, even when the next line opens with `(`.
