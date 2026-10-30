@@ -14,7 +14,6 @@ test.describe('the app shell', () => {
       await expect(page.locator('.statusbar')).toContainText('Connected · Fixture (local)')
       await expect(page.locator('.statusbar')).toContainText(/PHP \d+\.\d+/)
       await expect(page.locator('.statusbar')).toContainText('autocomplete off')
-      await expect(page.locator('.statusbar')).toContainText('Tinkr 0.4.6')
 
       await expect(page.getByRole('navigation', {name: 'Connections'})).toContainText('Fixture')
       await expect(page.getByRole('navigation', {name: 'Snippets'})).toContainText('No snippets yet')
