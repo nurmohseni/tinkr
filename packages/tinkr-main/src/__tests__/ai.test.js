@@ -191,3 +191,50 @@ describe('test clean', () => {
     expect(clean('$user->name\n')).toBe('$user->name')
   })
 })
+
+describe('test what an AI request carries of a run', () => {
+  test('should carry the value of a field the settings hide as [hidden]', () => {
+    const output = {
+      value: {id: 1, name: 'Ada', password: 'hunter2', remember_token: 'Zx9'},
+      error: null,
+      output: '',
+    }
+    const messages = askMessages({prompt: 'why?', code: '$user = User::first();', output})
+
+    expect(messages[1].content).toContain('"password": "[hidden]"')
+    expect(messages[1].content).toContain('"remember_token": "[hidden]"')
+    expect(messages[1].content).toContain('"name": "Ada"')
+    expect(messages[1].content).not.toContain('hunter2')
+    expect(messages[1].content).not.toContain('Zx9')
+  })
+
+  test('should hide a field at any depth in the value the request carries', () => {
+    const messages = askMessages({
+      prompt: 'what came back?',
+      code: '',
+      output: {
+        value: {data: [{id: 1, api_key: 'sk-live'}, {id: 2, api_key: 'sk-other'}], meta: {token: 'Zx9'}},
+        error: null,
+        output: '',
+      },
+    })
+
+    expect(messages[1].content).not.toContain('sk-live')
+    expect(messages[1].content).not.toContain('sk-other')
+    expect(messages[1].content).not.toContain('Zx9')
+    expect(messages[1].content).toContain('"api_key": "[hidden]"')
+    expect(messages[1].content).toContain('"token": "[hidden]"')
+  })
+
+  test('should keep what the run printed, and leave the caller its own result', () => {
+    const output = {
+      value: {id: 1, password: 'hunter2'},
+      error: null,
+      output: 'password: hunter2',
+    }
+    const messages = askMessages({prompt: 'why?', code: '', output})
+
+    expect(messages[1].content).toContain('password: hunter2')
+    expect(output.value.password).toBe('hunter2')
+  })
+})

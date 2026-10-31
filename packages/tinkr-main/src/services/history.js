@@ -1,5 +1,8 @@
 const {randomBytes} = require('crypto')
 
+const {redactResult} = require('tinkr-core')
+
+const {config} = require('../database/config')
 const {history} = require('../database/history')
 
 // an entry carries the code that ran in full, so the list is capped instead of
@@ -50,24 +53,29 @@ const answerOf = result => {
     return {}
   }
 
+  // what is kept on disk is what may leave the machine: a password the run
+  // returned is written as `[hidden]`, and the pane that showed it is the pane
+  // that ran it. The envelope is masked rather than the value alone, so the
+  // same rule covers every part of a run an entry keeps now or later
+  const safe = redactResult(result, config.get('redact_fields'))
   const answer = {}
   const cut = []
 
-  if (result.error) {
-    answer.error = result.error
+  if (safe.error) {
+    answer.error = safe.error
   }
 
-  if (result.value !== null && result.value !== undefined) {
-    if (sizeOf(result.value) <= kept) {
-      answer.value = result.value
+  if (safe.value !== null && safe.value !== undefined) {
+    if (sizeOf(safe.value) <= kept) {
+      answer.value = safe.value
     } else {
       cut.push('value')
     }
   }
 
-  if (result.output) {
-    if (result.output.length <= kept) {
-      answer.output = result.output
+  if (safe.output) {
+    if (safe.output.length <= kept) {
+      answer.output = safe.output
     } else {
       cut.push('output')
     }

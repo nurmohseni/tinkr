@@ -1,8 +1,11 @@
+const fs = require('fs')
 const path = require('path')
 const {spawn} = require('child_process')
 const {test, expect} = require('@playwright/test')
 
-const {fixture, fixtureConnection, repo, seedProfile} = require('../support/tinkr')
+const {fixture, fixtureConnection, launchTinkr, repo, seedProfile} = require('../support/tinkr')
+
+const configFile = profile => path.join(profile, 'Electron', 'app', 'config.json')
 
 /**
  * Start the server the way a client does: a node process, JSON-RPC on stdin and
@@ -96,7 +99,10 @@ const startServer = (args = ['--path', fixture, '--timeout', '20000']) => {
 
 test.describe('the MCP server', () => {
   test('answers the handshake, lists its tools and runs code in the fixture', async () => {
-    const server = startServer()
+    // app data of its own: the server keeps its session there, and the
+    // person's own Tinkr is not where a test leaves one
+    const profile = seedProfile({connections: []})
+    const server = startServer(['--path', fixture, '--data-dir', path.join(profile, 'Electron'), '--timeout', '20000'])
 
     try {
       const init = await server.request('initialize', {
@@ -175,6 +181,86 @@ test.describe('the MCP server', () => {
       expect(guarded.structuredContent.queriesTotal).toBe(1)
     } finally {
       await server.stop()
+      fs.rmSync(profile, {recursive: true, force: true})
+    }
+  })
+
+  test('runs on production through the production mode, and lists the session there', async () => {
+    const {app, page, profile, close} = await launchTinkr({
+      connections: [fixtureConnection({tag: 'production'})],
+    })
+    // started on the production connection by name, which used to be enough
+    const server = startServer([
+      '--data-dir', path.join(profile, 'Electron'),
+      '--connection', 'fixture',
+      '--timeout', '20000',
+    ])
+
+    try {
+      await server.request('initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: {name: 'tinkr-e2e', version: '7'},
+      })
+
+      const refused = await server.request('tools/call', {name: 'tinkr_run_php', arguments: {code: '1 + 1;'}})
+
+      expect(refused.isError).toBe(true)
+      expect(refused.content[0].text).toContain('Settings → MCP')
+      expect(refused.content[0].text).toContain('refuse')
+
+      const [settings] = await Promise.all([
+        app.waitForEvent('window'),
+        page.getByRole('button', {name: 'Settings'}).click(),
+      ])
+
+      await settings.locator('.app').waitFor({state: 'visible'})
+      await settings.locator('aside.rail').getByRole('button', {name: 'MCP'}).click()
+      await settings.locator('.segmented__item').filter({hasText: 'Sandbox'}).click()
+
+      await expect.poll(() => JSON.parse(fs.readFileSync(configFile(profile), 'utf8')).mcp_production).toBe('guarded')
+
+      // the same server, still running, follows the setting, and the run goes
+      // out with the guard the mode forced on it
+      const ran = await server.request('tools/call', {name: 'tinkr_run_php', arguments: {code: '1 + 1;'}})
+
+      expect(ran.isError).toBe(false)
+      expect(ran.structuredContent.value).toBe(2)
+      expect(ran.content[0].text).toContain('forced to `guard: "sandbox"`')
+
+      // the list is read again while it is open, so the calls show up there
+      const session = settings.locator('.mcpsession').filter({hasText: 'tinkr-e2e'})
+
+      await expect(session).toContainText('2 calls', {timeout: 10_000})
+      await expect(session).toContainText('1 threw')
+      await expect(session).toContainText('Live')
+
+      await session.locator('.mcpsession__row').click()
+
+      const calls = session.locator('.mcpcall')
+
+      await expect(calls).toHaveCount(2)
+      // newest first: the run that went through, then the one that was refused
+      await expect(calls.nth(0)).toContainText('tinkr_run_php')
+      await expect(calls.nth(1)).toContainText('production')
+
+      await calls.nth(1).locator('summary').click()
+      await expect(calls.nth(1)).toContainText('refuse')
+
+      // a client that closes the pipe ends its session
+      await server.stop()
+      await expect(session).not.toContainText('Live', {timeout: 10_000})
+
+      // an ended session can be forgotten, once asked
+      await settings.locator('.mcppane').filter({has: settings.locator('.mcppane__head', {hasText: 'Sessions'})})
+        .getByRole('button', {name: 'Clear'})
+        .click()
+      await settings.getByRole('dialog', {name: 'Forget the ended sessions?'}).getByRole('button', {name: 'Clear'}).click()
+      await expect(settings.getByText('No client has used the server yet')).toBeVisible()
+      expect(fs.readdirSync(path.join(profile, 'Electron', 'app', 'mcp'))).toEqual([])
+    } finally {
+      await server.stop()
+      await close()
     }
   })
 

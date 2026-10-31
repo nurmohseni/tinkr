@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 import debounce from 'lodash/debounce'
 
 import {termOptions, watchTermTheme} from '../../utils/getTermOptions'
-import {currentResultAtom, currentOutputAtom, currentRunCodeAtom, outputViewAtom, runAtom, activeDocumentAtom} from '../../stores/editor'
+import {currentResultAtom, currentOutputAtom, currentRunCodeAtom, outputViewAtom, runAtom, activeDocumentAtom, connectionAtom} from '../../stores/editor'
 import {configAtom} from '../../stores/config'
 import Result from './Result'
 import useFitAddon from '../../hooks/useFitAddon'
@@ -47,6 +47,7 @@ const Output = () => {
   const run = useSetAtom(runAtom)
   const runningFor = useAtomValue(activeDocumentAtom)
   const code = useAtomValue(currentRunCodeAtom)
+  const connection = useAtomValue(connectionAtom)
 
   // keeping a dry run means running it again, and what it runs is the code the
   // run it is offered under was sent with, not whatever the editor holds now
@@ -116,12 +117,14 @@ const Output = () => {
           onView={setView}
           onKeep={keepRun}
           allStatements={config.result_blocks !== 'last'}
+          code={code}
+          connection={(connection && connection.name) || ''}
         />
       )}
     </>
     // the reading is a prop of the result: a memo that ignored it would keep
     // drawing the one it was first given
-  ), [result, view, config.result_blocks, keepRun])
+  ), [result, view, config.result_blocks, keepRun, code, connection])
 }
 
 export default Output

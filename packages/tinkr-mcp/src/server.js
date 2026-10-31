@@ -1,6 +1,6 @@
 const fs = require('fs')
 
-const {runCode, logs: logReader} = require('tinkr-core')
+const {redactResult, redactValue, runCode, logs: logReader, unguardableReasons, unguardableScan} = require('tinkr-core')
 
 const app = require('./app')
 const {topics, documentation} = require('./documentation')
@@ -86,6 +86,90 @@ const renderTransaction = (transaction, guard) => {
   if (unguarded.length) {
     lines.push(`Not inside the dry run, and kept: ${unguarded
       .map(([name, count]) => `${count} statement${count === 1 ? '' : 's'} on ${name}`).join(', ')}.`)
+  }
+
+  lines.push(...renderChanges(transaction))
+
+  return lines
+}
+
+/** A value of a changed row, as one line: a string quoted, everything else bare. */
+const oneLine = value => (typeof value === 'string' ? JSON.stringify(value) : (value === null ? 'null' : String(value)))
+
+/** A row's key: `id=1`, or the columns of a key that is more than one. */
+const keyOf = key => (isRecord(key) ? Object.entries(key).map(([name, value]) => `${name}=${oneLine(value)}`).join(', ') : '')
+
+// how many changed rows an answer writes out. The list the session sends is
+// already capped; this keeps a text answer short enough to read
+const maxRows = 20
+// a column's value in the text, cut where a row of prose would run on
+const maxCell = 80
+const cell = value => {
+  const text = isRecord(value) || Array.isArray(value) ? JSON.stringify(value) : oneLine(value)
+
+  return text.length > maxCell ? `${text.slice(0, maxCell)}…` : text
+}
+
+/**
+ * What the run changed, row by row, as lines of text.
+ *
+ * A dry run's answer is read as what it would have done, so the rows come right
+ * after the statement that none of it was kept: the operation, the table, the
+ * key, and one `column before → after` per column it touched. A created row has
+ * values and no before, a deleted row the other way round.
+ *
+ * The writes nothing could describe are said last, with the first few as they
+ * were sent: a dry run that leaves out what it could not read is a dry run that
+ * claims more coverage than it has.
+ *
+ * @param {Object} transaction the envelope's report
+ * @return {Array<String>}
+ */
+const renderChanges = transaction => {
+  const changes = Array.isArray(transaction.changes) ? transaction.changes.filter(isRecord) : []
+  const total = Number.isFinite(transaction.changesTotal) ? transaction.changesTotal : changes.length
+  const undiffed = isRecord(transaction.undiffed) ? transaction.undiffed : {}
+  const undiffedCount = Number(undiffed.count) || 0
+  const sample = Array.isArray(undiffed.sample) ? undiffed.sample.filter(sql => typeof sql === 'string' && sql) : []
+  const lines = []
+
+  if (total > 0) {
+    const shown = Math.min(changes.length, maxRows)
+    const cut = total > changes.length ? ` (the first ${changes.length} are in the answer)` : ''
+
+    lines.push(`Changes: ${total} row${total === 1 ? '' : 's'}${cut}.`)
+
+    for (const change of changes.slice(0, shown)) {
+      const key = keyOf(change.key)
+      const before = isRecord(change.before) ? change.before : {}
+      const after = isRecord(change.after) ? change.after : {}
+      const columns = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+      const values = columns.map(name => {
+        if (change.op === 'created') {
+          return `${name} ${cell(after[name])}`
+        }
+
+        if (change.op === 'deleted') {
+          return `${name} ${cell(before[name])}`
+        }
+
+        return `${name} ${cell(before[name])} → ${cell(after[name])}`
+      })
+
+      lines.push(`  ${change.op} ${change.table}${key ? ` ${key}` : ''}: ${values.join(', ')}`)
+    }
+
+    if (changes.length > shown) {
+      lines.push(`  … ${changes.length - shown} more rows the answer does not list`)
+    }
+  }
+
+  if (undiffedCount > 0) {
+    lines.push(`Not diffed: ${undiffedCount} write${undiffedCount === 1 ? '' : 's'} inside the dry run could not be described as rows.`)
+
+    for (const sql of sample) {
+      lines.push(`  ${sql}`)
+    }
   }
 
   return lines
@@ -387,17 +471,74 @@ const bound = result => {
 }
 
 /**
+ * What a forced guard was, and why the run had it.
+ *
+ * A run that goes through because the app's production mode is `guarded` is a
+ * run whose guard the caller did not choose. The answer says so before anything
+ * else it says, and names the thing that forced it, because a model reading its
+ * own output has to know that what it asked for is not what ran.
+ *
+ * @param {{connection: Object, source: String}} access
+ * @return {String}
+ */
+const forcedGuardNote = access => {
+  const because = access.source === 'connection'
+    ? `${access.connection.name}'s own MCP access in Tinkr is set to "sandbox"`
+    : 'Tinkr\'s Settings → MCP runs code there only inside a sandbox'
+
+  return `Guarded run: ${access.connection.name} is tagged production, and ${because}, so this run ` +
+    'was forced to `guard: "sandbox"` whatever it asked for — mail, jobs, HTTP calls, file writes, ' +
+    'the cache and the log were recorded instead of happening, and its database changes were rolled back.'
+}
+
+/**
+ * The transaction a forced sandbox could not hold, said as its own line.
+ *
+ * A broken transaction is the one outcome a reader must not miss: what the run
+ * changed may have been kept. It is said before the rest of the answer, in the
+ * same answer that already reports the run, so a client that only reads the
+ * first line still reads this.
+ *
+ * @param {Object} result the run envelope
+ * @param {{connection: Object}} access
+ * @return {String}
+ */
+const brokenGuardNote = (result, access) => isRecord(result.transaction) && result.transaction.outcome === 'broken'
+  ? 'Guarded run BROKEN: the sandbox\'s transaction was closed during the run, so what it changed ' +
+    `may have been kept on ${access.connection.name}.`
+  : ''
+
+/**
  * The run, as the tool answers with it.
+ *
+ * What the app's settings hide is hidden here, in the same answer in both of
+ * its forms: the text a model reads and the structured value a client reads
+ * are the same run, and one of them carrying a password would make the other
+ * one's masking pointless.
  *
  * @param {Object} result
  * @param {String|null} guard
+ * @param {Array<String>} [fields] the app's `redact_fields`
+ * @param {Object|null} [access] what the production mode did: `connection`,
+ *   `mode`, `source` (`settings` or `connection`) and `forced`
  * @return {{content: Array, structuredContent: Object, isError: Boolean}}
  */
-const answer = (result, guard) => ({
-  content: [{type: 'text', text: render(result, guard)}],
-  structuredContent: bound(result),
-  isError: false,
-})
+const answer = (result, guard, fields, access = null) => {
+  const safe = redactResult(result, fields)
+  const notes = access && access.forced ? [brokenGuardNote(safe, access), forcedGuardNote(access)].filter(Boolean) : []
+  const text = render(safe, guard)
+  const structured = bound(safe)
+
+  if (access) {
+    structured.production = {mode: access.mode, source: access.source, guard_forced: Boolean(access.forced)}
+  }
+
+  return {
+    content: [{type: 'text', text: truncate(notes.length ? `${notes.join('\n\n')}\n\n${text}` : text)}],
+    structuredContent: structured,
+    isError: false,
+  }
+}
 
 /**
  * The call that did not come back, as the tool answers with it: the code never
@@ -457,13 +598,18 @@ const sessionFailureOf = error => {
  * — as the tool answers with it: a tool error, with what the terminal said.
  *
  * @param {Object} result the envelope the session answered with
+ * @param {Array<String>} [fields] the app's `redact_fields`
  * @return {{content: Array, structuredContent: Object, isError: Boolean}}
  */
-const sessionFailure = result => ({
-  content: [{type: 'text', text: truncate(`The session ended before the run answered: ${result.error.message}`)}],
-  structuredContent: bound(result),
-  isError: true,
-})
+const sessionFailure = (result, fields) => {
+  const safe = redactResult(result, fields)
+
+  return {
+    content: [{type: 'text', text: truncate(`The session ended before the run answered: ${safe.error.message}`)}],
+    structuredContent: bound(safe),
+    isError: true,
+  }
+}
 
 /**
  * @param {Object} args
@@ -664,8 +810,9 @@ const connectionInfo = connection => {
   return info
 }
 
-const productionRule = 'A connection tagged production is refused unless this server was started on ' +
-  'it (--connection) or with --allow-production.'
+const productionRule = 'A connection tagged production follows the production mode in Tinkr\'s ' +
+  'Settings → MCP, or a closer mode set on that connection: `refuse` (the default, the run is ' +
+  'refused), `guarded` (the run is sent with `guard: "sandbox"` whatever was asked), or `allow`.'
 
 const guardInput = {
   type: 'string',
@@ -838,6 +985,18 @@ const runOutput = {
         outcome: {type: 'string'},
         error: {type: ['string', 'null']},
         unguarded: {type: 'object'},
+      },
+    },
+    production: {
+      type: ['object', 'null'],
+      description: 'What Tinkr\'s production access did to a run on a connection tagged ' +
+        'production: the mode that applied (`refuse`, `guarded` or `allow`), whether a ' +
+        'connection\'s own access set it (`connection`) or Settings → MCP did (`settings`), and ' +
+        'whether the guard was forced rather than asked for.',
+      properties: {
+        mode: {type: 'string'},
+        source: {type: 'string'},
+        guard_forced: {type: 'boolean'},
       },
     },
     cut: {
@@ -1325,12 +1484,11 @@ const boundEntries = entries => {
  * The server's tools, over a target and a way to run code in it.
  *
  * @param {{target: Object, version: String, timeout?: Number, run?: Function,
- *   log?: Object, pinned?: Boolean, allowProduction?: Boolean,
- *   command?: String}} options `target` is target.resolve's answer, `run` is what
- *   actually runs the code, and is replaced in a test. `pinned` says the target
- *   was named with --connection, `allowProduction` that the server was started
- *   with --allow-production, and `command` is the --command it was given
- * @return {{tools: Array, call: Function, instructions: String}}
+ *   log?: Object, command?: String, journal?: Object}} options `target` is
+ *   target.resolve's answer, `run` is what actually runs the code, and is
+ *   replaced in a test. `command` is the --command it was given, and `journal`
+ *   is where the session's calls are kept for the app to show (journal.open)
+ * @return {{tools: Array, call: Function, initialize: Function, instructions: String}}
  */
 const createServer = ({
   target: resolved,
@@ -1338,15 +1496,9 @@ const createServer = ({
   timeout = 60000,
   run = runCode,
   log = console,
-  pinned = false,
-  allowProduction = false,
   command = null,
+  journal = null,
 }) => {
-  // the connection a production run is let through to without
-  // --allow-production: the one the server was started on by name, which is a
-  // choice someone made for this server rather than one a client makes per call
-  const pinnedId = pinned && resolved.saved ? resolved.connection.id : null
-
   /**
    * @param {Object} connection
    * @param {String} code
@@ -1407,9 +1559,10 @@ const createServer = ({
    *
    * @param {Object} args
    * @param {Boolean} overSsh whether the tool is the ssh one
+   * @param {Object} [notes] what the production mode did, for the journal
    * @return {Object}
    */
-  const runTargetOf = (args, overSsh) => {
+  const runTargetOf = (args, overSsh, notes = null) => {
     const named = Boolean(args.connection || args.path)
     const found = lookup(args)
     const {connection} = found
@@ -1433,12 +1586,36 @@ const createServer = ({
       throw new Error(`${connection.name} ${where}. Use ${tool}.`)
     }
 
-    if (connection.tag === 'production' && !allowProduction && !(found.saved && connection.id === pinnedId)) {
-      throw new Error(
-        `${connection.name} is tagged production, and this server does not run code there: it runs ` +
-        'code in a production connection only when it was started on that connection ' +
-        '(--connection) or with --allow-production.',
-      )
+    // the app's own files are read again on every run: a client keeps its
+    // server open for as long as it runs, and a mode or a connection's own
+    // access changed in the app has to hold from the next run on, not from the
+    // next restart of the client. The connection the server was started on is
+    // the one object that was resolved once, so its tag and access are read
+    // back from the file here as well
+    const stored = found.dataDir && connection.id !== 'cwd'
+      ? app.connections(found.dataDir).find(one => one.id === connection.id) || null
+      : null
+    const tag = stored ? stored.tag : connection.tag
+
+    // a connection that is not tagged production is never gated: it is the
+    // production tag that is a promise, and the app reads it from its file here
+    const access = tag === 'production'
+      ? app.productionAccess(found.dataDir, stored || connection)
+      : null
+
+    if (access && notes) {
+      notes.mode = access.mode
+      notes.modeSource = access.source
+    }
+
+    if (access && access.mode === 'refuse') {
+      throw new Error(access.source === 'connection'
+        ? `${connection.name} is tagged production, and its own MCP access in Tinkr's Settings → MCP ` +
+          'is set to refuse, so this run was not sent. Change it there to "Sandbox" or "Allow" to let ' +
+          'a client run code there.'
+        : `${connection.name} is tagged production, and Tinkr's Settings → MCP sets production ` +
+          'connections to refuse, so this run was not sent. Set "Production connections" there to ' +
+          '"Sandbox" or "Allow" to let a client run code there.')
     }
 
     // a directory that is not there would boot the session in the home
@@ -1458,7 +1635,7 @@ const createServer = ({
       }
     }
 
-    return found
+    return access ? Object.assign({}, found, {access}) : found
   }
 
   /**
@@ -1486,34 +1663,85 @@ const createServer = ({
    * @param {Object} args
    * @param {Boolean} overSsh
    * @param {AbortSignal} [signal]
+   * @param {Object} [notes] what the production mode did, for the journal
    * @return {Promise<Object>}
    */
-  const runTool = async (args, overSsh, signal) => {
+  const runTool = async (args, overSsh, signal, notes = null) => {
     const code = codeOf(args)
-    const guard = guardOf(args)
-    const found = runTargetOf(args, overSsh)
+    const asked = guardOf(args)
+    const found = runTargetOf(args, overSsh, notes)
+    const access = found.access || null
+    let guard = asked
+
+    if (access && access.mode === 'guarded') {
+      // whatever the call asked for, a plain dry run included: the sandbox is
+      // the one guard that also holds mail, jobs, HTTP calls, files and the log
+      guard = 'sandbox'
+
+      // the guard was forced when the mode chose it and the call did not: a
+      // call that asked for the sandbox itself is not a forced one
+      if (notes) {
+        notes.guard = guard
+        notes.guardForced = asked !== 'sandbox'
+      }
+
+      // a sandbox cannot take back DDL, a transaction the code closes itself,
+      // another connection or a reconnect. The app asks about those before a
+      // dry run on production; here the guard is not the caller's choice, so
+      // the run is refused instead of being sent under a promise it cannot keep
+      const cannotHold = unguardableScan(code)
+
+      if (cannotHold.length) {
+        throw new Error(
+          `${found.connection.name} is tagged production, and Tinkr's Settings → MCP runs code there ` +
+          'only inside a forced sandbox, which cannot take back:\n' +
+          cannotHold.map(one => `  line ${one.line}: ${one.call} (${unguardableReasons[one.reason] || one.reason})`).join('\n') +
+          '\nNothing was run. Send it on a connection that is not production, or change the production ' +
+          'mode in Tinkr\'s Settings → MCP.',
+        )
+      }
+    }
+
+    if (notes && !notes.guard) {
+      notes.guard = guard
+      notes.guardForced = false
+    }
+
+    // the guard was forced when the mode chose it and the call did not: a call
+    // that asked for the sandbox itself is not a forced one
+    const forced = Boolean(access && access.mode === 'guarded' && asked !== 'sandbox')
+
+    // read on every run, like the production mode: a client keeps its server
+    // open, and a field added in Settings has to hide the next answer
+    const fields = app.redactFields(found.dataDir)
     const result = await execute(found.connection, code, {timeout: timeoutOf(args, timeout), guard, signal})
 
     if (result && result.error && result.error.class === 'SessionError') {
-      return sessionFailure(result)
+      return sessionFailure(result, fields)
     }
 
-    return answer(result, guard)
+    return answer(result, guard, fields, access && {
+      connection: found.connection,
+      mode: access.mode,
+      source: access.source,
+      forced,
+    })
   }
 
   /**
    * @param {String} name
    * @param {Object} args
    * @param {AbortSignal} [signal]
+   * @param {Object} [notes] what the production mode did, for the journal
    * @return {Promise<Object>}
    */
-  const handle = async (name, args, signal) => {
+  const handle = async (name, args, signal, notes = null) => {
     switch (name) {
       case 'tinkr_run_php':
-        return runTool(args, false, signal)
+        return runTool(args, false, signal, notes)
 
       case 'tinkr_run_php_over_ssh':
-        return runTool(args, true, signal)
+        return runTool(args, true, signal, notes)
 
       case 'tinkr_list_history': {
         const found = knownConnectionOf(args, 'history')
@@ -1521,7 +1749,11 @@ const createServer = ({
         // the app keeps its runs newest first, and a slice of a list that was
         // written some other way would be the wrong runs. An entry whose time
         // cannot be read goes last, in the order the file has it
+        const fields = app.redactFields(found.dataDir)
         const runs = app.history(found.dataDir, found.connection.id)
+          // a history the app wrote is already masked; one written by an older
+          // app, or by hand, is masked here as well
+          .map(entry => redactValue(entry, fields))
           .map(entry => ({entry, time: timeOf(entry.at)}))
           .sort((one, other) => (other.time === null ? -Infinity : other.time) - (one.time === null ? -Infinity : one.time) || 0)
           .slice(0, limit)
@@ -1588,14 +1820,17 @@ const createServer = ({
           read.cut = entry.cut.map(String)
         }
 
-        const bounded = bound(read)
+        // the file may have been written by an app whose list said otherwise, or
+        // by hand: what is answered is what the app's settings say is hidden now
+        const masked = redactResult(read, app.redactFields(found.dataDir))
+        const bounded = bound(masked)
 
         if (bounded.code.length > maxText) {
           bounded.code = truncate(bounded.code)
         }
 
         return {
-          content: [{type: 'text', text: renderRun(entry)}],
+          content: [{type: 'text', text: renderRun(masked)}],
           structuredContent: bounded,
           isError: false,
         }
@@ -1764,6 +1999,28 @@ const createServer = ({
   }
 
   /**
+   * The connection a call is about, for the journal: a tool that reads or
+   * runs in one names it, or means the one this server was started on. A
+   * call whose connection cannot be told says so with nothing, and its own
+   * answer says why.
+   *
+   * @param {String} name
+   * @param {Object} args
+   * @return {Object|null}
+   */
+  const connectionOfCall = (name, args) => {
+    if (name === 'tinkr_documentation' || name === 'tinkr_list_connections') {
+      return null
+    }
+
+    try {
+      return lookup(args).connection
+    } catch (e) {
+      return null
+    }
+  }
+
+  /**
    * @param {String} name
    * @param {Object} args
    * @param {{signal?: AbortSignal}} [options] `signal` is aborted when the client
@@ -1772,20 +2029,54 @@ const createServer = ({
    * an answer with `isError`, because the caller has to read what went wrong
    */
   const call = async (name, args = {}, {signal} = {}) => {
+    const at = journal ? journal.now() : 0
+    // what the production mode did to this call, when it did anything: the
+    // journal shows a forced guard beside the call it was forced on
+    const notes = {}
+    let answered
+
     try {
-      return await handle(name, args, signal)
+      answered = await handle(name, args, signal, notes)
     } catch (e) {
       if (e.code === -32602) {
         throw e
       }
 
-      return failure(e)
+      answered = failure(e)
+    }
+
+    if (journal) {
+      journal.record({
+        tool: name,
+        args,
+        answer: answered,
+        at,
+        connection: connectionOfCall(name, args),
+        mode: notes.mode || null,
+        modeSource: notes.modeSource || null,
+        guard: notes.guard,
+        guardForced: Boolean(notes.guardForced),
+      })
+    }
+
+    return answered
+  }
+
+  /**
+   * The handshake, for the journal: who the client says it is.
+   *
+   * @param {{client?: Object, protocol?: String}} hello
+   */
+  const initialize = hello => {
+    if (journal) {
+      journal.begin(hello)
     }
   }
 
   return {
     tools: TOOLS,
     call,
+    initialize,
     instructions: 'Tinkr runs PHP in a project, the way a developer would at a terminal: the ' +
       'project is booted, so its framework, its classes and its database are there. Code runs ' +
       'in a session of its own that is booted and closed for the call. It is code: it can ' +

@@ -4,7 +4,7 @@ import AiPanel from './AiPanel'
 import Output from './Output'
 import Queries from './Queries'
 import Terminal from './Terminal'
-import {outputTabIndexAtom, currentResultAtom} from '../../stores/editor'
+import {outputTabIndexAtom, currentResultAtom, connectionAtom} from '../../stores/editor'
 
 // the view that is not shown is hidden where it keeps the size it is measured
 // at: a terminal that is fitted while its view is hidden has to fit the same box
@@ -26,6 +26,7 @@ const hidden = {visibility: 'hidden', position: 'absolute', zIndex: -999}
 const OutputTabView = () => {
   const tabIndex = useAtomValue(outputTabIndexAtom)
   const result = useAtomValue(currentResultAtom)
+  const connection = useAtomValue(connectionAtom)
 
   return (
     <div
@@ -54,7 +55,7 @@ const OutputTabView = () => {
         className='output__body'
         style={tabIndex === 3 ? {height: 'inherit'} : {height: 'inherit', ...hidden}}
       >
-        <Queries result={result}/>
+        <Queries result={result} cloud={Boolean(connection && connection.is_cloud)}/>
       </div>
 
       <div style={tabIndex === 2 ? {height: 'inherit'} : {height: 'inherit', ...hidden}}>

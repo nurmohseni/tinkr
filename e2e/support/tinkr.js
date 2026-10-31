@@ -37,7 +37,11 @@ const defaults = {
   ai_autocomplete: false,
   ai_delay: 50,
   mcp_connection: '',
+  mcp_production: 'refuse',
   log_dir: 'storage/logs',
+  // the app's own defaults, so a spec that changes them starts from what a
+  // person who never touched the setting would see
+  redact_fields: ['*password*', '*token*', '*secret*', 'api_key', '*_key', '*authorization*', 'cookie'],
 }
 
 const fixtureConnection = (overrides = {}) => Object.assign({

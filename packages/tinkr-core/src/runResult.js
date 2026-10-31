@@ -455,11 +455,147 @@ const guardArm = mode => `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=n
   "try{if(!function_exists('app')||!app()->bound('db')){" +
   "$tinkr_tx_error='this session has no database connection to guard';}" +
   "else{$tinkr_db=app('db')->connection();$tinkr_tx=$tinkr_db->getName();" +
-  '$tinkr_db->beginTransaction();$tinkr_tx_armed=true;$tinkr_tx_level=$tinkr_db->transactionLevel();}}' +
+  '$tinkr_db->beginTransaction();$tinkr_tx_armed=true;$tinkr_tx_level=$tinkr_db->transactionLevel();' +
+  // what the run changes is read from the dispatcher the queries already come
+  // from: a model event names the row, a write statement that spoke for none is
+  // reported as undiffed (see DIFF_BLOCK). Both listeners are no-ops once the
+  // run has answered, because the session's dispatcher outlives the run
+  "try{$tinkr_tx_events=app('events');if($tinkr_tx_events){" +
+  "$tinkr_tx_events->listen('Illuminate\\\\Database\\\\Events\\\\QueryExecuted',$tinkr_tx_write);" +
+  "if(class_exists('Illuminate\\\\Database\\\\Eloquent\\\\Model')){$tinkr_tx_events->listen('eloquent.*',$tinkr_tx_listen);}" +
+  '}}catch(\\Throwable $tinkr_tx_watch){}}}' +
   'catch(\\Throwable $tinkr_tx_failure){' +
   "$tinkr_tx_error='the connection refused to begin a transaction: '.$tinkr_tx_failure->getMessage();}" +
   'if(!$tinkr_tx_armed){$tinkr_stmts=[];' +
   "$tinkr_error=['class'=>'RuntimeException','message'=>'the transaction guard could not be armed: '.$tinkr_tx_error];}"
+
+/**
+ * The php that records what a guarded run changed, row by row, before the
+ * transaction takes it back.
+ *
+ * The event a row write is read from is Eloquent's, not the query log's: a
+ * query says what was sent and not what it did, so `update orders set paid = 0
+ * where id = 1` in the log is one statement and no rows, while the model event
+ * carries the row, its key, the columns that changed and the values either side
+ * of them. Two listeners on the same dispatcher the wrapper already listens on
+ * (see QUERY_BLOCK) are enough:
+ *
+ * - `eloquent.created|updated|deleted` gives a row for a model that was saved
+ *   or deleted. `getChanges()` is what was dirty and `getOriginal()` still holds
+ *   the values before the update, because Laravel fires `updated` before it
+ *   syncs the original;
+ * - `QueryExecuted` gives every write the guarded connection was sent, so a
+ *   write that reached no model event — a query-builder update, a raw
+ *   `DB::update`, `truncate`, a `saveQuietly` — is counted as undiffed instead
+ *   of being missing from the report. Matching a model event to the statement
+ *   it belongs to is by kind and table, newest first, so the count of undiffed
+ *   writes is the writes nothing spoke for.
+ *
+ * A pre-select of the rows an `update`/`delete` would touch is deliberately not
+ * done: it needs the statement to be parsed to table and where, re-run as a
+ * select with the same bindings, and it is wrong for a subquery, a join, a
+ * limit, or a where that changes between the select and the update. A statement
+ * that cannot be described is reported as one rather than described wrongly.
+ *
+ * A soft delete is left undiffed on purpose: the row stays where it was and the
+ * event says `deleted` about an `update` of `deleted_at`, so it is reported as
+ * the statement it is rather than as a row that was not removed.
+ *
+ * Nothing here can become the run's error: every part is wrapped, a model whose
+ * own methods throw is skipped, and a project without Eloquent never registers
+ * the model listener at all.
+ */
+const DIFF_BLOCK =
+  // one value of a row, as the envelope would write it, and cut: a row holds a
+  // column of data, not a document
+  '$tinkr_tx_cut=function($tinkr_v)use($tinkr_safe){' +
+  'try{$tinkr_v=$tinkr_safe($tinkr_v);}catch(\\Throwable $tinkr_tx_unreadable){return \'[unreadable]\';}' +
+  'if(is_string($tinkr_v)){return strlen($tinkr_v)>400?substr($tinkr_v,0,400).\'...\':$tinkr_v;}' +
+  'if($tinkr_v===null||is_bool($tinkr_v)||is_int($tinkr_v)||is_float($tinkr_v)){return $tinkr_v;}' +
+  '$tinkr_json=json_encode($tinkr_v);' +
+  'if($tinkr_json===false){return \'[unreadable]\';}' +
+  'return strlen($tinkr_json)>400?substr($tinkr_json,0,400).\'...\':$tinkr_v;};' +
+  // the table a write statement names, unquoted and without its schema, or
+  // nothing when the statement is not one this knows: a model event is matched
+  // to its statement by this
+  '$tinkr_tx_table=function($tinkr_sql){' +
+  '$tinkr_sql=ltrim((string)$tinkr_sql);$tinkr_name=null;' +
+  'foreach([\'/^(?:insert|replace)\\s+(?:or\\s+\\w+\\s+)?(?:ignore\\s+)?into\\s+([^\\s(]+)/i\',' +
+  '\'/^update\\s+(?:low_priority\\s+|ignore\\s+|only\\s+)*([^\\s(]+)/i\',' +
+  '\'/^delete\\s+from\\s+([^\\s(]+)/i\'] as $tinkr_pattern){' +
+  'if(preg_match($tinkr_pattern,$tinkr_sql,$tinkr_match)){$tinkr_name=$tinkr_match[1];break;}}' +
+  'if($tinkr_name===null){return \'\';}' +
+  '$tinkr_name=str_replace([\'`\',\'"\',\'[\',\']\'],\'\',$tinkr_name);' +
+  '$tinkr_dot=strrpos($tinkr_name,\'.\');' +
+  'if($tinkr_dot!==false){$tinkr_name=substr($tinkr_name,$tinkr_dot+1);}' +
+  'return strtolower($tinkr_name);};' +
+  // a row's columns, each cut once
+  '$tinkr_tx_row=function($tinkr_attrs)use($tinkr_tx_cut){' +
+  '$tinkr_out=[];' +
+  'foreach((array)$tinkr_attrs as $tinkr_column=>$tinkr_value){$tinkr_out[$tinkr_column]=$tinkr_tx_cut($tinkr_value);}' +
+  'return $tinkr_out;};' +
+  // one change, kept and counted: the write it came from is accounted for, and
+  // the list stops at its budget while the count does not
+  '$tinkr_tx_note=function($tinkr_op,$tinkr_table,$tinkr_conn,$tinkr_key,$tinkr_before,$tinkr_after)use(&$tinkr_tx_diff){' +
+  '$tinkr_write=$tinkr_op===\'created\'?\'insert\':($tinkr_op===\'updated\'?\'update\':\'delete\');' +
+  '$tinkr_want=strtolower((string)$tinkr_table);' +
+  '$tinkr_dot=strrpos($tinkr_want,\'.\');' +
+  'if($tinkr_dot!==false){$tinkr_want=substr($tinkr_want,$tinkr_dot+1);}' +
+  'for($tinkr_i=count($tinkr_tx_diff[\'writes\'])-1;$tinkr_i>=0;$tinkr_i--){' +
+  '$tinkr_one=$tinkr_tx_diff[\'writes\'][$tinkr_i];' +
+  'if($tinkr_one[\'match\']||$tinkr_one[\'op\']!==$tinkr_write){continue;}' +
+  'if($tinkr_want!==\'\'&&$tinkr_one[\'table\']!==\'\'&&$tinkr_one[\'table\']!==$tinkr_want&&' +
+  'substr($tinkr_one[\'table\'],-strlen($tinkr_want))!==$tinkr_want){continue;}' +
+  '$tinkr_tx_diff[\'writes\'][$tinkr_i][\'match\']=true;break;}' +
+  '$tinkr_tx_diff[\'total\']++;' +
+  '$tinkr_change=[\'connection\'=>$tinkr_conn,\'table\'=>$tinkr_table,\'key\'=>$tinkr_key,\'op\'=>$tinkr_op,' +
+  '\'before\'=>$tinkr_before,\'after\'=>$tinkr_after];' +
+  '$tinkr_json=json_encode($tinkr_change);' +
+  '$tinkr_bytes=$tinkr_json===false?0:strlen($tinkr_json);' +
+  'if(count($tinkr_tx_diff[\'changes\'])>=50||$tinkr_tx_diff[\'size\']+$tinkr_bytes>100000){return;}' +
+  '$tinkr_tx_diff[\'size\']+=$tinkr_bytes;$tinkr_tx_diff[\'changes\'][]=$tinkr_change;};' +
+  // a write statement of the guarded connection, so the undiffed count is what
+  // no model event spoke for
+  '$tinkr_tx_write=function($tinkr_query)use(&$tinkr_tx_diff,&$tinkr_sent,&$tinkr_tx,$tinkr_tx_table){' +
+  'if($tinkr_sent||!is_object($tinkr_query)||!isset($tinkr_query->sql)){return;}' +
+  'if($tinkr_query->connectionName!==$tinkr_tx){return;}' +
+  '$tinkr_sql=ltrim((string)$tinkr_query->sql);' +
+  'if(!preg_match(\'/^(insert|replace|update|delete|truncate)\\b/i\',$tinkr_sql,$tinkr_head)){return;}' +
+  '$tinkr_op=strtolower($tinkr_head[1]);' +
+  'if($tinkr_op===\'replace\'){$tinkr_op=\'insert\';}' +
+  '$tinkr_tx_diff[\'writes\'][]=[\'op\'=>$tinkr_op,' +
+  '\'table\'=>$tinkr_op===\'truncate\'?\'\':$tinkr_tx_table($tinkr_sql),\'match\'=>false,\'sql\'=>$tinkr_sql];};' +
+  // a model write, read from the event that says which row it was
+  '$tinkr_tx_listen=function($tinkr_event,$tinkr_payload)use(&$tinkr_sent,&$tinkr_tx,$tinkr_tx_cut,$tinkr_tx_row,$tinkr_tx_note){' +
+  'if($tinkr_sent||!is_array($tinkr_payload)||empty($tinkr_payload[0])||!is_object($tinkr_payload[0])){return;}' +
+  '$tinkr_op=null;' +
+  'foreach([\'created\',\'updated\',\'deleted\'] as $tinkr_kind){' +
+  'if(strpos($tinkr_event,\'eloquent.\'.$tinkr_kind.\': \')===0){$tinkr_op=$tinkr_kind;break;}}' +
+  'if($tinkr_op===null){return;}' +
+  '$tinkr_model=$tinkr_payload[0];' +
+  'if($tinkr_op===\'deleted\'&&method_exists($tinkr_model,\'isForceDeleting\')&&!$tinkr_model->isForceDeleting()){return;}' +
+  'try{' +
+  '$tinkr_table=$tinkr_model->getTable();' +
+  '$tinkr_conn=$tinkr_tx;' +
+  'if(method_exists($tinkr_model,\'getConnectionName\')&&$tinkr_model->getConnectionName()){$tinkr_conn=$tinkr_model->getConnectionName();}' +
+  '$tinkr_column=$tinkr_model->getKeyName();' +
+  '$tinkr_original=method_exists($tinkr_model,\'getOriginal\')?(array)$tinkr_model->getOriginal():[];' +
+  '$tinkr_key=$tinkr_model->getKey();$tinkr_before=null;$tinkr_after=null;' +
+  'if($tinkr_op===\'created\'){$tinkr_after=$tinkr_tx_row($tinkr_model->getAttributes());}' +
+  'elseif($tinkr_op===\'updated\'){' +
+  '$tinkr_changed=(array)$tinkr_model->getChanges();' +
+  'if(!$tinkr_changed){return;}' +
+  '$tinkr_before=[];$tinkr_after=[];' +
+  'foreach($tinkr_changed as $tinkr_name=>$tinkr_new){' +
+  '$tinkr_before[$tinkr_name]=array_key_exists($tinkr_name,$tinkr_original)?$tinkr_tx_cut($tinkr_original[$tinkr_name]):null;' +
+  '$tinkr_after[$tinkr_name]=$tinkr_tx_cut($tinkr_new);}' +
+  'if(array_key_exists($tinkr_column,$tinkr_original)){$tinkr_key=$tinkr_original[$tinkr_column];}' +
+  '}else{' +
+  '$tinkr_before=$tinkr_tx_row($tinkr_original);' +
+  'if(array_key_exists($tinkr_column,$tinkr_original)){$tinkr_key=$tinkr_original[$tinkr_column];}}' +
+  '$tinkr_tx_note($tinkr_op,$tinkr_table,$tinkr_conn,' +
+  '$tinkr_key===null?null:[$tinkr_column=>$tinkr_tx_cut($tinkr_key)],$tinkr_before,$tinkr_after);' +
+  '}catch(\\Throwable $tinkr_tx_describe){}};'
 
 /**
  * The php that lets an interrupt end a run wherever the run is.
@@ -700,10 +836,22 @@ const guardFinish = "$tinkr_tx_outcome='failed';$tinkr_tx_open=false;" +
   '$tinkr_tx_other=[];' +
   'foreach($tinkr_query_connections as $tinkr_tx_name=>$tinkr_tx_count){' +
   'if($tinkr_tx_name!==$tinkr_tx){$tinkr_tx_other[$tinkr_tx_name]=$tinkr_tx_count;}}' +
+  // the writes no model event spoke for, and the first few as they were sent:
+  // what a run changed through the query builder or a raw statement is said
+  // rather than left out of the report
+  'if($tinkr_tx_armed){foreach($tinkr_tx_diff[\'writes\'] as $tinkr_tx_stmt){' +
+  'if($tinkr_tx_stmt[\'match\']){continue;}' +
+  '$tinkr_tx_diff[\'undiffed\']++;' +
+  'if(count($tinkr_tx_diff[\'sample\'])<3){' +
+  '$tinkr_tx_sql=$tinkr_tx_stmt[\'sql\'];' +
+  '$tinkr_tx_diff[\'sample\'][]=strlen($tinkr_tx_sql)>300?substr($tinkr_tx_sql,0,300).\'...\':$tinkr_tx_sql;}}}' +
   '$tinkr_transaction=[' +
   "'mode'=>$tinkr_tx_mode,'armed'=>$tinkr_tx_armed,'connection'=>$tinkr_tx," +
   "'statements'=>($tinkr_tx===null?0:($tinkr_query_connections[$tinkr_tx]??0))," +
-  "'outcome'=>$tinkr_tx_outcome,'error'=>$tinkr_tx_error,'unguarded'=>(object)$tinkr_tx_other];"
+  "'outcome'=>$tinkr_tx_outcome,'error'=>$tinkr_tx_error,'unguarded'=>(object)$tinkr_tx_other," +
+  // what the run changed, row by row, and how much of it is in the list
+  "'changes'=>$tinkr_tx_diff['changes'],'changesTotal'=>$tinkr_tx_diff['total']," +
+  "'undiffed'=>['count'=>$tinkr_tx_diff['undiffed'],'sample'=>$tinkr_tx_diff['sample']]];"
 
 /**
  * The php that prints the run's answer, and the one that prints it when the
@@ -763,7 +911,7 @@ const printer = (keys, close = '') => {
       '&$tinkr_queries,&$tinkr_query_total,&$tinkr_query_line,&$tinkr_imported,&$tinkr_transaction,&$tinkr_safe,$tinkr' +
       (close
         ? ',&$tinkr_db,&$tinkr_tx,&$tinkr_tx_armed,&$tinkr_tx_error,&$tinkr_tx_mode,&$tinkr_tx_level,' +
-        '&$tinkr_query_connections'
+        '&$tinkr_query_connections,&$tinkr_tx_diff'
         : '') + '){' +
       `if($tinkr_sent){return;}${ended}` +
       // the run left through exit(), dd() or a fatal before the loop could
@@ -879,6 +1027,13 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
   // close is part of the shutdown path too: it runs only when the transaction is
   // still the one the guard opened, which `$tinkr_transaction` says. A sandboxed
   // run reports what it caught on both paths for the same reason
+  // the guard's own names, so its close is still read when nothing of the
+  // snippet ran. What the run changed is there from the start as well: the
+  // close reads it on the path that never reached the transaction
+  const guardNames = mode
+    ? `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=null;$tinkr_tx_mode='${mode}';$tinkr_tx_level=0;$tinkr_query_connections=[];` +
+      '$tinkr_tx_diff=[\'changes\'=>[],\'total\'=>0,\'size\'=>0,\'writes\'=>[],\'undiffed\'=>0,\'sample\'=>[]];'
+    : ''
   const closing = [mode ? guardFinish : '', sandbox ? sandboxFinish : ''].join('')
   const {print, shutdown} = printer(keys, closing)
   const split = 4
@@ -897,11 +1052,7 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
       // what the envelope reads, present even when the snippet is rejected
       // before it runs: the run's error, and the empty answers it then has
       '$tinkr_error=null;$tinkr_sent=false;$tinkr_imported=[];$tinkr_results=[];$tinkr_value=null;' +
-        '$tinkr_queries=[];$tinkr_query_total=0;' +
-        // the guard's own names, so its close is still read when nothing of the
-        // snippet ran
-        (mode ? `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=null;$tinkr_tx_mode='${mode}';$tinkr_tx_level=0;$tinkr_query_connections=[];` : '') +
-        (sandbox ? '$tinkr_effects=[];$tinkr_sandbox=[];' : ''),
+        '$tinkr_queries=[];$tinkr_query_total=0;' + guardNames + (sandbox ? '$tinkr_effects=[];$tinkr_sandbox=[];' : ''),
       // from here to the envelope, an interrupt ends the run (see INTERRUPT_ARM)
       INTERRUPT_ARM,
       deadline.arm,
@@ -922,6 +1073,9 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
       // the queries are collected from before the first statement runs, and the
       // listener stays for as long as the session does
       QUERY_BLOCK,
+      // a guarded run's changes are read from the same dispatcher, row by row
+      // (see DIFF_BLOCK): the listeners are registered when the transaction is
+      mode ? DIFF_BLOCK : '',
       // the side effects are swapped for recorders before anything runs: the
       // mailer, the queues, the http client, the disks, the cache and the log
       sandboxArm(guard),

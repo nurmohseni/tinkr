@@ -114,6 +114,9 @@ const createPty = (connection, code, guard = null, timeout = null) => {
     const answer = Object.assign({}, result, {
       output: result.output === undefined ? (filter ? runOutput(filter) : '') : result.output,
       duration: Date.now() - startedAt,
+      // when the run was sent, so what leaves the pane can say when it happened
+      // without the renderer having to hold a clock of its own
+      ranAt: new Date(startedAt).toISOString(),
     })
     // the run is over, and the history row is the connection's whether or not
     // the window is on it: a run that came back while the person was elsewhere
@@ -405,6 +408,8 @@ const runInCloud = (connection, code, guard, timeout) => {
     const result = Object.assign({}, answer, {
       output: answer.output === undefined ? '' : answer.output,
       duration: Date.now() - startedAt,
+      // when the command was sent, for the pane's own report of the run
+      ranAt: new Date(startedAt).toISOString(),
     })
     const history = appendHistory(id, code, result)
 

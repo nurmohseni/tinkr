@@ -1,10 +1,13 @@
 import PropTypes from 'prop-types'
-import {useState} from 'react'
+import {Fragment, useEffect, useRef, useState} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 
 import Outcome from '../Outcome'
 import PointerMenu from '../PointerMenu'
+import QueryPlan from './QueryPlan'
+import {explainQuery} from '../../utils/api'
 import {copyText} from '../../utils/clipboard'
+import {isExplainable} from '../../utils/explain'
 import {queryText, sqlCell, sqlText} from '../../utils/queryLog'
 import {cellOf} from '../../utils/resultReading'
 
@@ -27,12 +30,56 @@ import {cellOf} from '../../utils/resultReading'
  * connection — and the sql is the one thing read as the statement it is: every
  * other column is metadata around it.
  *
+ * A SELECT also offers its plan. The plan is asked out of band — of the
+ * connection's background session, not the tab's, and not as a run — so reading
+ * it changes nothing about what the person is running and adds nothing to the
+ * history. A Laravel Cloud connection has no such session: a command there is a
+ * command in the environment's history, so the action is shown disabled with
+ * that reason rather than hidden. The plan is drawn under the row it belongs
+ * to, and the pane keeps it until another run gives the rows another meaning.
+ *
  * @param {Object} result  the last run's envelope
+ * @param {Boolean} [cloud]  whether the connection is a Laravel Cloud one
  */
-const Queries = ({result}) => {
+const Queries = ({result, cloud = false}) => {
   const intl = useIntl()
   const [menu, setMenu] = useState(null)
+  const [plans, setPlans] = useState({})
+  const generation = useRef(0)
   const queries = (result && result.queries) || []
+
+  // a plan belongs to the rows it was read for: another run is another query
+  // log, and a plan under a row it was not read for would be a lie
+  useEffect(() => {
+    generation.current += 1
+    setPlans({})
+  }, [result])
+
+  const explain = (index, sent) => {
+    const token = generation.current
+
+    setPlans(current => Object.assign({}, current, {[index]: {status: 'loading'}}))
+
+    explainQuery({connection: sent.connection, sql: sent.sql, bindings: sent.bindings})
+      .then(answer => {
+        if (generation.current !== token) {
+          return
+        }
+
+        setPlans(current => Object.assign({}, current, {
+          [index]: {status: 'ready', driver: answer.driver, rows: answer.plan},
+        }))
+      })
+      .catch(error => {
+        if (generation.current !== token) {
+          return
+        }
+
+        setPlans(current => Object.assign({}, current, {
+          [index]: {status: 'error', message: (error && error.message) || String(error)},
+        }))
+      })
+  }
 
   const openMenu = (index, event) => {
     event.preventDefault()
@@ -90,6 +137,7 @@ const Queries = ({result}) => {
             <th scope='col'><FormattedMessage id='queries.col_bindings'/></th>
             <th scope='col'><FormattedMessage id='queries.col_ms'/></th>
             <th scope='col'><FormattedMessage id='queries.col_connection'/></th>
+            <th scope='col'><FormattedMessage id='queries.col_plan'/></th>
           </tr>
         </thead>
 
@@ -97,48 +145,76 @@ const Queries = ({result}) => {
           {queries.map((sent, index) => {
             const sql = sqlCell(sent.sql)
             const bindings = cellOf(JSON.stringify(sent.bindings || []))
+            const explainable = isExplainable(sent.sql)
+            const plan = plans[index]
 
             return (
-              <tr key={index} onContextMenu={event => openMenu(index, event)}>
-                <td className='qtable__index'>
-                  <span className='qtable__index-cell'>
-                    <span className='muted'>{index + 1}</span>
-                    <button
-                      className='qtable__menu'
-                      type='button'
-                      title={intl.formatMessage({id: 'queries.row_actions'}, {row: index + 1})}
-                      aria-label={intl.formatMessage({id: 'queries.row_actions'}, {row: index + 1})}
-                      onClick={event => openMenu(index, event)}
-                    >
-                      …
-                    </button>
-                  </span>
-                </td>
+              <Fragment key={index}>
+                <tr onContextMenu={event => openMenu(index, event)}>
+                  <td className='qtable__index'>
+                    <span className='qtable__index-cell'>
+                      <span className='muted'>{index + 1}</span>
+                      <button
+                        className='qtable__menu'
+                        type='button'
+                        title={intl.formatMessage({id: 'queries.row_actions'}, {row: index + 1})}
+                        aria-label={intl.formatMessage({id: 'queries.row_actions'}, {row: index + 1})}
+                        onClick={event => openMenu(index, event)}
+                      >
+                        …
+                      </button>
+                    </span>
+                  </td>
 
-                <td className='num'>
-                  <span className='qtable__cell'>{sent.line}</span>
-                </td>
+                  <td className='num'>
+                    <span className='qtable__cell'>{sent.line}</span>
+                  </td>
 
-                <td className='sql'>
-                  <span className='qtable__cell' title={sql.cut ? sent.sql : undefined}>
-                    {sql.text}
-                  </span>
-                </td>
+                  <td className='sql'>
+                    <span className='qtable__cell' title={sql.cut ? sent.sql : undefined}>
+                      {sql.text}
+                    </span>
+                  </td>
 
-                <td>
-                  <span className='qtable__cell' title={bindings.cut ? bindings.full : undefined}>
-                    {bindings.text}
-                  </span>
-                </td>
+                  <td>
+                    <span className='qtable__cell' title={bindings.cut ? bindings.full : undefined}>
+                      {bindings.text}
+                    </span>
+                  </td>
 
-                <td className='num'>
-                  <span className='qtable__cell'>{sent.time}</span>
-                </td>
+                  <td className='num'>
+                    <span className='qtable__cell'>{sent.time}</span>
+                  </td>
 
-                <td>
-                  <span className='qtable__cell'>{sent.connection}</span>
-                </td>
-              </tr>
+                  <td>
+                    <span className='qtable__cell'>{sent.connection}</span>
+                  </td>
+
+                  <td className='queries__plan-action'>
+                    {explainable && (
+                      <button
+                        className='btn btn--ghost btn--sm'
+                        type='button'
+                        disabled={cloud || Boolean(plan && plan.status === 'loading')}
+                        title={cloud
+                          ? intl.formatMessage({id: 'queries.explain_cloud'})
+                          : intl.formatMessage({id: 'queries.explain_title'})}
+                        onClick={() => explain(index, sent)}
+                      >
+                        <FormattedMessage id='queries.explain'/>
+                      </button>
+                    )}
+                  </td>
+                </tr>
+
+                {plan && (
+                  <tr className='queries__plan'>
+                    <td colSpan={7}>
+                      <QueryPlan plan={plan}/>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             )
           })}
         </tbody>
@@ -180,6 +256,9 @@ const Queries = ({result}) => {
 }
 
 Queries.propTypes = {
+  // whether a plan may be asked of this connection: Laravel Cloud has no
+  // session to ask, and a command there would be in the environment's history
+  cloud: PropTypes.bool,
   // the pane is drawn before the first run as well, when there is no envelope
   result: PropTypes.shape({
     queries: PropTypes.array,

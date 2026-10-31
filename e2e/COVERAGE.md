@@ -77,11 +77,18 @@ exercise the surface through its UI, not through a stub of it.
 | Tree, table, graph, html, raw readings | `08-result-readings` |
 | Class alias/imports, long strings, empty objects | `08-result-readings` |
 | Copy value, copy row JSON, copy CSV, save CSV | `21-result-actions` |
+| Copy the whole run as Markdown: labels, code, values, printed output, error, queries table, guard | `29-markdown-explain` |
+| Markdown builder: sections, pipe escaping, truncation, several statements, threw, guarded, empty | Unit (`markdown`) |
 | Query capture, "no query", copy SQL | `09-queries-dry-run`, `21-result-actions` |
+| Explain a SELECT out of band: sqlite's query plan under the row, no history entry, a write offers none | `29-markdown-explain` |
+| Explain's SQL per driver, and the SELECT-only rule shared by pane and main | Unit (`explain`, core and renderer) |
+| Explain disabled on Laravel Cloud with its reason | Unit (`Queries` rendering) |
 | Dry run rollback, keep/commit, a read under the guard | `09-queries-dry-run` |
+| A dry run's before/after rows, the writes it could not diff, and the same rows in an MCP answer | `30-dry-run-diff` |
 | Production mutation gate, unguardable dry run | `10-production-gate` |
 | Query/result storage limits and truncation | Unit (`resultReading`, `runResult`, query log) |
 | Graph node toggling and path highlight | Not E2E; the graph is proven to render |
+| The result pane shows a value the saved history and MCP answers hold as `[hidden]` | `28-redaction` |
 
 ## Logs
 
@@ -101,6 +108,7 @@ exercise the surface through its UI, not through a stub of it.
 | Surface | Proof |
 | --- | --- |
 | Theme, layout, statements, timeout, close prompt, default command, log dir | `11-preferences` |
+| Hidden fields list, saved to settings, and what it hides | `28-redaction` |
 | Locale switch (English ↔ Spanish) | `11-preferences` |
 | Run-shortcut recorder and the recorded binding running | `11-preferences` |
 | AI-panel and new-connection shortcuts | `01-app-shell` |
@@ -146,7 +154,13 @@ exercise the surface through its UI, not through a stub of it.
 | MCP settings, client entry, configure, copy, tools list | `16-mcp` |
 | MCP server handshake, tool list, run, guard | `23-mcp-server` |
 | MCP save/list/delete snippet | `23-mcp-server` |
-| MCP list connections/history/read run, ssh tool, production refusal | Unit (`tinkr-mcp` server tests) |
+| MCP production mode: refuse by default, the Settings control, and the running server following it | `23-mcp-server` |
+| MCP production access: guarded forced sandbox (a rolled-back write, the row unchanged after), per-connection override to allow (a kept write), the forced guard in Sessions | `26-mcp-production-access` |
+| MCP sessions in Settings: the client, its calls newest first, a refused call's reason, live then ended, Clear | `23-mcp-server` |
+| MCP `Open in editor`: the window switches to the call's connection, the code lands in a new tab and the window is raised, nothing runs; a deleted connection has no button | `27-mcp-open-call` |
+| MCP list connections/history/read run, ssh tool | Unit (`tinkr-mcp` server tests) |
+| MCP answers masked by Hidden fields, in text and structured value; the list read on every call | `28-redaction` |
+| MCP session journal: pruning to 100, clearing only ended sessions, a dead process's end | Unit (`tinkr-mcp` journal tests) |
 | Snippets written by the MCP server reaching the window | `06-snippets` |
 
 ## IPC channels
@@ -162,7 +176,8 @@ All of these are exercised through the bridge, not called from a test:
 | Snippets and history | `allSnippets`, `createSnippet`, `updateSnippet`, `deleteSnippet`, `allHistory`, `clearHistory` | `06`, `07` |
 | Logs | `logFiles`, `logRead` | `13`, `15` |
 | AI and form | `aiProviders`, `aiAsk`, `aiComplete`, `aiCheck`, `aiFiles`, `parsePhpForm`, `stringifyPhpForm`, `phpCompletions` | `12`, `17`, `20`, `22` |
-| MCP | `mcpInfo`, `configureMcp` | `16`, `23` |
+| Plans | `explainQuery` | `29` |
+| MCP | `mcpInfo`, `configureMcp`, `mcpSessions`, `mcpSession`, `clearMcpSessions`, `openMcpCall` | `16`, `23`, `27` |
 | Files | `selectDirectory`, `selectFile`, `saveFile` | `01`, `18`, `21` |
 | Windows | `windowControl`, `windowState` | `01` (close is native) |
 | Updates | `checkForUpdates`, `downloadUpdate`, `installUpdate` | `14` (only the prompt; the updater itself is not driven) |

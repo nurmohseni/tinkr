@@ -91,9 +91,10 @@ What a run does with the code is worth knowing before the first one:
 
 | | |
 | --- | --- |
-| **Readings** | The returned value as a tree, a table, a graph, or rendered markup, next to the raw output. Copy any table or save it as CSV. |
-| **Queries** | Every SQL statement the run sent, with bindings, duration and connection. |
-| **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. |
+| **Readings** | The returned value as a tree, a table, a graph, or rendered markup, next to the raw output. Copy any table or save it as CSV, or copy the whole run as Markdown — the code, every value, what it printed, its queries and its guard — for a pull request or an issue. |
+| **Queries** | Every SQL statement the run sent, with bindings, duration and connection. A SELECT also offers **Explain**: its plan is read out of band on the same connection and with the same bindings, never in the tab's session and never as a history entry. A write offers no plan, and Laravel Cloud shows the action disabled because a command there would land in the environment's history. |
+| **Hidden fields** | Password, token, secret and key-shaped fields are written as `[hidden]` in the saved history, in AI requests and in MCP answers. Set their names in **Settings → General**. The result pane and what the code printed stay as they ran. |
+| **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. A guarded run also answers with what it changed, row by row — the table, the key, and each column before → after — and counts the writes nothing could describe (raw SQL, a query-builder update, `truncate`). |
 | **Stop** | A run that is going can be stopped, and the PHP behind it actually stops — inside a container or on a server. Laravel Cloud cannot cancel a command it was given, so stopping a Cloud run ends the wait and says the command keeps running there. A run also gives up on its own after the **run timeout** you set in Settings, so a snippet that never returns cannot hold the session. While a run is going the editor is read-only, the button counts the wait, and the answer reports how long the whole of it took. |
 | **Log viewer** | Your app's logs (`storage/logs` or anywhere) in a window of their own. Level, text and time filters search the file, not just loaded pages. Scroll in either direction with your place preserved and only a bounded window held; messages and stack traces stay together across pages. Follow live, including details that arrive after an entry's header. |
 
@@ -123,6 +124,8 @@ Log searches scan the selected file or time range on the connection's host. They
 Tinkr ships a [Model Context Protocol](https://modelcontextprotocol.io) server, so the AI tool you already work in can run PHP the way you do: in your project's own Tinker session, locally or over SSH, with the returned value as data.
 
 **The easy way:** open **Settings → MCP**. Tinkr lists the clients it knows (Claude Code, Claude Desktop, Cursor, Windsurf/Devin Desktop, VS Code), writes the config for the one you pick, and gives you the JSON for anything else.
+
+The same screen lists every **session** a client had with the server, newest first: the client's name and version, the connections its calls went to, and each tool it called with its code, guard, outcome and duration. A session that is still connected says so and updates while the screen is open. The last 100 sessions are kept, and **Clear** forgets the ones that ended. A call that ran in a connection the app still has offers **Open in editor**: the editor window switches to that connection and opens the code in a new tab — nothing is run. A call that ran in a bare directory, or in a connection that was deleted, says so instead.
 
 **By hand:**
 
@@ -158,9 +161,28 @@ The directory the client starts it in is the project code runs in. No API token,
 
 History is the app's own: the last fifty runs of a connection. A client's own runs are not written to it, because the app owns that file while it runs.
 
+**Hidden fields.** Every answer is masked before it leaves the app: a field whose name matches an entry in **Settings → General → Hidden fields** is answered as the string `[hidden]`, in the text and the structured value alike. The same applies to the history the app keeps on disk and to what the AI panel sends with a request; the result pane is the one place the value is shown as it ran. The defaults are `*password*`, `*token*`, `*secret*`, `api_key`, `*_key`, `*authorization*` and `cookie` — `*` matches any run of characters, case does not matter, and an empty list hides nothing. The list is read on every MCP call, so a change holds from the next one.
+
+Covered:
+
+- the run's `value`, and the same value under every `blocks[].value`;
+- a dry run's `transaction` report, including each `changes[].before`, `changes[].after` and `changes[].key` row, and the `sandbox` report;
+- query bindings, where the SQL names the column the placeholder was given for: an `insert`'s column list against its `values`, `column = ?` in a `set` or a `where` (also `<>`, `!=`, `<`, `>`, `<=`, `>=` and `like`), and `column in (?, …)`;
+- an array of models, a nested object or a whole list under a matching key — the value is replaced whole;
+- MCP answers of `tinkr_run_php`, `tinkr_run_php_over_ssh`, `tinkr_read_run`, and the entries `tinkr_list_history` reads.
+
+Not covered, by design:
+
+- `output`, what the code printed: it is text, not keyed, and there is no field name to match;
+- SQL text itself. A value a snippet wrote into the statement (`where token = 'abc'`) is part of the SQL and is answered as it was, and so is the sample of un-diffed statements a dry run reports;
+- the lines a sandbox would have sent or requested, which are text rather than fields;
+- a binding the statement does not pair with a column: `where ?`, `limit ?`, and an expression holding several placeholders such as `concat(?, ?)`;
+- the result pane, and the run as the app's window holds it in memory.
+
+
 `tinkr_run_php` and `tinkr_run_php_over_ssh` take an optional `guard`:
 
-- **`rollback`** runs the code inside a transaction that is taken back at the end, and reports what that transaction did — the safe way for an agent to look at production without changing it.
+- **`rollback`** runs the code inside a transaction that is taken back at the end, and reports what that transaction did — the safe way for an agent to look at production without changing it. The report includes `transaction.changes`: one entry per row the run created, updated or deleted, with the key, the operation and the columns either side of it, plus `transaction.undiffed` for writes nothing could attribute to a row.
 - **`sandbox`** is the same transaction with the side-effect drivers swapped for recorders first: mail goes to the array transport, jobs and the bus to their fakes, the HTTP client answers only what it was given, every disk is faked, the cache is an array store and logging records instead of writing. A write that was rolled back cannot still have sent an email. The answer carries what was caught — a count per channel with the first mail and requests named.
 
 A transaction holds the database and nothing else, so `sandbox` is the guard to name when the code might send, queue, call or write something.
@@ -169,7 +191,7 @@ A transaction holds the database and nothing else, so `sandbox` is the guard to 
 
 `tinkr_tail_logs` reads a log without holding it: a window of the newest bytes by default, `before`/`after` for the pages beside it, and `since`/`until` for a range of moments found in the file itself. A `level` or a `term` turns the read into a scan of the whole range, answering with the newest `limit` matches — so an error far back in a large log is still found. Reading logs is allowed on any connection, production included: it reads a file.
 
-A connection tagged **production** is refused unless the server was started on that connection (`--connection`) or with `--allow-production`. A run there is a write nobody is watching.
+A connection tagged **production** follows the **Production connections** mode in **Settings → MCP**, and each production connection can override it with an access of its own. **Refuse** (the default) stops the run before anything is booted; **Sandbox** lets it through, always with `guard: "sandbox"` — mail, jobs, HTTP calls, file writes, the cache and the log recorded, the database rolled back — and refuses code a dry run cannot take back (DDL, its own commit, another connection) with the lines and the reasons; **Allow** sends it as asked. Both the mode and a connection's override are read on every run, so a change holds from the next call without restarting the client, and a forced guard is said plainly in the answer and shown as forced in **Settings → MCP → Sessions**. Reading logs is allowed either way.
 
 </details>
 
@@ -183,7 +205,6 @@ A connection tagged **production** is refused unless the server was started on t
 | `--command <command>` | What the session starts with (default: the connection's own, or `php artisan tinker`) |
 | `--data-dir <directory>` | Where the app keeps its connections and snippets, if not the default |
 | `--timeout <ms>` | How long a run may take before it is given up (default: `60000`) |
-| `--allow-production` | Run code on connections tagged production. Without it, a production connection is refused unless the server was started on that one connection with `--connection` |
 
 Try it from a terminal to see what a tool answers:
 

@@ -8,11 +8,12 @@ const path = require('path')
  * has.
  *
  * @param {{connections?: Object, command?: String, logDir?: String,
- *   snippets?: Object, history?: Object}} [data] `connections`, `snippets` and
- *   `history` are keyed by id, as the app keeps them
+ *   snippets?: Object, history?: Object, config?: Object}} [data] `connections`,
+ *   `snippets` and `history` are keyed by id, as the app keeps them, and `config`
+ *   is any other preference the app writes
  * @return {String} the directory the app would keep its files in
  */
-const makeAppDir = ({connections = {}, command = null, logDir = null, snippets = {}, history = {}} = {}) => {
+const makeAppDir = ({connections = {}, command = null, logDir = null, snippets = {}, history = {}, config = {}} = {}) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-mcp-'))
   const app = path.join(dir, 'app')
 
@@ -21,7 +22,7 @@ const makeAppDir = ({connections = {}, command = null, logDir = null, snippets =
     quick_connection: {id: 'quick_connection', name: 'Quick Connection'},
   }, connections), null, '\t'))
   fs.writeFileSync(path.join(app, 'config.json'), JSON.stringify(
-    Object.assign({}, command ? {command_default: command} : {}, logDir ? {log_dir: logDir} : {}),
+    Object.assign({}, command ? {command_default: command} : {}, logDir ? {log_dir: logDir} : {}, config),
     null,
     '\t',
   ))

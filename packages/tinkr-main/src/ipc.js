@@ -33,10 +33,12 @@ const {allHistory, clearHistory} = require('./services/history')
 const {parsePhpForm, stringifyPhpForm} = require('./services/php')
 const {drawsControls} = require('./utils/frame')
 const {phpCompletions} = require('./completion')
+const {explainQuery} = require('./explain')
 const {complete, ask, check} = require('./services/ai')
 const {providers} = require('./aiProviders')
 const {checkForUpdates, downloadUpdate, installUpdate} = require('./updater')
-const {info: mcpInfo, configureClient} = require('./services/mcp')
+const {info: mcpInfo, configureClient, sessions: mcpSessions, session: mcpSession, clearSessions: clearMcpSessions} = require('./services/mcp')
+const {openCall} = require('./services/mcpCall')
 const {filesFor, attachmentsFor} = require('./services/project')
 const {files: logFiles, read: readLog} = require('./services/logs')
 const {getEditorConnection, getEditorConnectionId} = require('./processes')
@@ -468,6 +470,17 @@ ipcMain.handle('configureMcp', async (event, id) => {
   return configureClient(id)
 })
 
+ipcMain.handle('mcpSessions', async () => mcpSessions())
+
+ipcMain.handle('mcpSession', async (event, id) => mcpSession(id))
+
+ipcMain.handle('clearMcpSessions', async () => clearMcpSessions())
+
+// one call's code, opened in the editor window from the settings screen: the
+// window is switched to the call's connection first, and the tab follows the
+// switch
+ipcMain.handle('openMcpCall', async (event, request) => openCall(request))
+
 ipcMain.handle('parsePhpForm', async (event, connectionId, code) => {
   return await parsePhpForm(connectionId, code)
 })
@@ -478,4 +491,11 @@ ipcMain.handle('stringifyPhpForm', async (event, fields, code) => {
 
 ipcMain.handle('phpCompletions', async (event, connectionId, request) => {
   return await phpCompletions(connectionId, request)
+})
+
+// a plan is asked of the connection's background session, out of band: the
+// request is the query the run captured, and the answer is what that session
+// saw under EXPLAIN
+ipcMain.handle('explainQuery', async (event, connectionId, request) => {
+  return await explainQuery(connectionId, request)
 })

@@ -19,6 +19,7 @@ describe('newConnection', () => {
       cloud_application_name: '',
       cloud_environment_id: '',
       cloud_environment_name: '',
+      mcp_access: '',
     })
   })
 

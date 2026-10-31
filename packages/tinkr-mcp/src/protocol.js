@@ -106,6 +106,10 @@ const serve = ({server, name, version, input = process.stdin, output = process.s
         // decides whether that is good enough
         negotiated = protocolVersions.includes(params.protocolVersion) ? params.protocolVersion : latest
 
+        if (typeof server.initialize === 'function') {
+          server.initialize({client: isObject(params.clientInfo) ? params.clientInfo : null, protocol: negotiated})
+        }
+
         return {
           protocolVersion: negotiated,
           capabilities: {tools: {}},

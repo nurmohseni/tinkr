@@ -553,7 +553,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* every control in a settings list sits in one right column, so the rows share
    an axis instead of each control sizing itself */
 .setting__control > .input,
-.setting__control > .select { width: 240px; }
+.setting__control > .select,
+.setting__control > .textarea { width: 240px; }
+/* a control taller than a line sits with the label's first line, not its middle */
+.setting:has(.textarea) { align-items: start; }
 
 /* modal shell: overlay + 10px card. No dividers: the header, the body and the
    footer separate by the space between the words. */
@@ -1179,6 +1182,47 @@ details:not([open]) > summary .tree__caret::before {
 .guard--error { background: linear-gradient(var(--error-soft), var(--error-soft)), var(--panel-inset); }
 .guard--error > .guard__note:first-child { color: var(--error); font-weight: var(--fw-medium); }
 .guard__unguarded { flex-basis: 100%; color: var(--warning); }
+/* what a guarded run changed: a group per table, a row per change, the columns
+   it touched either side of an arrow. It is the dry run's own reading, so it
+   sits under the report that says the transaction was taken back, on the well's
+   tone rather than as a floating surface. The operation is a word — an outcome
+   is never colour alone — and the data is mono, the report's prose is not. */
+.changes {
+  padding: var(--s2) var(--s3) var(--s3);
+  background: var(--panel-inset);
+  box-shadow: 0 1px 0 var(--border);
+  font-size: var(--fs-sm);
+}
+.changes__head { display: flex; align-items: center; gap: var(--s2); min-height: 22px; color: var(--text-muted); }
+.changes__group { margin-top: var(--s2); }
+.changes__table {
+  display: flex; align-items: baseline; gap: var(--s2);
+  min-height: 22px; padding: 0 var(--s2);
+  color: var(--text-muted);
+}
+.changes__table-name { color: var(--text); font-weight: var(--fw-medium); }
+.changes__row {
+  display: grid;
+  grid-template-columns: minmax(52px, max-content) minmax(48px, max-content) minmax(0, 1fr);
+  align-items: baseline; column-gap: var(--s3);
+  padding: 2px var(--s2);
+  box-shadow: inset 0 1px 0 var(--border);
+  line-height: var(--lh-code);
+}
+.changes__row:hover { background: var(--hover); }
+.changes__op { color: var(--text-muted); }
+.changes__key { color: var(--text); white-space: nowrap; }
+.changes__cols { display: flex; flex-wrap: wrap; gap: 0 var(--s4); min-width: 0; }
+.changes__col { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+.changes__column { color: var(--text-faint); }
+.changes__arrow { color: var(--text-faint); }
+.changes__undiffed { margin-top: var(--s3); padding-top: var(--s2); box-shadow: inset 0 1px 0 var(--border); }
+.changes__note { display: block; color: var(--warning); }
+.changes__sql {
+  display: block; margin-top: 2px;
+  color: var(--text-muted); line-height: var(--lh-code);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
 /* a report with an action in it: what it says and what it offers wrap onto two
    rows where a row cannot hold both, and the action keeps its whole label */
 .result-summary--wrap { flex-wrap: wrap; row-gap: var(--s1); padding-block: var(--s1); }
@@ -1264,6 +1308,28 @@ details:not([open]) > summary .tree__caret::before {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .result-table__more { margin: 0; padding: var(--s2) var(--s3) 0; font-size: var(--fs-sm); color: var(--text-muted); }
+
+/* --- the plan of one query: a table under the row it explains --------------- */
+/* the action is a row action, so it takes the width of its word rather than
+   squeezing the statement's column */
+.queries__plan-action { width: 1%; white-space: nowrap; text-align: right; }
+/* the plan row is not a query: it carries no line, no index and no hover of its
+   own, and its head parks where the log's head does */
+.queries__plan > td { padding: 0 var(--s3) var(--s2); background: var(--panel-inset); }
+.plan { padding: var(--s1) 0 var(--s2); }
+.plan__note,
+.plan__source { margin: 0; padding: var(--s1) var(--s3); font-size: var(--fs-sm); color: var(--text-muted); }
+.plan__note--error { color: var(--error); }
+.plan__source { color: var(--text-faint); font-family: var(--font-mono); }
+/* a plan step is not one line of a record: a step's detail and pgsql's
+   QUERY PLAN column keep their own lines, and a wide driver scrolls sideways
+   with the pane rather than pushing the log's columns apart */
+.plan__table th { top: var(--result-summary-h); }
+.plan__table td { height: auto; padding: var(--s1) var(--s3); vertical-align: top; }
+.plan__cell {
+  display: block; max-width: 44ch;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
 
 /* --- the graph reading: a dot and a label per node, one column per depth ---- */
 .graph { padding: var(--s3) var(--s3) var(--s4) 0; }

@@ -24,6 +24,9 @@ ini_set('display_errors', '1');
 $root = __DIR__;
 
 require $root . '/vendor/illuminate/database/QueryExecuted.php';
+// the model a snippet writes through, so a guarded run of `$order->save()` has
+// the model events a dry run's change report reads (see runResult.DIFF_BLOCK)
+require $root . '/vendor/illuminate/database/Model.php';
 
 spl_autoload_register(function ($class) use ($root) {
     $prefix = 'App\\';
@@ -99,6 +102,26 @@ class TinkrFixtureEvents
 
     public static function dispatch($event, $payload)
     {
+        // a wildcard listener is called the way Laravel calls one: with the name
+        // of the event and the payload as the array it was dispatched with. An
+        // exact listener is handed the payload itself, which is what the run
+        // wrapper's query listener reads
+        foreach (self::$listeners as $pattern => $callbacks) {
+            if (strpos($pattern, '*') === false) {
+                continue;
+            }
+
+            $regex = '#^' . str_replace('\\*', '.*', preg_quote($pattern, '#')) . '$#';
+
+            if (!preg_match($regex, $event)) {
+                continue;
+            }
+
+            foreach ($callbacks as $callback) {
+                $callback($event, [$payload], false);
+            }
+        }
+
         foreach (self::$listeners[$event] ?? [] as $callback) {
             $callback($payload);
         }
@@ -125,15 +148,45 @@ class TinkrFixtureConnection
     public function __construct($name)
     {
         $this->name = $name;
-        $this->pdo = new PDO('sqlite::memory:');
+
+        // a session's database is in memory, so a run cannot leave a row behind
+        // for the next one. A test that is about what a run kept puts
+        // `storage/fixture-db` in its own copy of this project (see
+        // e2e/support/tinkr.copyFixture), and then every session of that copy
+        // shares one seeded file
+        $file = is_file(__DIR__ . '/storage/fixture-db') ? __DIR__ . '/storage/fixture.sqlite' : null;
+
+        $this->pdo = new PDO($file ? 'sqlite:' . $file : 'sqlite::memory:');
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $this->pdo->exec('create table orders (id integer primary key, customer text, total real, paid integer)');
-        $this->pdo->exec("insert into orders (customer, total, paid) values ('Ada', 42.5, 1), ('Grace', 18.0, 0), ('Linus', 7.25, 1)");
+
+        $seeded = $this->pdo->query("select name from sqlite_master where type = 'table' and name = 'orders'")->fetchColumn();
+
+        if (!$seeded) {
+            $this->pdo->exec('create table orders (id integer primary key, customer text, total real, paid integer)');
+            $this->pdo->exec("insert into orders (customer, total, paid) values ('Ada', 42.5, 1), ('Grace', 18.0, 0), ('Linus', 7.25, 1)");
+        }
+
+        // the table a model writes through, so a run can save a row the way a
+        // Laravel snippet saves one and a guarded run has model events to read
+        $notes = $this->pdo->query("select name from sqlite_master where type = 'table' and name = 'notes'")->fetchColumn();
+
+        if (!$notes) {
+            $this->pdo->exec('create table notes (id integer primary key, title text, published integer)');
+            $this->pdo->exec("insert into notes (title, published) values ('Draft', 0), ('Shipped', 1), ('Archived', 1)");
+        }
     }
 
     public function getName()
     {
         return $this->name;
+    }
+
+    // the fixture's database is sqlite, and a connection says so the way
+    // Laravel's own connection does: the pane asks before it builds an EXPLAIN,
+    // and sqlite's plan is EXPLAIN QUERY PLAN rather than EXPLAIN
+    public function getDriverName()
+    {
+        return 'sqlite';
     }
 
     public function beginTransaction()
@@ -166,6 +219,12 @@ class TinkrFixtureConnection
     public function transactionLevel()
     {
         return $this->level;
+    }
+
+    // what the row a model inserted answers with as its key
+    public function id()
+    {
+        return $this->pdo->lastInsertId();
     }
 
     private function run($sql, $bindings, $fetch)

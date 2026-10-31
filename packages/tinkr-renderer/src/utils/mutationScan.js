@@ -109,6 +109,10 @@ export const mutationScan = code => {
  * never inside it. A production connection is asked about those even under a
  * dry run, because the dry run is no protection there. Each entry names why,
  * which is what the question says.
+ *
+ * The MCP server keeps the same list in tinkr-core (src/unguardable.js), where
+ * it refuses forced-sandbox runs; a test here compares the two, so a pattern
+ * added to one is added to the other.
  */
 const UNGUARDABLE = [
   // the schema facade is DDL whatever it is asked

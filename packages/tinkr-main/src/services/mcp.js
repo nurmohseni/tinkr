@@ -4,6 +4,7 @@ const path = require('path')
 const {app} = require('electron')
 
 const {TOOLS} = require('tinkr-mcp')
+const journal = require('tinkr-mcp/src/journal')
 
 const {config} = require('../database/config')
 
@@ -399,6 +400,31 @@ const configureClient = id => {
   }
 }
 
+// what was read of each session's file, so a screen that asks every few
+// seconds reads only the sessions that changed
+const sessionCache = new Map()
+
+/**
+ * The sessions MCP clients had with the app's server, newest first. Each server
+ * process writes its own (see tinkr-mcp's journal), under the app's data.
+ *
+ * @return {Array<Object>}
+ */
+const sessions = () => journal.sessions(app.getPath('userData'), {cache: sessionCache})
+
+/**
+ * @param {String} id
+ * @return {Object|null} one session with its calls, newest first
+ */
+const session = id => journal.session(app.getPath('userData'), id)
+
+/**
+ * Forget the sessions that have ended.
+ *
+ * @return {Array<Object>} what is left: the sessions that are still live
+ */
+const clearSessions = () => journal.clear(app.getPath('userData'))
+
 module.exports = {
   serverPath,
   entryFor,
@@ -410,4 +436,7 @@ module.exports = {
   configure,
   configureClient,
   info,
+  sessions,
+  session,
+  clearSessions,
 }

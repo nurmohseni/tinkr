@@ -2,6 +2,8 @@ const http = require('http')
 const https = require('https')
 const {URL} = require('url')
 
+const {redactResult} = require('tinkr-core')
+
 const {config} = require('../database/config')
 const {providers} = require('../aiProviders')
 
@@ -167,7 +169,10 @@ const askMessages = ({prompt, code = '', history = [], output = null, files = []
   }
 
   if (output) {
-    blocks.push(outputBlock(output))
+    // what a run answered is the person's, and a field their settings hide is
+    // hidden before it is written into a request as well: what is on the
+    // screen is not what a provider is told
+    blocks.push(outputBlock(redactResult(output, config.get('redact_fields'))))
   }
 
   return [

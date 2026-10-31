@@ -346,7 +346,7 @@ describe('the transaction guard', () => {
     // a session with no database to guard is the case it is written for, and a
     // connection that will not begin a transaction is the other one
     expect(run.code).toContain("if(!function_exists('app')||!app()->bound('db'))")
-    expect(run.code).toContain('$tinkr_db->beginTransaction();$tinkr_tx_armed=true;$tinkr_tx_level=$tinkr_db->transactionLevel();}}')
+    expect(run.code).toContain('$tinkr_db->beginTransaction();$tinkr_tx_armed=true;$tinkr_tx_level=$tinkr_db->transactionLevel();')
     expect(run.code).toContain('catch(\\Throwable $tinkr_tx_failure){')
   })
 
@@ -413,7 +413,11 @@ describe('the transaction guard', () => {
     // what was asked of it, what it opened on, what it held, how it ended
     expect(run.code).toContain("'mode'=>$tinkr_tx_mode,'armed'=>$tinkr_tx_armed,'connection'=>$tinkr_tx,")
     expect(run.code).toContain("'statements'=>($tinkr_tx===null?0:($tinkr_query_connections[$tinkr_tx]??0)),")
-    expect(run.code).toContain("'outcome'=>$tinkr_tx_outcome,'error'=>$tinkr_tx_error,'unguarded'=>(object)$tinkr_tx_other];")
+    expect(run.code).toContain("'outcome'=>$tinkr_tx_outcome,'error'=>$tinkr_tx_error,'unguarded'=>(object)$tinkr_tx_other,")
+    // and what the run changed, row by row, with the part of it nothing could
+    // describe
+    expect(run.code).toContain("'changes'=>$tinkr_tx_diff['changes'],'changesTotal'=>$tinkr_tx_diff['total'],")
+    expect(run.code).toContain("'undiffed'=>['count'=>$tinkr_tx_diff['undiffed'],'sample'=>$tinkr_tx_diff['sample']]];")
   })
 
   test('counts the statements of every connection, stored or dropped', () => {

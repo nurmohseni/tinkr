@@ -12,6 +12,22 @@ ipcRenderer.on('setConnection', (event, id) => {
 
 const connectionId = () => currentConnectionId
 
+// A window that was just opened for a call is told about it before its page has
+// mounted a listener: the message waits here for the window to ask for it, so a
+// first call is not one nobody hears.
+const pendingCalls = []
+const callListeners = new Set()
+
+ipcRenderer.on('openMcpCall', (event, payload) => {
+  if (callListeners.size) {
+    callListeners.forEach(listener => listener(payload))
+
+    return
+  }
+
+  pendingCalls.push(payload)
+})
+
 // what electron puts in front of the message of an error a handler threw, which
 // is about the plumbing and not about what went wrong
 const remotePrefix = /^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/
@@ -94,6 +110,25 @@ contextBridge.exposeInMainWorld('api', {
   logRead: (name, options) => invoke('logRead', connectionId(), name, options),
   mcpInfo: () => ipcRenderer.sendSync('mcpInfo'),
   configureMcp: id => invoke('configureMcp', id),
+  // what MCP clients did through the app's server: the sessions, one in full,
+  // and forgetting the ones that ended
+  mcpSessions: () => invoke('mcpSessions'),
+  mcpSession: id => invoke('mcpSession', id),
+  clearMcpSessions: () => invoke('clearMcpSessions'),
+  // one call's code, opened in the editor window: the settings screen asks, and
+  // the editor window is what is told when the tab is to be started
+  openMcpCall: request => invoke('openMcpCall', request),
+  onMcpCall: cb => {
+    callListeners.add(cb)
+
+    while (pendingCalls.length) {
+      cb(pendingCalls.shift())
+    }
+
+    return {
+      dispose: () => callListeners.delete(cb),
+    }
+  },
   popupConnectionContextMenu: id => ipcRenderer.send('popupConnectionContextMenu', id),
   inputConnection: code => ipcRenderer.send('inputConnection', connectionId(), code),
   runConnection: (code, guard) => ipcRenderer.send('runConnection', connectionId(), code, guard),
@@ -123,6 +158,7 @@ contextBridge.exposeInMainWorld('api', {
   parsePhpForm: code => invoke('parsePhpForm', connectionId(), code),
   stringifyPhpForm: (fields, code) => invoke('stringifyPhpForm', fields, code),
   phpCompletions: request => invoke('phpCompletions', connectionId(), request),
+  explainQuery: request => invoke('explainQuery', connectionId(), request),
 
   onSetIntlConfig: cb => {
     const listener = (event, arg) => cb(arg)

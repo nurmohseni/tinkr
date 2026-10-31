@@ -123,6 +123,78 @@ const command = dir => (read(configFile(dir)) || {}).command_default || 'php art
 const logDir = dir => (read(configFile(dir)) || {}).log_dir || 'storage/logs'
 
 /**
+ * The three things the app lets an MCP client do on a connection tagged
+ * production.
+ *
+ * @type {Array<String>}
+ */
+const productionModes = ['refuse', 'guarded', 'allow']
+
+/**
+ * What the app's Settings → MCP says a production connection does with a run:
+ * `refuse` stops it, `guarded` runs it inside a forced sandbox, and `allow`
+ * sends it as asked.
+ *
+ * It is read on every run rather than once at start, because a client keeps its
+ * server running for as long as it is open: a mode changed in the app has to
+ * hold from the next run, not from the next time the client is restarted.
+ * Anything the app did not write is `refuse`, which is what a file edited by
+ * hand or an older app's preference leaves behind.
+ *
+ * @param {String|null} dir
+ * @return {String} `refuse`, `guarded` or `allow`
+ */
+const productionMode = dir => {
+  const value = Boolean(dir) && (read(configFile(dir)) || {}).mcp_production
+
+  return productionModes.includes(value) ? value : 'refuse'
+}
+
+/**
+ * A connection's own access, when it has one: `refuse`, `guarded`, `allow`, or
+ * '' for "follow the app's setting".
+ *
+ * @param {Object|null} connection
+ * @return {String}
+ */
+const connectionAccess = connection => {
+  const value = connection && connection.mcp_access
+
+  return productionModes.includes(value) ? value : ''
+}
+
+/**
+ * The mode and where it came from, for a connection taggged production: its own
+ * `mcp_access` when it has one, and otherwise Settings → MCP.
+ *
+ * @param {String|null} dir
+ * @param {Object} connection
+ * @return {{mode: String, source: String}} `source` is `connection` or
+ *   `settings`
+ */
+const productionAccess = (dir, connection) => {
+  const own = connectionAccess(connection)
+
+  return own
+    ? {mode: own, source: 'connection'}
+    : {mode: productionMode(dir), source: 'settings'}
+}
+
+/**
+ * The field names whose values are hidden in an answer, as the app's Settings
+ * say.
+ *
+ * Read on every call for the same reason production access is: a client keeps
+ * its server open, and a field added to the list has to hide the next answer,
+ * not the next answer after a restart. A configuration without the setting
+ * answers nothing, and what nothing means is the default list.
+ *
+ * @param {String|null} dir
+ * @return {Array<String>|undefined}
+ */
+const redactFields = dir => (dir ? (read(configFile(dir)) || {}).redact_fields : undefined)
+
+/**
  * @param {String} dir
  * @param {String} connectionId
  * @return {Array<Object>}
@@ -235,6 +307,10 @@ module.exports = {
   connections,
   command,
   logDir,
+  productionMode,
+  connectionAccess,
+  productionAccess,
+  redactFields,
   snippets,
   saveSnippet,
   deleteSnippet,

@@ -3,9 +3,30 @@ import {useIntl} from 'react-intl'
 import {useAtomValue, useSetAtom} from 'jotai'
 
 import Outcome from '../Outcome'
+import SegmentedField from './SegmentedField'
+import McpSessions from './McpSessions'
 import {configAtom, setConfigAtom} from '../../stores/config'
-import {connectionListAtom} from '../../stores/connections'
+import {connectionListAtom, updateConnectionAtom} from '../../stores/connections'
 import {configureClientAtom, mcpAtom, reloadMcpAtom} from '../../stores/mcp'
+
+/**
+ * What a run on a connection tagged production may do, as the segmented control
+ * offers it: the server reads the value on every run.
+ */
+const productionOptions = [
+  {value: 'refuse', labelId: 'preference.mcp_production_refuse'},
+  {value: 'guarded', labelId: 'preference.mcp_production_guarded'},
+  {value: 'allow', labelId: 'preference.mcp_production_allow'},
+]
+
+/**
+ * A connection's own access, which sits on the connection rather than in the
+ * preferences: '' follows the setting above.
+ */
+const accessOptions = [
+  {value: '', labelId: 'preference.mcp_access_follow'},
+  ...productionOptions,
+]
 
 /**
  * What each tool the server offers does, in the app's own words. The names are
@@ -26,9 +47,12 @@ const toolMessages = {
 }
 
 /**
- * The MCP section: which connection a client's code runs in, one row per client
- * the app can point at its own server, and — for a client it does not know — the
- * entry itself, with what the server offers under it.
+ * The MCP section: which connection a client's code runs in, what a client may
+ * do on a connection tagged production — the mode every one of them follows,
+ * and each one's own override — one row per client the app can point at its own
+ * server, and — for a client it does not know — the entry itself, with what the
+ * server offers under it. Under all of it, the sessions clients had with the
+ * server (McpSessions).
  *
  * A client that keeps its configuration in a file gets that file written; one
  * that keeps it behind a command of its own is given the command to copy. Both
@@ -45,9 +69,13 @@ const McpForm = () => {
   const reload = useSetAtom(reloadMcpAtom)
   const configure = useSetAtom(configureClientAtom)
   const connections = useAtomValue(connectionListAtom)
+  const updateConnection = useSetAtom(updateConnectionAtom)
   const [copied, setCopied] = useState('')
   const [busy, setBusy] = useState('')
   const [written, setWritten] = useState({})
+  // only a connection tagged production is gated, so only those have an access
+  // of their own worth setting
+  const gated = connections.filter(connection => connection.tag === 'production')
 
   const entry = JSON.stringify(mcp.config, null, 2)
   const copyLabel = copied ? 'preference.mcp_copied' : 'preference.mcp_copy'
@@ -64,6 +92,13 @@ const McpForm = () => {
     // the entry names the connection, so what the section shows is what the
     // main process makes of the one just chosen
     reload()
+  }
+
+  // the access sits on the connection, so it is written the way the connection
+  // dialog writes one: the store hands the whole connection to the main process,
+  // which keeps the password it already had (see updateConnectionAtom)
+  const handleAccess = (event, connection) => {
+    updateConnection({...connection, mcp_access: event.target.value})
   }
 
   const handleConfigure = async client => {
@@ -116,6 +151,60 @@ const McpForm = () => {
           </select>
         </div>
       </div>
+
+      <SegmentedField
+        labelId='preference.mcp_production'
+        descriptionId='preference.mcp_production_description'
+        configKey='mcp_production'
+        options={productionOptions}
+      />
+
+      {gated.length > 0 && (
+        <>
+          <div className='setting'>
+            <div>
+              <div className='setting__label'>
+                {intl.formatMessage({id: 'preference.mcp_access'})}
+              </div>
+              <div className='setting__desc'>
+                {intl.formatMessage({id: 'preference.mcp_access_description'})}
+              </div>
+            </div>
+          </div>
+
+          {gated.map(connection => (
+            <div
+              className='setting'
+              key={connection.id}
+            >
+              <div>
+                <div className='setting__label'>{connection.name}</div>
+                <div className='setting__desc'>
+                  {intl.formatMessage({id: 'connections.tag_production'})}
+                </div>
+              </div>
+
+              <div className='setting__control'>
+                <select
+                  className='select'
+                  value={connection.mcp_access || ''}
+                  aria-label={intl.formatMessage({id: 'preference.mcp_access_for'}, {connection: connection.name})}
+                  onChange={event => handleAccess(event, connection)}
+                >
+                  {accessOptions.map(option => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {intl.formatMessage({id: option.labelId})}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
 
       {mcp.clients.map(client => (
         <div
@@ -218,6 +307,8 @@ const McpForm = () => {
           ))}
         </div>
       </div>
+
+      <McpSessions/>
     </>
   )
 }

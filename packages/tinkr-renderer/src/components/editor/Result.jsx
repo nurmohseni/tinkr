@@ -4,6 +4,8 @@ import PropTypes from 'prop-types'
 
 import Outcome from '../Outcome'
 import PointerMenu from '../PointerMenu'
+import MarkdownAction from './MarkdownAction'
+import ResultChanges from './ResultChanges'
 import ResultGraph from './ResultGraph'
 import ResultHtml from './ResultHtml'
 import ResultTable from './ResultTable'
@@ -119,7 +121,7 @@ Reading.propTypes = {
  * table is copied and saved as a csv, and every other reading copies what it
  * shows — the text it read, or the json the tree and the graph are drawn from.
  */
-const ReadingActions = ({value, view, output = ''}) => {
+const ReadingActions = ({value, view, output = '', children = null}) => {
   const intl = useIntl()
   const [menu, setMenu] = useState(null)
   const closeMenu = useCallback(() => setMenu(null), [])
@@ -173,6 +175,8 @@ const ReadingActions = ({value, view, output = ''}) => {
             </button>
           </PointerMenu>
         )}
+
+        {children}
       </span>
     )
   }
@@ -187,6 +191,8 @@ const ReadingActions = ({value, view, output = ''}) => {
       >
         {intl.formatMessage({id: 'result.copy_short'})}
       </button>
+
+      {children}
     </span>
   )
 }
@@ -195,6 +201,7 @@ ReadingActions.propTypes = {
   value: PropTypes.any,
   view: PropTypes.oneOf(READINGS).isRequired,
   output: PropTypes.string,
+  children: PropTypes.node,
 }
 
 /**
@@ -230,7 +237,7 @@ Duration.propTypes = {
 }
 
 /** The run's exception: the class over its message, as the design's surface. */
-const Failure = ({error, duration = null}) => {
+const Failure = ({error, duration = null, markdown = null}) => {
   const intl = useIntl()
 
   return (
@@ -249,6 +256,8 @@ const Failure = ({error, duration = null}) => {
         >
           {intl.formatMessage({id: 'result.copy_short'})}
         </button>
+
+        {markdown && <MarkdownAction {...markdown}/>}
       </span>
     </div>
 
@@ -262,6 +271,7 @@ const Failure = ({error, duration = null}) => {
 
 Failure.propTypes = {
   duration: PropTypes.number,
+  markdown: PropTypes.object,
   error: PropTypes.shape({
     class: PropTypes.string,
     message: PropTypes.string,
@@ -347,7 +357,7 @@ Block.propTypes = {
  * What the run printed, as the session's console: the one bar says nothing came
  * back, and the text is drawn under it.
  */
-const Printed = ({output}) => {
+const Printed = ({output, markdown = null}) => {
   const intl = useIntl()
 
   return (
@@ -355,14 +365,18 @@ const Printed = ({output}) => {
     <div className='result-summary result-summary--head'>
       <Outcome kind='printed' label animate key={output}/>
       <span className='grow'/>
-      <button
-        className='btn btn--ghost btn--sm'
-        type='button'
-        title={intl.formatMessage({id: 'result.copy_printed'})}
-        onClick={() => copyText(output)}
-      >
-        {intl.formatMessage({id: 'result.copy_short'})}
-      </button>
+      <span className='result-summary__actions'>
+        <button
+          className='btn btn--ghost btn--sm'
+          type='button'
+          title={intl.formatMessage({id: 'result.copy_printed'})}
+          onClick={() => copyText(output)}
+        >
+          {intl.formatMessage({id: 'result.copy_short'})}
+        </button>
+
+        {markdown && <MarkdownAction {...markdown}/>}
+      </span>
     </div>
 
     <pre className='printed'>{output}</pre>
@@ -372,6 +386,7 @@ const Printed = ({output}) => {
 
 Printed.propTypes = {
   output: PropTypes.string.isRequired,
+  markdown: PropTypes.object,
 }
 
 /**
@@ -431,7 +446,7 @@ ViewSwitch.propTypes = {
  * is read raw as the json the tree is drawn from. Either way the readings are
  * alternatives: one replaces the other, and neither is said twice.
  */
-const Returned = ({value, view, onView, output = '', duration = null}) => {
+const Returned = ({value, view, onView, output = '', duration = null, markdown = null}) => {
   const intl = useIntl()
   const views = readingsOf([value])
   const reading = readingOf(view, value)
@@ -444,7 +459,9 @@ const Returned = ({value, view, onView, output = '', duration = null}) => {
         <ViewSwitch views={views} view={reading} onChange={onView}/>
         <span className='grow'/>
         <Duration duration={duration}/>
-        <ReadingActions value={value} view={reading} output={output}/>
+        <ReadingActions value={value} view={reading} output={output}>
+          {markdown && <MarkdownAction {...markdown}/>}
+        </ReadingActions>
       </div>
 
       <Reading value={value} view={reading} output={output}/>
@@ -456,6 +473,7 @@ Returned.propTypes = {
   value: PropTypes.any,
   duration: PropTypes.number,
   output: PropTypes.string,
+  markdown: PropTypes.object,
   view: PropTypes.oneOf(READINGS).isRequired,
   onView: PropTypes.func.isRequired,
 }
@@ -590,9 +608,13 @@ Guard.propTypes = {
   }),
 }
 
-const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {}, allStatements = false}) => {
+const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {}, allStatements = false, code = '', connection = ''}) => {
   const intl = useIntl()
   const {value, error, output, imported, blocks, transaction, sandbox, duration} = result
+
+  // what a Markdown export needs beyond the envelope: the snippet the run was
+  // sent with, and the connection it ran on
+  const markdown = {result, code, connection}
 
   // a run of several statements, read statement by statement: the value of the
   // run is the last one's, so this is what "every statement" means
@@ -603,9 +625,12 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
       <>
         <Guard transaction={transaction} sandbox={sandbox} run={result} onKeep={onKeep}/>
 
+        {/* what the guard took back, row by row, under its own report */}
+        <ResultChanges transaction={transaction}/>
+
         <Imported imported={imported}/>
 
-        {output && <Printed output={output}/>}
+        {output && <Printed output={output} markdown={markdown}/>}
 
         <div className='result-summary result-summary--head'>
           <Outcome
@@ -618,6 +643,9 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
           <ViewSwitch views={views} view={onReading(views, view)} onChange={onView}/>
           <span className='grow'/>
           <Duration duration={duration}/>
+          <span className='result-summary__actions'>
+            <MarkdownAction {...markdown}/>
+          </span>
         </div>
 
         {blocks.map((block, index) => (
@@ -627,7 +655,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
 
         {/* a run that ended outside every statement — exit, a fatal error, a
             session that died — has its failure on the run, not on a block */}
-        {error && !blocks.some(block => block.error) && <Failure error={error}/>}
+        {error && !blocks.some(block => block.error) && <Failure error={error} markdown={markdown}/>}
       </>
     )
   }
@@ -636,16 +664,18 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
     <>
       <Guard transaction={transaction} sandbox={sandbox} run={result} onKeep={onKeep}/>
 
+      <ResultChanges transaction={transaction}/>
+
       <Imported imported={imported}/>
 
       {/* what a run that failed printed first is kept: `exit()` and `dd()` end
           the run after they have printed what they were for */}
-      {error && output && <Printed output={output}/>}
+      {error && output && <Printed output={output} markdown={markdown}/>}
 
-      {error && <Failure error={error} duration={duration}/>}
+      {error && <Failure error={error} duration={duration} markdown={markdown}/>}
 
       {/* a run that printed and returned nothing is read as it printed */}
-      {!error && value === null && output && <Printed output={output}/>}
+      {!error && value === null && output && <Printed output={output} markdown={markdown}/>}
 
       {/* and a run that returned a value is read one way or the other: what it
           printed is the raw reading of that value, and is drawn with it */}
@@ -656,6 +686,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
           onView={onView}
           output={output}
           duration={duration}
+          markdown={markdown}
         />
       )}
 
@@ -669,6 +700,8 @@ Result.propTypes = {
   onView: PropTypes.func,
   onKeep: PropTypes.func,
   allStatements: PropTypes.bool,
+  code: PropTypes.string,
+  connection: PropTypes.string,
   result: PropTypes.shape({
     value: PropTypes.any,
     error: PropTypes.shape({
@@ -678,6 +711,7 @@ Result.propTypes = {
     output: PropTypes.string,
     imported: PropTypes.object,
     transaction: PropTypes.object,
+    ranAt: PropTypes.string,
   }).isRequired,
 }
 

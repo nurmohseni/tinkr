@@ -33,6 +33,10 @@ const newConnection = name => ({
   cloud_application_name: '',
   cloud_environment_id: '',
   cloud_environment_name: '',
+  // what an MCP client may do here when the connection is tagged production:
+  // nothing follows the app's setting, which is what Settings → MCP offers as
+  // "Follow the setting"
+  mcp_access: '',
 })
 
 export {newConnectionId, newConnection}

@@ -1,6 +1,7 @@
 import CommandDefaultField from './CommandDefaultField'
 import GeneralField from './GeneralField'
 import LocaleSelectField from './LocaleSelectField'
+import RedactFields from './RedactFields'
 import SegmentedField from './SegmentedField'
 import SwitchField from './SwitchField'
 import ThemeField from './ThemeField'
@@ -56,6 +57,8 @@ const GeneralForm = () => {
       configKey='log_dir'
       placeholder='storage/logs'
     />
+
+    <RedactFields/>
 
     <UpdateField/>
   </>

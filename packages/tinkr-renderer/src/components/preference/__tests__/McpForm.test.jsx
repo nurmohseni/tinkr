@@ -11,8 +11,9 @@ global.React = React
 jest.mock('../../../stores/connections', () => ({
   connectionListAtom: require('jotai').atom([
     {id: 'one', name: 'The App'},
-    {id: 'production', name: 'Production'},
+    {id: 'production', name: 'Production', tag: 'production'},
   ]),
+  updateConnectionAtom: require('jotai').atom(null, () => {}),
 }))
 
 // the main process is what knows the server's path and the client files, and a
@@ -50,7 +51,8 @@ jest.mock('../../../utils/api', () => {
 
   return {
     info,
-    allConfig: () => ({mcp_connection: ''}),
+    allConfig: () => ({mcp_connection: '', mcp_production: 'refuse'}),
+    allConnections: () => ({}),
     setConfig: jest.fn(),
     mcpInfo: jest.fn(() => info),
     configureMcp: jest.fn(),
@@ -113,6 +115,25 @@ describe('the MCP settings', () => {
     expect(markup).toContain('runs PHP in a project on this machine')
     expect(markup).toContain('tinkr_run_php_over_ssh')
     expect(markup).toContain('runs PHP on a server, over ssh')
+  })
+
+  test('offers the three production modes, and an access for each production connection', () => {
+    const markup = render()
+
+    expect(markup).toContain('Production connections')
+    expect(markup).toContain('Refuse')
+    expect(markup).toContain('Sandbox')
+    expect(markup).toContain('Allow')
+    // the three modes are one radio group, and the connection control follows
+    // the setting by default
+    expect(markup).toContain('name="mcp_production"')
+    expect(markup).toContain('value="guarded"')
+
+    // a connection tagged production has a control of its own; one that is not
+    // is not gated, so it has none
+    expect(markup).toContain('Access for Production')
+    expect(markup).not.toContain('Access for The App')
+    expect(markup).toContain('Follow the setting')
   })
 })
 

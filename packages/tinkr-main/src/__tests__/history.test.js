@@ -1,3 +1,6 @@
+const {defaultRedactFields} = require('tinkr-core')
+
+const {config} = require('../database/config')
 const {appendHistory, allHistory, outcomeOf, answerOf} = require('../services/history')
 
 describe('what a run is recorded as', () => {
@@ -114,5 +117,62 @@ describe('the history of a connection', () => {
 
     expect(allHistory('yours')).toEqual([])
     expect(allHistory('mine')).toHaveLength(1)
+  })
+})
+
+describe('what the history hides', () => {
+  afterEach(() => {
+    config.set('redact_fields', [...defaultRedactFields])
+  })
+
+  test('keeps a hidden field as [hidden], not as the value that came back', () => {
+    const [entry] = appendHistory('hidden', 'User::first();', {
+      value: {id: 1, name: 'Ada', password: 'hunter2', remember_token: 'Zx9'},
+      error: null,
+    })
+
+    expect(entry.value).toEqual({id: 1, name: 'Ada', password: '[hidden]', remember_token: '[hidden]'})
+  })
+
+  test('hides a field at any depth, and in a list of models', () => {
+    const [entry] = appendHistory('nested', 'User::all();', {
+      value: {data: [{id: 1, token: 'a'}, {id: 2, token: 'b'}], meta: {secret: 's'}},
+      error: null,
+    })
+
+    expect(entry.value).toEqual({data: [{id: 1, token: '[hidden]'}, {id: 2, token: '[hidden]'}], meta: {secret: '[hidden]'}})
+  })
+
+  test('keeps what the run printed, which has no field names to go by', () => {
+    const [entry] = appendHistory('printed', 'echo "password: hunter2";', {
+      value: null,
+      error: null,
+      output: 'password: hunter2',
+    })
+
+    expect(entry.output).toBe('password: hunter2')
+  })
+
+  test('is the fields the settings name, and an empty list keeps everything', () => {
+    config.set('redact_fields', ['nickname'])
+
+    const [named] = appendHistory('named', '$user = $one;', {value: {nickname: 'Ada', password: 'hunter2'}, error: null})
+
+    expect(named.value).toEqual({nickname: '[hidden]', password: 'hunter2'})
+
+    config.set('redact_fields', [])
+
+    const [kept] = appendHistory('kept', '$user = $two;', {value: {nickname: 'Ada', password: 'hunter2'}, error: null})
+
+    expect(kept.value).toEqual({nickname: 'Ada', password: 'hunter2'})
+  })
+
+  test('hides before it decides how much of the value fits', () => {
+    const value = {password: 'x'.repeat(9000), name: 'Ada'}
+    const [entry] = appendHistory('sized', '$user = $big;', {value, error: null})
+
+    // the masked value is small enough to keep, and the size that was checked
+    // is the size that is written
+    expect(entry.value).toEqual({password: '[hidden]', name: 'Ada'})
   })
 })

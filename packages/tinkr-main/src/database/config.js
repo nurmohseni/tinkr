@@ -1,4 +1,5 @@
 const {app} = require('electron')
+const {defaultRedactFields} = require('tinkr-core')
 const {openStore} = require('./store')
 
 const {allLocales} = require('../utils/allLocales')
@@ -67,9 +68,19 @@ const defaults = {
   // the connection the MCP server runs code in when a client does not say which
   // project it is working on: nothing means the client's own directory
   mcp_connection: '',
+  // what an MCP client may do on a connection tagged production: refuse the
+  // run (the default), run it inside a forced sandbox, or let it through as
+  // asked. A connection can override it with its own `mcp_access`. The server
+  // reads both from disk on every run, so a change holds from the next one
+  mcp_production: 'refuse',
   // where the log viewer looks for a connection's log files, relative to the
   // project: Laravel writes them in storage/logs
   log_dir: 'storage/logs',
+  // the field names whose values are hidden before a run leaves the screen:
+  // the history kept on disk, what an AI request carries, and what an MCP
+  // client is answered. `*` matches any run of characters, case does not
+  // matter, and an empty list hides nothing
+  redact_fields: [...defaultRedactFields],
 }
 
 const config = openStore({

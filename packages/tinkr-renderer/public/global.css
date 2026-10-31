@@ -316,6 +316,183 @@ button.tree-nav__row {
     color: var(--text);
 }
 
+/* the sessions: a well of rows, one per time a client started the server. A
+   row is a disclosure: the client, where its calls went, how many, and when,
+   opening onto the calls as a ledger of outcomes, the way History reads. Rows
+   meet on one tone, so a hairline is what parts them. */
+.mcpsessions {
+    margin-top: 10px;
+    max-height: 420px;
+    overflow: auto;
+    background: var(--panel-inset);
+    border-radius: var(--r-btn);
+}
+
+.mcpsession + .mcpsession {
+    border-top: 1px solid var(--border);
+}
+
+.mcpsession__row {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1.1fr) minmax(0, 1fr) auto 128px;
+    column-gap: var(--s3);
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+    transition: background-color var(--dur-1) var(--ease);
+}
+
+.mcpsession__row:hover { background: var(--hover); }
+
+.mcpsession__row:focus-visible,
+.mcpcall__row:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+}
+
+.mcpsession__client {
+    color: var(--text);
+    font-weight: var(--fw-medium);
+}
+
+.mcpsession__client,
+.mcpsession__where,
+.mcpcall__where,
+.mcpcall__line {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcpsession__calls { white-space: nowrap; }
+
+.mcpsession__threw { color: var(--error); }
+
+/* when it started, and how long it ran — or that it is running, in ink, with
+   no light beside it: live is said, not lit */
+.mcpsession__when {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--s2);
+    white-space: nowrap;
+}
+
+.mcpsession__live { color: var(--text); font-weight: var(--fw-medium); }
+
+/* the calls sit under the client's name: the caret's column and its gap */
+.mcpsession__calls-list {
+    padding: 2px 12px 8px calc(12px + 10px + var(--s3));
+}
+
+.mcpsession__note {
+    margin: 4px 0 0;
+    font-size: var(--fs-sm);
+}
+
+.mcpcall__row {
+    display: grid;
+    grid-template-columns: 12px 160px minmax(0, 1fr) minmax(0, 1.1fr) 52px;
+    column-gap: var(--s3);
+    align-items: center;
+    min-height: var(--tree-row-h);
+    padding: 0 6px;
+    margin: 0 -6px;
+    border-radius: var(--r-key);
+    font-size: var(--fs-sm);
+}
+
+summary.mcpcall__row { cursor: pointer; }
+
+summary.mcpcall__row:hover { background: var(--hover); }
+
+.mcpcall__row .outcome__mark { width: 12px; height: 12px; }
+
+.mcpcall__tool {
+    font-size: var(--fs-sm);
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcpcall__where {
+    display: flex;
+    gap: 6px;
+    color: var(--text-muted);
+}
+
+.mcpcall__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mcpcall__stage { flex: none; color: var(--stage); }
+
+.mcpcall__line {
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+}
+
+.mcpcall__line--error { color: var(--error); }
+
+.mcpcall__time { text-align: right; }
+
+/* a call opened: its whole code, and what went wrong, under its row */
+.mcpcall__detail {
+    padding: 4px 0 8px calc(12px + var(--s3));
+}
+
+.mcpcall__meta {
+    margin-bottom: 4px;
+    font-size: var(--fs-sm);
+}
+
+/* a guard the production mode forced is not the call's own choice: it is said
+   in the production stage's ink, and never in the muted tone of an aside */
+.mcpcall__meta--forced {
+    color: var(--stage-production);
+}
+
+.mcpcall__code {
+    margin: 0;
+    padding: 8px 10px;
+    max-height: 240px;
+    overflow: auto;
+    background: var(--panel);
+    border-radius: var(--r-btn);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-code);
+    color: var(--text);
+    white-space: pre;
+}
+
+.mcpcall__error {
+    margin: 6px 0 0;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--error);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* what can be done with a call's code: opened in the editor as a new tab, or —
+   when there is no connection left to open it in — one faint line saying why */
+.mcpcall__actions {
+    display: flex;
+    align-items: center;
+    min-height: 22px;
+    margin-top: 6px;
+}
+
+.mcpcall__reason {
+    font-size: var(--fs-sm);
+    color: var(--text-faint);
+}
+
 /* ---- the editor window's code well ---------------------------------------
    tinkr.css carries the failed-run surface, the trace and the empty state, and
    they are used from there. What the app adds is the code well's type size: the

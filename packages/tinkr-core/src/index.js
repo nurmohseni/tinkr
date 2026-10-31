@@ -10,6 +10,7 @@
 module.exports = Object.assign(
   {},
   require('./runResult'),
+  require('./redact'),
   require('./terminalOutput'),
   require('./classIndex'),
   require('./phpScanner'),
@@ -18,8 +19,10 @@ module.exports = Object.assign(
   require('./sshAskpass'),
   require('./sshControl'),
   require('./containerCommand'),
+  require('./unguardable'),
   require('./cloud'),
   require('./remote'),
+  require('./explain'),
   // a namespace rather than flat names: `files` and `read` are what a log
   // module calls its own, and the library already has plenty of those
   {logs: require('./logs')},

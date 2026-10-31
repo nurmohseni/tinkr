@@ -146,6 +146,29 @@ says what happened:
 - it wrote to **another connection** — that is \`transaction.unguarded\`, and those
   statements were never inside the transaction at all.
 
+## What the run changed
+
+A guarded answer says what the run did to the database, row by row, in
+\`transaction.changes\`:
+
+\`\`\`json
+{"connection": "mysql", "table": "orders", "key": {"id": 1},
+ "op": "updated", "before": {"paid": 1}, "after": {"paid": 0}}
+\`\`\`
+
+\`op\` is \`created\`, \`updated\` or \`deleted\`. A created row carries \`after\` and no
+\`before\`, a deleted row the other way round, and an update only the columns it
+changed. Rows are read from Eloquent's model events, so \`$model->save()\`,
+\`$model->delete()\`, \`Model::create([…])\` and a model updated in bulk are one row
+each. \`changesTotal\` counts them all; the list is capped (fifty rows, a hundred
+kilobytes, four hundred characters a value) and the answer says when it was cut.
+
+Writes no model event spoke for are **not guessed at**: a query-builder
+\`update\`/\`delete\`, \`DB::update\`, \`truncate\`, a soft delete and \`saveQuietly\` are
+counted in \`transaction.undiffed.count\`, with the first three as \`sample\` SQL.
+So a guarded run can change rows it cannot show: read that count before treating
+a rollback as "nothing happened".
+
 ## \`guard: "sandbox"\` — the dry run that also seals the world
 
 A transaction holds the database and **nothing else**. \`Mail::send\`, \`dispatch\`,
@@ -235,14 +258,28 @@ A connection is a project plus the command that reaches it. The app saves them;
 ## The production tag
 
 A connection can be tagged \`production\`. That tag is a promise the app makes to
-its user, and this server keeps it:
+its user, and this server keeps it. The app's Settings → MCP sets \`mcp_production\`
+to one of three modes, and a connection can carry an \`mcp_access\` of its own that
+overrides it. Only a connection tagged production is gated at all.
 
-- **A run on a production connection is refused** unless the server was started
-  on that exact connection (\`--connection\`) or with \`--allow-production\`. The
-  answer says which.
-- In the app, a run that writes to a production connection is held behind a
-  question, and a dry run is asked about anything its transaction cannot hold
-  (DDL, the snippet's own commit, another connection).
+- **\`refuse\`** — the default. A run there is refused before anything is booted,
+  and the answer names the mode and where to change it. Reading its logs, its
+  snippets and its history is still allowed.
+- **\`guarded\`** — the run goes through, always with \`guard: "sandbox"\` whatever
+  the call asked for (nothing or \`rollback\` included): mail, jobs, HTTP calls,
+  file writes, the cache and the log are recorded instead of happening, and the
+  database is rolled back. The answer says the guard was forced and why. Code a
+  sandbox cannot take back — DDL, the snippet's own commit, another connection,
+  a reconnect or the default connection swapped mid-run — is refused with the
+  lines and the reasons, because the transaction would not hold it.
+- **\`allow\`** — the run is sent as asked.
+
+Both values are read from the app's files on every run, so a change there holds
+from the next call without restarting the client. \`structuredContent.production\`
+says which mode applied, whether the connection set it, and whether the guard
+was forced. In the app, a run that writes to a production connection is held
+behind a question, and a dry run is asked about anything its transaction cannot
+hold — this server keeps the same promise with the mode.
 
 So when a connection is tagged production, assume the honest answer is: **do not
 write there**. If you are exploring, use \`guard: "sandbox"\`; if you are changing
@@ -362,7 +399,11 @@ a person.
   "queries": [{"line": 1, "sql": "select count(*) …", "bindings": [], "time": 0.4, "connection": "mysql"}],
   "queriesTotal": 1,
   "imported": {"Order": "App\\\\Models\\\\Order"},
-  "transaction": {"mode": "rollback", "armed": true, "connection": "mysql", "statements": 1, "outcome": "rolledBack", "error": null, "unguarded": {}},
+  "transaction": {"mode": "rollback", "armed": true, "connection": "mysql", "statements": 3, "outcome": "rolledBack", "error": null, "unguarded": {},
+                "changes": [{"connection": "mysql", "table": "orders", "key": {"id": 1}, "op": "updated",
+                             "before": {"paid": 1}, "after": {"paid": 0}}],
+                "changesTotal": 1,
+                "undiffed": {"count": 0, "sample": []}},
   "sandbox": {"channels": {"mail": 1}, "sent": ["Receipt to a@b.c"], "requested": [], "not_sandboxed": []}
 }
 \`\`\`
@@ -393,7 +434,25 @@ aliased to. It is always there: a project that resolved nothing, and a session
 whose classes were already loaded, answer \`{}\` rather than dropping the key.
 
 ## \`transaction\` and \`sandbox\`
-Only present when a guard was asked for. See \`guards\`.
+Only present when a guard was asked for. See \`guards\` for the outcome, and
+\`transaction.changes\` / \`transaction.undiffed\` for what the run changed and
+what it could not describe.
+
+## Hidden fields
+
+A field named by the app's *Hidden fields* setting — \`password\`, \`*token*\`,
+\`*_key\` and the rest of its defaults — is written as the string \`[hidden]\`
+wherever it is a key: in \`value\`, in every \`blocks[].value\`, in a dry run's
+\`transaction.changes\` rows, and in the bindings of \`queries\` where the SQL names
+the column (an \`insert\`'s column list, \`column = ?\`, \`column in (…)\`). The
+setting is read on every call, so the next answer follows a change made in the
+app.
+
+Two things are not hidden, because they have no field names to go by: what the
+run printed (\`output\`), and a value a snippet wrote into the SQL itself. A
+binding the statement does not pair with a column — \`where ?\`, \`limit ?\`, an
+expression of several placeholders such as \`concat(?, ?)\` — is answered as it
+was.
 
 ## Values that are not plain json
 
@@ -547,7 +606,11 @@ what the window does is knowing what the files mean.
   context.
 - **Snippets** are the code worth keeping, per connection.
 - **History** is the last fifty runs of a connection, one click from the editor.
-- **Settings → MCP** writes this server's entry into a client's configuration.
+- **Settings → MCP** writes this server's entry into a client's configuration,
+  holds the production access — the mode every production connection follows,
+  and each connection's own override — and lists every session a client had with
+  this server: the client, and each tool it called with its connection, code and
+  outcome, including a guard that was forced. What you do here is shown there.
 
 ## Where its files live
 
@@ -555,7 +618,8 @@ The app keeps its own json: \`connections.json\`, \`config.json\`, and a file pe
 connection for snippets and for history. A client reads them through this
 server — \`tinkr_list_connections\`, \`tinkr_list_snippets\`, \`tinkr_list_history\` —
 and writes only the one thing it should: a snippet, under a lock every writer
-takes.
+takes. This server also writes a file of its own under \`mcp/\`: the session the
+app lists in Settings → MCP.
 
 ## What the window has that the tools do not
 
@@ -564,7 +628,8 @@ takes.
   the run is in.
 - **The guards as a switch**: dry run on, and whether it is sandboxed.
 - **The production question** before a write on a tagged connection. This server
-  keeps the same promise by refusing the run.`
+  keeps the same promise with the production mode the user set: it refuses the
+  run, forces a sandbox on it, or lets it through.`
 
 /**
  * Every topic's text, by name.

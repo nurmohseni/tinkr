@@ -112,4 +112,28 @@ describe('what a dry run cannot hold', () => {
     expect(reasons("Config::set('database.default', 'sqlite');"))
       .toEqual([[1, 'config', 'database.default']])
   })
+
+  // the MCP server refuses a forced-sandbox run with the same scan, read from
+  // tinkr-core: the app's copy and that one have to find the same statements,
+  // or a run one refuses is a run the other sends
+  it('finds the same statements as the copy the MCP server uses', () => {
+    const {unguardableScan: fromCore} = require('../../../../tinkr-core/src/unguardable')
+    const samples = [
+      "Schema::create('t', fn ($t) => $t->id());",
+      "DB::statement('create table t (id int)');\nDB::unprepared('ALTER TABLE t ADD c int');",
+      "DB::table('t')->truncate();",
+      "Artisan::call('migrate:fresh');",
+      'DB::commit();\nDB::rollBack();',
+      "DB::unprepared('start transaction');",
+      "DB::connection('sqlite')->table('s')->insert(['a' => 1]);\nUser::on('replica')->first();",
+      'DB::reconnect();\nDB::purge();',
+      "config(['database.default' => 'sqlite']);",
+      "DB::table('t')->update(['a' => 1]);\n$user->save();",
+      '',
+    ]
+
+    for (const code of samples) {
+      expect(fromCore(code)).toEqual(unguardableScan(code))
+    }
+  })
 })

@@ -39,3 +39,51 @@ export const sqlCell = sql => {
  * @return {String}
  */
 export const queryText = query => JSON.stringify(query, null, 2)
+
+// a plan is a table of the database's own words: a step's detail is read in a
+// cell, and a plan that is one long column — pgsql's — keeps its lines as lines
+export const PLAN_CHARS = 400
+const PLAN_TITLE_CHARS = 2000
+
+/**
+ * The rows of a plan as a table: the columns are every key the rows name, in
+ * the order the rows first name them, because a driver is free to add one.
+ *
+ * @param {Array} plan  the rows the session answered with
+ * @return {{columns: Array<String>, rows: Array<Object>}}
+ */
+export const planTable = plan => {
+  const rows = Array.isArray(plan)
+    ? plan.filter(row => row !== null && typeof row === 'object' && !Array.isArray(row))
+    : []
+  const columns = []
+
+  for (const row of rows) {
+    for (const name of Object.keys(row)) {
+      if (!columns.includes(name)) {
+        columns.push(name)
+      }
+    }
+  }
+
+  return {columns, rows}
+}
+
+/**
+ * One plan cell: what the table shows, and what the tooltip carries when it is
+ * longer than the column. A plan value is the database's, not a json value, so
+ * a string is written as itself rather than quoted.
+ *
+ * @param {any} value
+ * @return {{text: String, full: String, cut: Boolean}}
+ */
+export const planCell = value => {
+  if (value === null || value === undefined) {
+    return {text: '', full: '', cut: false}
+  }
+
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value)
+  const shown = truncate(text, PLAN_CHARS)
+
+  return {text: shown, full: truncate(text, PLAN_TITLE_CHARS), cut: shown !== text}
+}

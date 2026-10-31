@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const {createServer} = require('./server')
 const {serve} = require('./protocol')
+const journal = require('./journal')
 const target = require('./target')
 const {name, version} = require('../package.json')
 
@@ -26,11 +27,13 @@ Options:
                           the app looks for them
   --timeout <ms>          how long a run may take before it is given up on
                           (default: 60000)
-  --allow-production      run code on connections tagged production. Without it
-                          a production connection is refused unless this server
-                          was started on that one connection
   -h, --help              this
   -v, --version           the version
+
+A connection tagged production follows the production mode in Tinkr's
+Settings → MCP — refuse (the default), sandbox (the run is sent with
+guard "sandbox" whatever it asked for), or allow — and a connection can carry
+an access of its own that overrides it. Both are read on every run.
 `
 
 /**
@@ -74,9 +77,7 @@ const parseArguments = argv => {
     }
 
     if (argument === '--allow-production') {
-      options.allowProduction = true
-
-      continue
+      throw new Error('--allow-production is gone: set the production mode in Tinkr\'s Settings → MCP instead')
     }
 
     if (argument === '--help' || argument === '-h') {
@@ -160,17 +161,20 @@ const main = () => {
     return
   }
 
+  // what the client does through this server, kept for the app's Settings → MCP
+  const session = journal.open({dataDir: resolved.dataDir, version, target: resolved})
+
   const server = createServer({
     target: resolved,
     version,
     timeout: options.timeout || 60000,
-    allowProduction: Boolean(options.allowProduction),
-    // a server started on one connection by name is pinned to it: that is the
-    // choice someone made for this server, and it is what lets a production
-    // connection through without the flag
-    pinned: Boolean(options.connection),
     command: options.command || null,
+    journal: session,
   })
+
+  // every way out goes through here, process.exit included, and the write is
+  // synchronous: the session says when it ended however the server stopped
+  process.on('exit', session.end)
 
   // the client's stderr is the log: what the server is running in is the first
   // thing to look at when a call comes back wrong. A cloud connection runs in an

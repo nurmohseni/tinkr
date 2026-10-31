@@ -42,7 +42,9 @@ test.describe('the MCP section', () => {
       await expect.poll(() => JSON.parse(fs.readFileSync(configFile(profile), 'utf8')).mcp_connection)
         .toBe('fixture')
 
-      const entry = settings.locator('.mcppane').first()
+      // each pane is found by what it is called: the section holds several
+      const pane = label => settings.locator('.mcppane').filter({has: settings.locator('.mcppane__head', {hasText: label})})
+      const entry = pane('Any other client')
 
       await expect(entry).toContainText('Any other client')
       await expect(entry.locator('.mcppane__body')).toContainText('"mcpServers"')
@@ -66,7 +68,7 @@ test.describe('the MCP section', () => {
       expect(written.mcpServers.tinkr.args).toContain('fixture')
 
       // the tools the server offers, in the app's own words
-      const tools = settings.locator('.mcppane').last()
+      const tools = pane('Tools')
 
       await expect(tools).toContainText('Tools')
       await expect(tools).toContainText('tinkr_run_php')

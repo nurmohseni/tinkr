@@ -21,6 +21,7 @@ import ConnectionPage from './components/ConnectionPage'
 import DeleteConnectionConfirm from './components/connections/DeleteConnectionConfirm'
 import StageLight from './components/connections/StageLight'
 import useSplit from './hooks/useSplit'
+import useNewSession from './hooks/useNewSession'
 import kindOf from './utils/connectionKind'
 import DocumentScope from './components/editor/DocumentScope'
 import {sizesAtom, connectionAtom, settledRunAtom, setAnswer, setOutput, inFlightDocumentAtom, inFlightAtom} from './stores/editor'
@@ -41,6 +42,7 @@ import {
   onHistoryConnection,
   onSnippetsConnection,
   onSetConnection,
+  onMcpCall,
   onPhpVersion,
   onUpdateState,
 } from './utils/api'
@@ -65,6 +67,7 @@ const EditorWindow = () => {
   const setOutputFor = useSetAtom(setOutput)
   const setInFlight = useSetAtom(inFlightAtom)
   const setHistory = useSetAtom(historyListAtom)
+  const startSession = useNewSession()
 
   // the store itself, so the answer can be put under the document that sent the
   // run rather than under whatever is on screen when it lands
@@ -130,6 +133,12 @@ const EditorWindow = () => {
     const onConnection = onSetConnection(() => {
       setLocation(switchConnection() || '/')
     })
+    // a call's code, opened from the settings screen: the switch above has
+    // already happened, so this is a new tab of this connection holding that
+    // code, named for the tool and the time it ran — and nothing is run
+    const onOpenCall = onMcpCall(call => {
+      startSession({name: call.name, code: call.code})
+    })
 
     // what the updater is doing, as it does it: it asks before it downloads and
     // before it installs, and both questions are the panel below
@@ -144,6 +153,7 @@ const EditorWindow = () => {
       onHistory.dispose()
       onSnippets.dispose()
       onConnection.dispose()
+      onOpenCall.dispose()
       onUpdate.forEach(dispose => dispose.dispose())
       onPhp.dispose()
     }

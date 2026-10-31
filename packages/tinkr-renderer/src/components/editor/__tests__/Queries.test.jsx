@@ -12,9 +12,9 @@ global.React = React
 
 // the pane's words are messages like the rest of the app's, so it is rendered
 // inside the same provider the app gives it, with the english the app ships
-const render = result => renderToStaticMarkup(
+const render = (result, props = {}) => renderToStaticMarkup(
   <IntlProvider locale='en' messages={flatten(english)}>
-    <Queries result={result}/>
+    <Queries result={result} {...props}/>
   </IntlProvider>,
 )
 
@@ -88,5 +88,27 @@ describe('the queries pane', () => {
     expect(markup).toContain('Copy SQL')
     expect(markup).toContain('aria-label="Actions for query 1"')
     expect(markup).toContain('aria-label="Actions for query 2"')
+  })
+
+  test('a select offers a plan, and a write does not', () => {
+    const markup = render({
+      queries: [
+        {line: 1, sql: 'select * from orders', bindings: [], time: 1, connection: 'mysql'},
+        {line: 2, sql: "update orders set paid = 1 where id = 1", bindings: [], time: 1, connection: 'mysql'},
+        {line: 3, sql: 'explain select * from orders', bindings: [], time: 1, connection: 'mysql'},
+      ],
+      queriesTotal: 3,
+    })
+
+    // only the SELECT: a write is not a plan, and an EXPLAIN already is one
+    expect(markup.match(/>Explain<\/button>/g)).toHaveLength(1)
+    expect(markup).toContain('>plan</th>')
+  })
+
+  test('a Laravel Cloud connection shows the action disabled, with the reason', () => {
+    const markup = render({queries: [sent[0]], queriesTotal: 1}, {cloud: true})
+
+    expect(markup).toContain('<button class="btn btn--ghost btn--sm" type="button" disabled=""')
+    expect(markup).toContain('title="Explain is off on Laravel Cloud: the statement would land in the environment&#x27;s history"')
   })
 })

@@ -308,4 +308,14 @@ describe('the transaction guard', () => {
     expect(markup).toContain('Nothing was run')
     expect(markup).not.toContain('Run again and keep')
   })
+
+  test('every answer offers the whole run as Markdown', () => {
+    const returned = render({value: 1, error: null, output: '', imported: {}})
+    const threw = render({value: null, error: {class: 'Error', message: 'boom'}, output: '', imported: {}})
+    const printed = render({value: null, error: null, output: 'hello', imported: {}})
+
+    expect(returned).toContain('title="Copy as Markdown"')
+    expect(threw).toContain('title="Copy as Markdown"')
+    expect(printed).toContain('title="Copy as Markdown"')
+  })
 })
