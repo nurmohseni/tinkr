@@ -24,6 +24,128 @@ const getTag = () => `v${version}`
  */
 const isRelease = () => !process.env.GITHUB_SHA || process.env.GITHUB_REF_TYPE === 'tag'
 
+// what a release says it brings, by the conventional type of the commits in
+// it, in this order. Version bumps, tests, ci and the like are not news to
+// someone deciding whether to update, so they are left out of the notes; the
+// compare link at the end still lists every commit
+const sections = [
+  {types: ['feat'], title: 'New'},
+  {types: ['fix'], title: 'Fixed'},
+  {types: ['perf'], title: 'Faster'},
+  {types: ['refactor', 'docs'], title: 'Other changes'},
+]
+
+// the scopes whose commits are about the repository, not the app
+const hiddenScopes = ['e2e', 'test', 'tests', 'ci', 'release']
+
+/**
+ * @param {String} text a version tag, `v1.2.3`
+ * @return {Array<Number>|null}
+ */
+const semverOf = text => {
+  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(text)
+
+  return match ? match.slice(1).map(Number) : null
+}
+
+const compareVersions = (one, other) => one[0] - other[0] || one[1] - other[1] || one[2] - other[2]
+
+/**
+ * The version tag released before this one: the highest one below it.
+ *
+ * @param {Array<String>} tags
+ * @param {String} tag
+ * @return {String|null}
+ */
+const previousTag = (tags, tag) => {
+  const current = semverOf(tag)
+
+  return tags
+    .map(name => ({name, version: semverOf(name)}))
+    .filter(one => one.version && current && compareVersions(one.version, current) < 0)
+    .sort((one, other) => compareVersions(other.version, one.version))
+    .map(one => one.name)[0] || null
+}
+
+/**
+ * A commit message as the notes read it: its subject without the type, and the
+ * bullets of its body, a wrapped bullet joined back into one line.
+ *
+ * @param {String} message
+ * @return {{type: String, scope: String, subject: String, details: Array<String>}|null}
+ */
+const parseCommit = message => {
+  const [head, ...rest] = message.split('\n')
+  const match = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(head.trim())
+
+  if (!match) {
+    return null
+  }
+
+  const details = []
+
+  for (const line of rest) {
+    if (/^\s*[-*]\s+/.test(line)) {
+      details.push(line.replace(/^\s*[-*]\s+/, '').trim())
+    } else if (line.trim() && details.length) {
+      details[details.length - 1] += ` ${line.trim()}`
+    }
+  }
+
+  return {type: match[1].toLowerCase(), scope: (match[2] || '').toLowerCase(), subject: match[3].trim(), details}
+}
+
+/**
+ * The notes of a release, from the messages of the commits it holds.
+ *
+ * @param {Array<String>} messages oldest first, as github compares them
+ * @return {String} markdown, empty when nothing in it is news
+ */
+const notesFrom = messages => {
+  // a fix to the tests or the pipeline changes nothing a person installs
+  const commits = messages.map(parseCommit).filter(commit => commit && !hiddenScopes.includes(commit.scope))
+
+  return sections
+    .map(({types, title}) => {
+      const items = commits.filter(commit => types.includes(commit.type))
+
+      if (!items.length) {
+        return ''
+      }
+
+      const lines = items.map(commit => [
+        `- ${commit.subject}`,
+        ...commit.details.map(detail => `  - ${detail}`),
+      ].join('\n'))
+
+      return `### ${title}\n\n${lines.join('\n')}`
+    })
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/**
+ * What changed since the version before this one, read from github itself so a
+ * shallow checkout in CI is enough.
+ *
+ * @param {String} tag
+ * @return {Promise<String>}
+ */
+const changesFor = async tag => {
+  const tags = await octokit.paginate(octokit.repos.listTags, {owner, repo, per_page: 100})
+  const base = previousTag(tags.map(one => one.name), tag)
+
+  if (!base) {
+    return ''
+  }
+
+  const {data} = await octokit.repos.compareCommits({owner, repo, base, head: tag})
+  const notes = notesFrom(data.commits.map(commit => commit.commit.message))
+  const link = `**Full changelog**: https://github.com/${owner}/${repo}/compare/${base}...${tag}`
+
+  return notes ? `${notes}\n\n${link}` : link
+}
+
 const getOrCreateRelease = async tag => {
   const releaseName = `${productName} ${tag}`
   // A version tag is the only thing that publishes a release, and it publishes
@@ -45,7 +167,17 @@ const getOrCreateRelease = async tag => {
   const built = process.env.GITHUB_SHA
     ? `Built from ${owner}/${repo}@${process.env.GITHUB_SHA.slice(0, 7)}`
     : 'See the changelog in the repository that builds the app'
-  const body = `${built}
+  let changes = ''
+
+  try {
+    changes = await changesFor(tag)
+  } catch (err) {
+    // the notes are a courtesy: a release whose commits cannot be read is still
+    // a release, and its installers still have to be uploaded
+    console.log('[release] Could not read the changes:', err.message)
+  }
+
+  const body = `${changes ? `${changes}\n\n` : ''}${built}
 
 ${macNote}`
 
@@ -173,6 +305,8 @@ const start = async () => {
 
   console.log(`[release] Release created ${data.html_url}`)
 }
+
+module.exports = {previousTag, parseCommit, notesFrom, changesFor}
 
 if (require.main === module) {
   process.nextTick(async () => {
