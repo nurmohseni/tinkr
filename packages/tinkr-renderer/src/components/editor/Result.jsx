@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {useCallback, useEffect, useId, useRef, useState} from 'react'
 import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
 
@@ -297,15 +297,25 @@ const NothingReturned = () => (
  * A statement that threw says so where it threw, which is the line the failure
  * was on rather than the whole run.
  */
-const Block = ({block, view}) => {
+const Block = ({block, view, id, ordinal}) => {
   const intl = useIntl()
   const failed = Boolean(block.error)
   const reading = readingOf(view, block.value)
 
+  // the statement is a section so its head pins over its own value and is
+  // pushed out by the statement under it, rather than every head of the run
+  // stacking at the pane's top edge
   return (
-    <>
+    <section
+      className={`block${failed ? ' block--threw' : ''}`}
+      id={id}
+      tabIndex={-1}
+      role='group'
+      aria-labelledby={`${id}-line`}
+    >
       <div className='result-summary result-summary--head'>
-        <span className='block__line'>
+        <span className='block__index' aria-hidden='true'>#{ordinal}</span>
+        <span className='block__line' id={`${id}-line`}>
           {intl.formatMessage({id: 'result.line'}, {line: Number(block.line) || 0})}
         </span>
         <Outcome
@@ -324,7 +334,23 @@ const Block = ({block, view}) => {
             </span>
           )}
         <span className='grow'/>
-        <ReadingActions value={block.value} view={reading}/>
+        {/* a statement with nothing to show has nothing to copy, and one that
+            threw copies the exception it ended on rather than a value it never
+            answered */}
+        {failed
+          ? (
+            <span className='result-summary__actions'>
+              <button
+                className='btn btn--ghost btn--sm'
+                type='button'
+                title={intl.formatMessage({id: 'result.copy_message'})}
+                onClick={() => copyText(`${block.error.class}: ${block.error.message}`)}
+              >
+                {intl.formatMessage({id: 'result.copy_short'})}
+              </button>
+            </span>
+          )
+          : block.value !== null && <ReadingActions value={block.value} view={reading}/>}
       </div>
 
       {failed && (
@@ -337,7 +363,7 @@ const Block = ({block, view}) => {
       {!failed && block.value !== null && (
         <Reading value={block.value} view={reading}/>
       )}
-    </>
+    </section>
   )
 }
 
@@ -351,18 +377,164 @@ Block.propTypes = {
     }),
   }).isRequired,
   view: PropTypes.oneOf(READINGS).isRequired,
+  id: PropTypes.string.isRequired,
+  ordinal: PropTypes.number.isRequired,
+}
+
+// a run of a handful of statements is read at a glance; the map is for the runs
+// whose answer is somewhere below the fold
+const MAPPED_FROM = 6
+
+/**
+ * What a key of the map says about its statement: the line it is on, and the
+ * class that ended it where it threw, so a key is never read to find out what
+ * it does. Both are words the rest of the pane already says.
+ */
+const statementOf = (intl, block) => {
+  const line = intl.formatMessage({id: 'result.line'}, {line: Number(block.line) || 0})
+
+  return block.error ? `${line}, ${block.error.class}` : line
+}
+
+// the room a jump leaves between the chrome and the statement it brings in, so
+// a statement's own hairline is never read as the edge of the pinned row
+const JUMP_GAP = 8
+
+/**
+ * The box a statement is scrolled inside: the nearest ancestor that scrolls its
+ * own content vertically. A box that hides its overflow is not one — the panel
+ * wraps the output in a viewport that hides it, and scrolling that instead of
+ * the run would crop the pane rather than move the run within it.
+ */
+const scrollBoxOf = node => {
+  for (let box = node.parentElement; box; box = box.parentElement) {
+    const overflow = window.getComputedStyle(box).overflowY
+
+    if ((overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay')
+      && box.scrollHeight > box.clientHeight) {
+      return box
+    }
+  }
+
+  return null
+}
+
+/**
+ * Brings a statement in and puts the focus inside it, so the jump a key makes
+ * is where a keyboard reader lands too.
+ *
+ * Only the box the statements are in is moved. A jump is a move within the run,
+ * never a move of the app around it: `scrollIntoView` walks every scrollable
+ * ancestor, which took the window and the panel's own viewport with it and left
+ * the chrome and the statements above the target out of sight. A scroll that
+ * was asked for still respects motion: nothing glides where motion is not
+ * wanted.
+ */
+const jumpTo = (id, chrome = null) => {
+  const target = document.getElementById(id)
+
+  if (!target) {
+    return
+  }
+
+  // the keyboard lands on the statement whether or not the pane can move
+  target.focus?.({preventScroll: true})
+
+  const box = scrollBoxOf(target)
+
+  if (!box) {
+    return
+  }
+
+  const still = Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches)
+  const pane = box.getBoundingClientRect()
+  const rect = target.getBoundingClientRect()
+  // where the statement stands in the run, whatever the pane is scrolled to
+  const inBox = rect.top - pane.top + box.scrollTop
+  // what the chrome covers at the pane's top, measured where it is pinned: in a
+  // narrow pane the head wraps and the map stays, so a jump clears all of it
+  const covered = chrome ? Math.max(0, chrome.getBoundingClientRect().bottom - pane.top) : 0
+  // a statement near the end of the run cannot be brought to the chrome: the
+  // run ends where it ends, so the box goes as far as it can and the statement
+  // is read under the chrome rather than behind it
+  const end = Math.max(0, box.scrollHeight - box.clientHeight)
+  const top = Math.max(0, Math.min(inBox - covered - JUMP_GAP, end))
+  // sideways the pane is left where it was, unless the statement's own head has
+  // been scrolled out of it: a wide table is read from its left edge, never
+  // from the middle of a row
+  const left = rect.left < pane.left - 0.5 ? 0 : box.scrollLeft
+
+  if (typeof box.scrollTo === 'function') {
+    box.scrollTo({top, left, behavior: still ? 'auto' : 'smooth'})
+  } else {
+    box.scrollTop = top
+    box.scrollLeft = left
+  }
+}
+
+/**
+ * The statements of a long run, as one row of keys above them: numbered as the
+ * run numbers them, and struck through where they threw. The shape of a forty
+ * statement run — and the one key that broke it — is read before any of it is
+ * scrolled, and every key says where it leads.
+ *
+ * The map lists what the pane is showing, so filtering the run to its failures
+ * leaves a map of those and no key that leads nowhere.
+ */
+const StatementMap = ({entries, onPick}) => {
+  const intl = useIntl()
+
+  return (
+    <div
+      className='statements-map'
+      role='group'
+      aria-label={intl.formatMessage({id: 'result.statement_map'})}
+    >
+      {entries.map(({block, ordinal, id}) => {
+        const label = statementOf(intl, block)
+
+        return (
+          <button
+            key={id}
+            className={`statements-map__chip${block.error ? ' statements-map__chip--threw' : ''}`}
+            type='button'
+            title={label}
+            aria-label={`${ordinal}, ${label}`}
+            onClick={() => onPick(id)}
+          >
+            <span aria-hidden='true'>{ordinal}</span>
+            {block.error && <Outcome kind='threw'/>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+StatementMap.propTypes = {
+  entries: PropTypes.arrayOf(PropTypes.shape({
+    block: PropTypes.object.isRequired,
+    ordinal: PropTypes.number.isRequired,
+    id: PropTypes.string.isRequired,
+  })).isRequired,
+  onPick: PropTypes.func.isRequired,
 }
 
 /**
  * What the run printed, as the session's console: the one bar says nothing came
  * back, and the text is drawn under it.
+ *
+ * Its bar is pinned over the text of a run that has no chrome of its own. A run
+ * of several statements does have one, so there the bar is `scrolls`: it goes
+ * with its text under the controls the pane keeps, rather than claiming the
+ * same top edge and disappearing behind them.
  */
-const Printed = ({output, markdown = null}) => {
+const Printed = ({output, markdown = null, scrolls = false}) => {
   const intl = useIntl()
 
   return (
   <>
-    <div className='result-summary result-summary--head'>
+    <div className={`result-summary result-summary--head${scrolls ? ' result-summary--scrolls' : ''}`}>
       <Outcome kind='printed' label animate key={output}/>
       <span className='grow'/>
       <span className='result-summary__actions'>
@@ -387,6 +559,7 @@ const Printed = ({output, markdown = null}) => {
 Printed.propTypes = {
   output: PropTypes.string.isRequired,
   markdown: PropTypes.object,
+  scrolls: PropTypes.bool,
 }
 
 /**
@@ -610,6 +783,15 @@ Guard.propTypes = {
 
 const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {}, allStatements = false, code = '', connection = ''}) => {
   const intl = useIntl()
+  // the ids a statement is found by: one run at a time, and a prefix of its own
+  // so they never name the same thing twice
+  const runId = useId().replace(/:/g, '')
+  // the row the pane keeps: what a jump has to bring a statement in below
+  const chromeRef = useRef(null)
+  // the filter belongs to the answer it was set on: a new answer is read from
+  // the top rather than with statements nobody asked this run to hide
+  const [failedOnlyOn, setFailedOnlyOn] = useState(null)
+  const onlyFailed = failedOnlyOn === result
   const {value, error, output, imported, blocks, transaction, sandbox, duration} = result
 
   // what a Markdown export needs beyond the envelope: the snippet the run was
@@ -620,9 +802,61 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
   // run is the last one's, so this is what "every statement" means
   if (allStatements && blocks && blocks.length > 1) {
     const views = readingsOf(blocks.map(block => block.value))
+    const numbered = blocks.map((block, index) => ({
+      block,
+      ordinal: index + 1,
+      id: `${runId}-statement-${index + 1}`,
+    }))
+    const threw = numbered.filter(entry => entry.block.error)
+    const shown = onlyFailed && threw.length > 0 ? threw : numbered
+    const mapped = blocks.length >= MAPPED_FROM
 
     return (
       <>
+        {/* the run's own controls and, for a long run, the map of its
+            statements: the one row the pane keeps. It is where the run is read
+            from, so it stands at the top and is pinned there over everything
+            the run printed and every statement under it */}
+        <div className='run-chrome' ref={chromeRef}>
+          <div className='result-summary result-summary--head'>
+            <Outcome
+              key={error ? failureKey(error) : answerKey('returned', value)}
+              kind={error ? 'threw' : 'returned'}
+              label
+              animate
+            />
+            <span>{intl.formatMessage({id: 'result.statements'}, {count: blocks.length})}</span>
+            <ViewSwitch views={views} view={onReading(views, view)} onChange={onView}/>
+            <span className='grow'/>
+            <Duration duration={duration}/>
+            <span className='result-summary__actions'>
+              {threw.length > 0 && (
+                <span className='badge badge--error'>
+                  {intl.formatMessage({id: 'result.threw_count'}, {count: threw.length})}
+                </span>
+              )}
+              {threw.length > 0 && (
+                <button
+                  className='btn btn--ghost btn--sm'
+                  type='button'
+                  aria-pressed={onlyFailed}
+                  onClick={() => setFailedOnlyOn(onlyFailed ? null : result)}
+                >
+                  <FormattedMessage id='result.failed_only'/>
+                </button>
+              )}
+              <MarkdownAction {...markdown}/>
+            </span>
+          </div>
+
+          {mapped && (
+            <StatementMap
+              entries={shown}
+              onPick={id => jumpTo(id, chromeRef.current)}
+            />
+          )}
+        </div>
+
         <Guard transaction={transaction} sandbox={sandbox} run={result} onKeep={onKeep}/>
 
         {/* what the guard took back, row by row, under its own report */}
@@ -630,32 +864,21 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
 
         <Imported imported={imported}/>
 
-        {output && <Printed output={output} markdown={markdown}/>}
+        {/* what the run printed is read under the run's chrome, so its bar
+            scrolls with its text rather than claiming the top edge too */}
+        {output && <Printed output={output} markdown={markdown} scrolls/>}
 
-        <div className='result-summary result-summary--head'>
-          <Outcome
-            key={error ? failureKey(error) : answerKey('returned', value)}
-            kind={error ? 'threw' : 'returned'}
-            label
-            animate
-          />
-          <span>{intl.formatMessage({id: 'result.statements'}, {count: blocks.length})}</span>
-          <ViewSwitch views={views} view={onReading(views, view)} onChange={onView}/>
-          <span className='grow'/>
-          <Duration duration={duration}/>
-          <span className='result-summary__actions'>
-            <MarkdownAction {...markdown}/>
-          </span>
+        <div className={`blocks${mapped ? ' blocks--mapped' : ''}`}>
+          {shown.map(({block, ordinal, id}) => (
+            // several statements can share a line, so the line alone is not a
+            // key; the map names the same number in the same order
+            <Block key={id} block={block} view={view} id={id} ordinal={ordinal}/>
+          ))}
+
+          {/* a run that ended outside every statement — exit, a fatal error,
+              a session that died — has its failure on the run, not on a block */}
+          {error && !blocks.some(block => block.error) && <Failure error={error} markdown={markdown}/>}
         </div>
-
-        {blocks.map((block, index) => (
-          // several statements can share a line, so the line alone is not a key
-          <Block key={`${index}:${block.line}`} block={block} view={view}/>
-        ))}
-
-        {/* a run that ended outside every statement — exit, a fatal error, a
-            session that died — has its failure on the run, not on a block */}
-        {error && !blocks.some(block => block.error) && <Failure error={error} markdown={markdown}/>}
       </>
     )
   }

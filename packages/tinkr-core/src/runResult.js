@@ -141,12 +141,17 @@ const SPLIT_BLOCKS = [
   '$tinkr_token=$tinkr_tokens[$tinkr_i];',
   '$tinkr_text=is_array($tinkr_token)?$tinkr_token[1]:$tinkr_token;',
   '$tinkr_id=is_array($tinkr_token)?$tinkr_token[0]:null;',
-  'if($tinkr_id===T_OPEN_TAG){$tinkr_l=$tinkr_token[2];continue;}',
-  // a token that is not an array is punctuation — `{`, `;`, `"` — and carries no
-  // line of its own, so the last line any token reported is kept, which is what
-  // the statement gets
+  // `$tinkr_l` is the line the token being read starts on. A token that is an
+  // array reports its own line; one that is not is punctuation — `{`, `;`, `[` —
+  // and carries no line of its own, so it starts where the token before it
+  // ended. Letting each token step `$tinkr_l` on by the newlines it holds is
+  // what makes that true: `null;\n[` has its `[` on line 2, not on the line the
+  // `;` was on, which is why the statement's line is read here, before the
+  // token is stepped over, rather than left at the last line any token reported
+  'if($tinkr_id===T_OPEN_TAG){$tinkr_l=$tinkr_token[2]+substr_count($tinkr_text,"\\n");continue;}',
   'if($tinkr_id!==null){$tinkr_l=$tinkr_token[2];}',
   'if(!$tinkr_stack&&$tinkr_line===0&&$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT){$tinkr_line=(int)$tinkr_l;}',
+  '$tinkr_l+=substr_count($tinkr_text,"\\n");',
   '$tinkr_stmt.=$tinkr_text;',
   '$tinkr_word=($tinkr_id===null)?trim($tinkr_text):null;',
   '$tinkr_significant=$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT;',

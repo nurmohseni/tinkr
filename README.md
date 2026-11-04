@@ -92,6 +92,7 @@ What a run does with the code is worth knowing before the first one:
 | | |
 | --- | --- |
 | **Readings** | The returned value as a tree, a table, a graph, or rendered markup, next to the raw output. Copy any table or save it as CSV, or copy the whole run as Markdown — the code, every value, what it printed, its queries and its guard — for a pull request or an issue. |
+| **Statements** | A run of several statements is read one statement at a time: each is numbered, and its own head stays over its value while that value scrolls, so a long tree never loses the line it belongs to. A long run also gets a map of its statements above them, with the ones that threw struck through and every key leading to its statement; **Failed only** in the run's head narrows the run to the statements that threw. |
 | **Queries** | Every SQL statement the run sent, with bindings, duration and connection. A SELECT also offers **Explain**: its plan is read out of band on the same connection and with the same bindings, never in the tab's session and never as a history entry. A write offers no plan, and Laravel Cloud shows the action disabled because a command there would land in the environment's history. |
 | **Hidden fields** | Password, token, secret and key-shaped fields are written as `[hidden]` in the saved history, in AI requests and in MCP answers. Set their names in **Settings → General**. The result pane and what the code printed stay as they ran. |
 | **Dry run** | Run inside a transaction you can keep or take back, or a sandboxed one where mail, jobs, HTTP calls, file writes, the cache and the log are recorded instead of happening. A guarded run also answers with what it changed, row by row — the table, the key, and each column before → after — and counts the writes nothing could describe (raw SQL, a query-builder update, `truncate`). |
@@ -105,7 +106,7 @@ Log searches scan the selected file or time range on the connection's host. They
 | | |
 | --- | --- |
 | **AI completions** | Complete snippets with OpenAI, Claude, Ollama, OpenRouter, OpenCode Zen/Go, or your own endpoint. |
-| **AI panel** | Ask about the code in front of you. The last result goes along, `@` pulls in project files, and proposed code drops into the editor. |
+| **AI panel** | Ask about the code in front of you. The last result goes along, `@` pulls in project files, and proposed code drops into the editor. An answer is read as it was written — paragraphs, lists and code — and the snippet it proposes is shown in the editor's own colours, with the lines kept as they were. |
 | **MCP server** | Let Claude Code, Cursor, VS Code and friends run code through the same connections you use. |
 
 <table>

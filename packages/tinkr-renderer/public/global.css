@@ -825,16 +825,24 @@ summary.mcpcall__row:hover { background: var(--hover); }
 }
 
 /* ---- the ai panel's prompt -----------------------------------------------
-   The prompt is where the shortcut puts the cursor, the `@` beside it names a
-   file of the project, and under it sit the two switches that say what an ask
-   carries. The list the `@` opens is the design's .autocomplete once more, and it
-   opens above the prompt rather than under it because the prompt is at the foot
-   of the window; the panel is named twice over for the same reason the snippet
-   menu is. */
+   The prompt is where the shortcut puts the cursor and it takes the panel's
+   width; under it sits one foot row — the two switches that say what an ask
+   carries on one side, the `@` that names a file of the project and the ask
+   itself on the other. The list the `@` opens is the design's .autocomplete once
+   more, and it opens above the prompt rather than under it because the prompt is
+   at the foot of the window; the panel is named twice over for the same reason
+   the snippet menu is. */
+
+/* one column: the design's ask holds the controls beside the field, which gives
+   the field less room than the panel has and leaves the column above the
+   controls empty */
+.ai .ai__ask {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s2);
+}
 
 .ai__field {
     position: relative;
-    flex: 1 1 auto;
     min-width: 0;
 }
 
@@ -842,11 +850,22 @@ summary.mcpcall__row:hover { background: var(--hover); }
     width: 100%;
 }
 
+/* the foot wraps rather than squeezing the switches: the ask keeps its place at
+   the right of the row, and drops to a line of its own in a narrow pane */
+.ai__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2) var(--s3);
+    min-width: 0;
+}
+
 .ai__send {
     flex: none;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: var(--s2);
+    margin-left: auto;
 }
 
 .autocomplete.ai__mention {
@@ -896,11 +915,12 @@ summary.mcpcall__row:hover { background: var(--hover); }
 }
 
 .ai__context {
-    flex: none;
+    flex: 1 0 auto;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--s3);
-    padding: 0 var(--s3) var(--s2);
+    gap: var(--s1) var(--s3);
+    padding: 0;
     color: var(--text-faint);
     font-size: var(--fs-xs);
     min-width: 0;
@@ -909,6 +929,172 @@ summary.mcpcall__row:hover { background: var(--hover); }
 .ai__context-label {
     flex: none;
     color: var(--text-faint);
+}
+
+/* the two switches are as quiet as the label they follow; the checkbox is the
+   design's own, at the size of this row rather than the size it takes in a
+   form */
+.ai .ai__context .checkbox {
+    font-size: var(--fs-xs);
+}
+
+/* ---- the ai panel's thread ------------------------------------------------
+   tinkr.css lays the panel out and paints its words. This sheet loads before
+   it, so each rule below carries the panel's own class to out-specify the
+   single-class rule it refines — the same reason `body .app` is up there.
+
+   What it adds is what a conversation needs to be read: the ask is set as a
+   quotation and the answer as the page, an answer is a stack of the paragraphs
+   and lists it was written in, and the code it proposes is a well of its own,
+   in the editor's colours. */
+
+.ai .ai__thread {
+    /* the app's scrollbar, on the one scroller tinkr.css does not name */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+.ai .ai__turn {
+    gap: var(--s2);
+}
+
+/* a turn's halves are stacks of their own: the label, then what was said */
+.ai__ask-row,
+.ai__answer {
+    display: grid;
+    gap: var(--s1);
+    min-width: 0;
+}
+
+.ai .ai__ask-row .ai__who {
+    color: var(--text-faint);
+}
+
+/* the ask is what was said, so it is set as a quotation: the rule is the margin
+   that says which of the two voices this is */
+.ai .ai__question {
+    margin: 0;
+    padding-left: 10px;
+    border-left: 2px solid var(--border-strong);
+    color: var(--text-muted);
+    font-size: var(--fs-md);
+    line-height: var(--lh-ui);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* asking is the answer's place in the turn, not the thread's own empty state:
+   it is a line under the label, in the ink a note is written in */
+.ai .ai__answer .ai__asking {
+    padding: 0;
+    text-align: left;
+    font-family: var(--font-ui);
+    font-size: var(--fs-md);
+    color: var(--text-faint);
+}
+
+/* an answer is prose, at a measure a line can still be read at in a pane that
+   can be dragged wide */
+.ai .ai__prose {
+    min-width: 0;
+    max-width: 72ch;
+    color: var(--text);
+    font-size: var(--fs-md);
+    line-height: 1.6;
+}
+
+.ai .ai__prose > * {
+    margin: 0;
+}
+
+.ai .ai__prose > * + * {
+    margin-top: var(--s2);
+}
+
+/* a paragraph keeps the lines the model broke it into: an answer is often laid
+   out one idea to a line, and a blank line is what makes a new paragraph */
+.ai .ai__prose p,
+.ai .ai__prose li {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai .ai__prose ul,
+.ai .ai__prose ol {
+    padding-left: 1.4em;
+}
+
+.ai .ai__prose li + li {
+    margin-top: 2px;
+}
+
+/* a heading in an answer is the answer's own: the display face, at the size of
+   the body it opens, so it reads as a heading without shouting over the turn */
+.ai .ai__prose h4,
+.ai .ai__prose h5 {
+    font-family: var(--font-display);
+    font-size: var(--fs-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--lh-tight);
+    color: var(--text);
+}
+
+/* code named inside a sentence is a word in the mono, not a well */
+.ai .ai__prose code {
+    padding: 1px 4px;
+    border-radius: var(--r-key);
+    background: var(--hover);
+    font-family: var(--font-mono);
+    font-size: var(--fs-code);
+    overflow-wrap: anywhere;
+}
+
+.ai .ai__prose strong {
+    font-weight: var(--fw-strong);
+}
+
+/* the proposed snippet: the one surface in the thread. A long line scrolls
+   sideways rather than wrapping, because a wrapped call reads as two lines, and
+   a long snippet keeps a height so the thread can still be read past it. */
+.ai .ai__code {
+    max-width: 100%;
+    border-radius: var(--r-btn);
+    background: var(--panel);
+    box-shadow: inset 0 0 0 1px var(--border);
+    overflow: hidden;
+}
+
+.ai .ai__code .ai__code-pre {
+    margin: 0;
+    padding: var(--s3);
+    max-height: 340px;
+    overflow: auto;
+    white-space: pre;
+    overflow-wrap: normal;
+    tab-size: 4;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+/* the snippet is the answer's next thing, not its next line */
+.ai .ai__answer > .ai__code {
+    margin-top: var(--s1);
+}
+
+/* in a narrow pane the switches and the ask cannot share a line without one of
+   them being crushed: the switches take the width, and the ask follows under
+   them, still at the right */
+@container (max-width: 420px) {
+    .ai .ai__foot {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--s2);
+    }
+
+    .ai .ai__send {
+        margin-left: 0;
+        justify-content: flex-end;
+    }
 }
 
 /* ---- the close-session prompt ---------------------------------------------

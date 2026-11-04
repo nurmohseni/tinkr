@@ -152,6 +152,9 @@
   /* elevation: floating layers only, cast downward, tinted to the ink */
   --shadow-pop: inset 0 1px 0 oklch(1 0 0 / 0.04), 0 2px 4px -2px oklch(0.08 0.01 150 / 0.55), 0 8px 18px -8px oklch(0.08 0.01 150 / 0.6);
   --shadow-modal: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 20px 44px -18px oklch(0.06 0.01 150 / 0.75);
+  /* the fixed bar over a scrolling result: enough to say the content travels
+     under it, never enough to read as a floating layer */
+  --shadow-chrome: 0 6px 10px -8px oklch(0.08 0.01 150 / 0.70);
   --shadow-primary: none;
   --ring: 0 0 0 2px var(--focus);
 
@@ -169,6 +172,7 @@
   --tree-row-h: 24px;
   --control-h: 26px;
   --result-summary-h: 36px;
+  --statements-map-h: 32px;
   --keycap-band: 88px;
   --sidebar-w: 240px;
   --rail-w: 184px;
@@ -252,6 +256,7 @@
 
   --shadow-pop: 0 2px 4px -2px oklch(0.30 0.03 150 / 0.16), 0 8px 18px -8px oklch(0.30 0.03 150 / 0.20);
   --shadow-modal: 0 20px 44px -18px oklch(0.30 0.03 150 / 0.30);
+  --shadow-chrome: 0 6px 10px -8px oklch(0.30 0.03 150 / 0.20);
 
   --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .05 0'/></filter><rect width='180' height='180' filter='url(%23g)'/></svg>");
 }
@@ -699,6 +704,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
+/* the statement's place in the run, beside the line it starts on: the map above
+   names the same number, so a statement is found by either */
+.block__index {
+  font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* the pane's own warning: over the code, never over the window, so the terminal
    and the output of the connection stay readable — they are where the reason is.
@@ -745,16 +756,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ai__ask .textarea { resize: none; max-height: 160px; }
 .ai__mention { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--accent); }
 
-/* the two readings of one value, in the panel's own tab idiom: a track, and the
-   reading that is on sits as a raised key on it. No fill, no box. */
-.view-switch { display: inline-flex; align-items: center; gap: 2px; margin-left: var(--s2); padding: 2px; border-radius: var(--r-btn); background: var(--panel); box-shadow: inset 0 0 0 1px var(--border); }
+/* the two readings of one value: plain keys on the bar, the reading that is on
+   raised off it. No track and no box of its own — the bar it sits on is the one
+   surface, so the control stays quieter than the answer it narrows. Unchecked
+   keys tint on hover, the checked key holds the raised fill and a visible lip,
+   and the focus ring lands on the key rather than on the group. */
+.view-switch { display: inline-flex; align-items: center; gap: 2px; margin-left: var(--s2); padding: 2px; border-radius: var(--r-btn); background: transparent; }
 .view-switch__option {
   position: relative; display: inline-flex; align-items: center;
   height: 22px; padding: 0 var(--s2); border-radius: var(--r-key);
   color: var(--text-muted); font-size: var(--fs-sm); cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
-.view-switch__option:hover { color: var(--text); }
-.view-switch__option:has(> input:checked) { background: var(--panel-raised); box-shadow: inset 0 0 0 1px var(--edge); color: var(--text); font-weight: var(--fw-medium); }
+.view-switch__option:hover { color: var(--text); background: var(--hover); }
+.view-switch__option:has(> input:checked) { background: var(--panel-raised); box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--text); font-weight: var(--fw-medium); }
+.view-switch__option:has(> input:checked):hover { background: var(--panel-raised); }
 .view-switch__option:has(> input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 0; }
 .view-switch__option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 
@@ -1169,6 +1185,10 @@ details:not([open]) > summary .tree__caret::before {
    number, so a head that grew a second line would hide the column titles under
    itself and shrink the frame. A pane too narrow for the row scrolls it */
 .result-summary--head { top: 0; z-index: 4; white-space: nowrap; }
+/* a console bar that sits under chrome the run keeps of its own: it belongs to
+   the text beneath it and scrolls with that text, rather than pinning at the
+   same top edge as the chrome and disappearing behind it */
+.result-summary--scrolls { position: static; }
 /* a head's actions stay at the pane's right edge while a row too wide for the
    pane scrolls under them, so they are never the part scrolled out of sight */
 .result-summary__actions {
@@ -1243,6 +1263,123 @@ details:not([open]) > summary .tree__caret::before {
 }
 /* the outcome word is one of the few display roles: it is what the run did */
 .result-summary .outcome__word { font-family: var(--font-display); font-size: 14px; font-weight: var(--fw-medium); color: var(--text); }
+
+/* ==========================================================================
+   a run of several statements: the run's own head and, for a long run, the map
+   of its statements are the pane's one piece of chrome. They stand at the top
+   of the viewport and are pinned there, over everything the run printed and
+   every statement under it, so the readings and the filter are in hand whatever
+   the pane has been scrolled to.
+
+   A statement is a section of its own, so its head pins over the value it names
+   only while that statement is under way and is pushed out by the next one,
+   rather than every head of the run stacking at the pane's top edge. The offset
+   it pins at is the height of the chrome above it, which is why that height is
+   a variable of the statements.
+   ========================================================================== */
+.run-chrome {
+  /* pinned down the pane and across it: a table wider than the pane scrolls
+     under a row that keeps its place at the left edge */
+  position: sticky; top: 0; left: 0; z-index: 6;
+  /* the run's chrome is its own surface: one tonal step off the well the result
+     is read on, a lip of its own colour along the top, a strong hairline under
+     it and the smallest cast shadow that says the answer travels beneath it.
+     The rows inside give up their own fills, so the bar is one surface rather
+     than a stack of boxes. */
+  --chrome-surface: var(--panel);
+  background: var(--chrome-surface);
+  box-shadow: inset 0 1px 0 var(--edge), 0 1px 0 var(--border-strong), var(--shadow-chrome);
+}
+/* the chrome is what is pinned, never a head inside it */
+.run-chrome > .result-summary--head { top: auto; }
+/* one surface, one edge: the head and the map sit on the bar and draw only the
+   hairline that separates them, not a box each */
+.run-chrome > .result-summary--head { background: transparent; box-shadow: none; }
+.run-chrome .result-summary__actions { background: var(--chrome-surface); }
+.blocks { --blocks-top: var(--result-summary-h); }
+.blocks--mapped { --blocks-top: calc(var(--result-summary-h) + var(--statements-map-h)); }
+/* a statement's head belongs to the statement, not to a rule over it: the
+   hairline a summary draws under itself would divide a statement from its own
+   value. Statements are told apart by the line above each one after the first
+   (see .block + .block) */
+.blocks .result-summary--head { top: var(--blocks-top); box-shadow: none; }
+/* a table inside a statement parks its column head under that statement's head
+   rather than under the run's: the statement's head is what is pinned there, and
+   two rows pinned at one offset would hide the lower one */
+.blocks .qtable--values th { top: calc(var(--blocks-top) + var(--result-summary-h)); }
+/* the rail is reserved on every statement, so a run that threw does not shift a
+   statement sideways: only its colour says it did. The head takes the same tint
+   the guard's report uses, so a failure is found while the run is being scrolled
+   rather than read */
+.block { border-left: 2px solid transparent; scroll-margin-top: var(--blocks-top); }
+.block + .block { border-top: 1px solid var(--border); }
+.block--threw { border-left-color: var(--error); }
+.block--threw > .result-summary--head,
+.block--threw > .result-summary--head > .result-summary__actions {
+  background: linear-gradient(90deg, var(--error-soft), var(--error-soft)), var(--panel-inset);
+}
+.block:focus { outline: none; }
+.block:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* the head's filter, pressed: the run is narrowed to the statements that threw.
+   The key gains a lip it did not have and its word takes the value channel's
+   colour — a shape change as well as a colour one — and both the word and the
+   lip clear 4.5:1 on the chrome, so the pressed state is readable rather than
+   merely coloured */
+.result-summary__actions .btn[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+.result-summary__actions .btn[aria-pressed="true"]:hover {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+/* the statement map: one key per statement above a long run's statements, in
+   the pane's own key idiom — numbered as the run numbers them, and carrying the
+   throw glyph where they threw, since an outcome is never colour alone. It
+   scrolls sideways, so forty statements are still one row, and every key says
+   where it leads. It is the second row of the run's chrome, so it is pinned by
+   the chrome rather than by itself; the keys are lips on that bar rather than
+   boxes, so the row reads as one surface */
+.statements-map {
+  display: flex; align-items: center; gap: 2px;
+  height: var(--statements-map-h); padding: 0 var(--s3);
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  background: transparent;
+  box-shadow: inset 0 1px 0 var(--border);
+}
+.statements-map::-webkit-scrollbar { height: 0; }
+.statements-map__chip {
+  flex: none; display: inline-flex; align-items: center; gap: 3px;
+  height: 20px; min-width: 22px; padding: 0 5px;
+  border: 0; border-radius: var(--r-key);
+  background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-muted);
+  font-family: var(--font-mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.statements-map__chip:hover { color: var(--text); background: var(--hover); }
+.statements-map__chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.statements-map__chip--threw { color: var(--error); }
+/* a threw key answers the pointer with its own lip rather than a wash: the
+   error ink on the bar is what has to stay readable, and a fill would lift the
+   bar's tone under it enough to cost that contrast */
+.statements-map__chip--threw:hover { color: var(--error); background: transparent; box-shadow: inset 0 0 0 1px var(--error); }
+.statements-map__chip .outcome__mark { width: 9px; height: 9px; }
+/* a pane too narrow for a statement's head to stay one line keeps the run's
+   chrome pinned and scrolls the heads with the text under it: a head that
+   wrapped taller than the offset it was given would be cut in half by the
+   chrome over it, and two heads pinned at one offset would hide the lower one */
+@container (max-width: 560px) {
+  .blocks .result-summary--head { position: static; }
+  /* without a pinned statement head there is nothing for the table's head to
+     park under, and the chrome it would have parked below wraps taller than the
+     line the offset assumes: the columns scroll with their table instead. The
+     index column keeps only the sideways pin that keeps it in reach */
+  .blocks .qtable--values th { top: auto; }
+}
 
 /* query table: monospace durations right-aligned, tabular numerals */
 .qtable { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--fs-sm); }
@@ -1332,12 +1469,21 @@ details:not([open]) > summary .tree__caret::before {
 }
 
 /* --- the graph reading: a dot and a label per node, one column per depth ---- */
-.graph { padding: var(--s3) var(--s3) var(--s4) 0; }
+/* the graph is its head's own reading, so it starts on the head's text edge
+   rather than on the pane's edge: the first dot's rim is that line, and the
+   value is never cut in half by the pane. It also leaves no gap under the head,
+   since the stem below is drawn from the head's own rule */
+.graph { padding: 0 var(--s3) var(--s4); }
 .graph__canvas { display: block; }
 /* the edge is a wire, not a rule: it is what says the value under it is under
    this one, and the wire the pointer came down is the one lit */
 .graph__edge { fill: none; stroke: var(--border); stroke-width: 1; }
 .graph__edge--lit { stroke: var(--text-faint); }
+/* the stem is the wire from the head down to the value's root: the root of a
+   tall reading sits halfway down its own leaves, so without it the graph starts
+   in the middle of the pane with nothing saying what value it is of */
+.graph__lead { fill: none; stroke: var(--border); stroke-width: 1; }
+.graph__lead--lit { stroke: var(--text-faint); }
 .graph__node text { fill: currentColor; font-family: var(--font-mono); font-size: var(--fs-code); }
 .graph__node { cursor: default; }
 .graph__node--parent { cursor: pointer; }
@@ -1349,7 +1495,9 @@ details:not([open]) > summary .tree__caret::before {
 .graph__ring { fill: none; stroke: var(--focus); stroke-width: 1.5; opacity: 0; }
 .graph__node:focus-visible .graph__ring { opacity: 1; }
 .graph__node:focus-visible { outline: none; }
-.graph__more { margin: var(--s2) 0 0; padding-left: var(--s3); font-size: var(--fs-sm); }
+/* what the graph left out is the reading's own note, on the head's text edge
+   like the first dot of the graph above it */
+.graph__more { margin: var(--s2) 0 0; padding-left: 0; font-size: var(--fs-sm); }
 
 /* --- the html reading: the document in a frame of its own ------------------ */
 /* the frame is the document's own page: it is sandboxed without the app's

@@ -177,6 +177,28 @@ describe('splitting a run into statements', () => {
     expect(payload.value).toBe('value small-finally')
     expect(payload.blocks).toHaveLength(7)
   })
+
+  test('reports the line a statement starts on, not the line the token before it did', () => {
+    const {payload} = runPhp(
+      'null;' + "\n" +
+      "['name' => 'Ada'];" + "\n" +
+      "\n" +
+      "/* a note\n" +
+      "   over two lines */" + "\n" +
+      '// and one line more' + "\n" +
+      '  [1, 2];' + "\n" +
+      '$a = 1; $b = [2];' + "\n" +
+      '(function () { return 3; })();',
+    )
+
+    // the statements that open with `[` or `(` are punctuation, which carries
+    // no line of its own: their line is where they start, after the whitespace
+    // and the comments before them, and not where the whitespace before them
+    // started. Statements written on one line keep that one line
+    expect(payload.error).toBe(null)
+    expect(payload.blocks.map(block => block.line)).toEqual([1, 2, 7, 8, 8, 9])
+    expect(payload.blocks.map(block => block.value)).toEqual([null, {name: 'Ada'}, [1, 2], 1, [2], 3])
+  })
 })
 
 describe('a snippet php itself would not compile', () => {

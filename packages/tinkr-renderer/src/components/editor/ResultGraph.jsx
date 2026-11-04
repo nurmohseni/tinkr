@@ -28,6 +28,10 @@ import {
  * the root to the node it is on, which is how a node is named in a graph this
  * wide.
  *
+ * One wire hangs the reading off the head of the statement it answers: the root
+ * sits halfway down its own leaves, and a graph that began there would read as a
+ * block of the pane rather than as the value that statement returned.
+ *
  * @param {any} value
  */
 
@@ -62,6 +66,11 @@ const ResultGraph = ({value}) => {
 
   const graph = useMemo(() => layoutGraph(value, state.open, textOf), [value, state.open, textOf])
 
+  // the root is the value itself — the one the head above this graph names — and
+  // a tall reading puts it halfway down its own leaves, so it is what the stem
+  // is drawn down to
+  const root = graph.nodes.find(node => node.path.length === 0)
+
   // the way the pointer came: every node from the root down to the one under
   // it, so a wide graph still says where a value sits
   const lit = useMemo(() => {
@@ -91,6 +100,17 @@ const ResultGraph = ({value}) => {
         viewBox={`0 0 ${graph.width} ${graph.height}`}
       >
         <g>
+          {/* the stem is drawn from the head's rule, which is the canvas's top
+              edge, to the root's dot: the reading hangs from the statement
+              rather than beginning in the middle of the pane. Every path the
+              pointer can be on comes down through it, so it lights with one */}
+          {root && (
+            <path
+              className={`graph__lead${lit ? ' graph__lead--lit' : ''}`}
+              d={`M ${root.x + DOT_R} 0 V ${root.y - DOT_R}`}
+            />
+          )}
+
           {graph.edges.map(edge => (
             <path
               key={edge.id}

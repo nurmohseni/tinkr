@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react'
+import {useEffect, useId, useRef, useState} from 'react'
 import {useAtomValue, useSetAtom} from 'jotai'
 import {FormattedMessage, useIntl} from 'react-intl'
 import PropTypes from 'prop-types'
@@ -16,71 +16,7 @@ import {
 import {applyCodeAtom, currentResultAtom} from '../../stores/editor'
 import {aiFiles} from '../../utils/api'
 import {mentionAt, withMention} from '../../utils/aiMention'
-
-/**
- * One exchange: what was asked, what came back, and — when the answer carries
- * code — the snippet it proposes to put in the editor, which is the user's to
- * take or to put aside.
- *
- * The ask is drawn from the moment it is made, so the thread reads as what was
- * said rather than as what has been answered: the answer takes its place under
- * it when it comes.
- */
-const Turn = ({turn, onApply, onDiscard}) => {
-  const intl = useIntl()
-
-  return (
-    <div className='ai__turn'>
-      <div className='ai__who'><FormattedMessage id='editor.ai_you'/></div>
-      <p className='ai__text'>{turn.prompt}</p>
-
-      <div className='ai__who'><FormattedMessage id='editor.ai'/></div>
-      {turn.asking && (
-        <p className='ai__asking'><FormattedMessage id='editor.ai_asking'/></p>
-      )}
-      {turn.text !== '' && (
-        <p className={turn.failed ? 'ai__text error' : 'ai__text'}>{turn.text}</p>
-      )}
-
-      {turn.code !== null && (
-        <>
-          <pre className='printed'>{turn.code}</pre>
-
-          <div className='ai__actions'>
-            {turn.resolution === null ? (
-              <>
-                <button
-                  className='btn btn--primary btn--sm'
-                  type='button'
-                  onClick={() => onApply(turn)}
-                >
-                  {intl.formatMessage({id: 'editor.ai_apply'})}
-                </button>
-                <button
-                  className='btn btn--ghost btn--sm'
-                  type='button'
-                  onClick={() => onDiscard(turn)}
-                >
-                  {intl.formatMessage({id: 'editor.ai_discard'})}
-                </button>
-              </>
-            ) : (
-              <span className='muted'>
-                <FormattedMessage id={turn.resolution === 'applied' ? 'editor.ai_applied' : 'editor.ai_discarded'}/>
-              </span>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-Turn.propTypes = {
-  turn: PropTypes.object.isRequired,
-  onApply: PropTypes.func.isRequired,
-  onDiscard: PropTypes.func.isRequired,
-}
+import AiTurn from './AiTurn'
 
 /**
  * One of the two switches under the prompt: whether an ask carries the code the
@@ -120,11 +56,13 @@ ContextSwitch.propTypes = {
  * what the editor holds at the moment it is made, and the editor takes a
  * proposal through the store — it is the one that holds the model.
  *
- * Under the prompt sit the two switches that say what an ask carries with it,
- * and the `@` that names a file of the project for the request to include.
+ * Under the prompt sits one foot row: the two switches that say what an ask
+ * carries with it, and — beside the ask itself — the `@` that names a file of
+ * the project for the request to include.
  */
 const AiPanel = () => {
   const intl = useIntl()
+  const id = useId()
   const documentId = useDocumentId()
   const thread = useAtomValue(aiThreadAtom)
   const asking = useAtomValue(aiAskingAtom)
@@ -138,11 +76,22 @@ const AiPanel = () => {
   const [active, setActive] = useState(0)
   const threadRef = useRef()
   const inputRef = useRef()
+  const optionRefs = useRef([])
+  // whether the thread is being read at its foot, which is what says a new
+  // answer may move it: one that moves while the reader is up in what came
+  // before cannot be read
+  const pinnedRef = useRef(true)
 
-  // the newest turn is the one being read
+  const listId = `${id}-files`
+  const optionId = index => `${id}-file-${index}`
+  const files = mention ? mention.files : []
+
+  // the newest turn is the one being read, until the reader goes up
   useEffect(() => {
-    if (threadRef.current) {
-      threadRef.current.scrollTop = threadRef.current.scrollHeight
+    const scroller = threadRef.current
+
+    if (scroller && pinnedRef.current) {
+      scroller.scrollTop = scroller.scrollHeight
     }
   }, [thread, asking])
 
@@ -167,9 +116,9 @@ const AiPanel = () => {
     let live = true
 
     aiFiles(found.typed)
-      .then(files => {
+      .then(list => {
         if (live) {
-          setMention({...found, files})
+          setMention({...found, files: list})
           setActive(0)
         }
       })
@@ -184,6 +133,16 @@ const AiPanel = () => {
     }
   }, [prompt])
 
+  // the list can be longer than the room it has, and the one the arrows are on
+  // is the one to keep in view
+  useEffect(() => {
+    const option = optionRefs.current[active]
+
+    if (mention && option && typeof option.scrollIntoView === 'function') {
+      option.scrollIntoView({block: 'nearest'})
+    }
+  }, [active, mention])
+
   const send = () => {
     const text = prompt.trim()
 
@@ -193,7 +152,16 @@ const AiPanel = () => {
 
     setPrompt('')
     setMention(null)
+    // a question is asked from the foot of the thread, so the answer will be
+    // looked for there
+    pinnedRef.current = true
     ask({documentId, prompt: text, output: result})
+
+    // the ask is the only control that disables itself, so the caret comes back
+    // to where the next question is written
+    if (inputRef.current) {
+      inputRef.current.focus()
+    }
   }
 
   const handleSubmit = event => {
@@ -225,8 +193,6 @@ const AiPanel = () => {
   }
 
   const handleKeyDown = event => {
-    const files = mention ? mention.files : []
-
     if (files.length > 0) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -264,6 +230,18 @@ const AiPanel = () => {
     }
   }
 
+  const handleThreadScroll = () => {
+    const scroller = threadRef.current
+
+    if (!scroller) {
+      return
+    }
+
+    const room = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+
+    pinnedRef.current = room < 24
+  }
+
   const handleApply = turn => {
     applyCode({id: documentId, code: turn.code})
     resolve({id: turn.id, resolution: 'applied'})
@@ -275,7 +253,13 @@ const AiPanel = () => {
 
   return (
     <div className='ai'>
-      <div className='ai__thread' ref={threadRef}>
+      <div
+        className='ai__thread'
+        ref={threadRef}
+        role='log'
+        aria-label={intl.formatMessage({id: 'editor.ai'})}
+        onScroll={handleThreadScroll}
+      >
         {thread.length === 0 && !asking && (
           <p className='ai__empty'>
             <FormattedMessage id='editor.ai_empty'/>
@@ -283,7 +267,7 @@ const AiPanel = () => {
         )}
 
         {thread.map(turn => (
-          <Turn
+          <AiTurn
             key={turn.id}
             turn={turn}
             onApply={handleApply}
@@ -295,16 +279,25 @@ const AiPanel = () => {
       <form className='ai__ask' aria-busy={asking} onSubmit={handleSubmit}>
         <div className='ai__field'>
           {mention && (
-            <div className='autocomplete ai__mention' role='listbox'>
-              {mention.files.length === 0 ? (
+            <div
+              className='autocomplete ai__mention'
+              id={files.length > 0 ? listId : undefined}
+              role={files.length > 0 ? 'listbox' : undefined}
+              aria-label={files.length > 0 ? intl.formatMessage({id: 'editor.ai_mention'}) : undefined}
+            >
+              {files.length === 0 ? (
                 <div className='autocomplete__item'>
                   <span className='faint'>
                     <FormattedMessage id='editor.ai_mention_empty'/>
                   </span>
                 </div>
-              ) : mention.files.map((file, index) => (
+              ) : files.map((file, index) => (
                 <button
                   key={file.qualified}
+                  id={optionId(index)}
+                  ref={node => {
+                    optionRefs.current[index] = node
+                  }}
                   className={index === active ? 'autocomplete__item autocomplete__item--active' : 'autocomplete__item'}
                   type='button'
                   role='option'
@@ -332,39 +325,47 @@ const AiPanel = () => {
             onKeyDown={handleKeyDown}
             placeholder={intl.formatMessage({id: 'editor.ai_placeholder'})}
             aria-label={intl.formatMessage({id: 'editor.ai'})}
+            // the list the `@` opens is the prompt's own suggestion list: the
+            // caret stays in the field and the arrows name the row they are on
+            aria-autocomplete='list'
+            aria-haspopup='listbox'
+            aria-controls={files.length > 0 ? listId : undefined}
+            aria-activedescendant={files.length > 0 ? optionId(active) : undefined}
             spellCheck={false}
           />
         </div>
 
-        <div className='ai__send'>
-          <button
-            className='btn btn--secondary'
-            type='button'
-            title={intl.formatMessage({id: 'editor.ai_mention'})}
-            aria-label={intl.formatMessage({id: 'editor.ai_mention'})}
-            onClick={reference}
-          >
-            @
-          </button>
+        <div className='ai__foot'>
+          <div className='ai__context'>
+            <span className='ai__context-label'>
+              <FormattedMessage id='editor.ai_send_with'/>
+            </span>
 
-          <button
-            className='btn btn--primary'
-            type='submit'
-            disabled={asking || prompt.trim() === ''}
-          >
-            <FormattedMessage id='editor.ai_ask'/>
-          </button>
+            <ContextSwitch labelId='editor.ai_send_code' contextKey='code'/>
+            <ContextSwitch labelId='editor.ai_send_output' contextKey='output'/>
+          </div>
+
+          <div className='ai__send'>
+            <button
+              className='btn btn--secondary'
+              type='button'
+              title={intl.formatMessage({id: 'editor.ai_mention'})}
+              aria-label={intl.formatMessage({id: 'editor.ai_mention'})}
+              onClick={reference}
+            >
+              @
+            </button>
+
+            <button
+              className='btn btn--primary'
+              type='submit'
+              disabled={asking || prompt.trim() === ''}
+            >
+              <FormattedMessage id='editor.ai_ask'/>
+            </button>
+          </div>
         </div>
       </form>
-
-      <div className='ai__context'>
-        <span className='ai__context-label'>
-          <FormattedMessage id='editor.ai_send_with'/>
-        </span>
-
-        <ContextSwitch labelId='editor.ai_send_code' contextKey='code'/>
-        <ContextSwitch labelId='editor.ai_send_output' contextKey='output'/>
-      </div>
     </div>
   )
 }
