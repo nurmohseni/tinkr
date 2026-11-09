@@ -129,9 +129,9 @@ describe('the result panel', () => {
     expect(markup).not.toContain('error-surface')
   })
 
-  test('reads a value one way or the other, never both at once', () => {
-    // dump() both prints its value and returns it, which is what a `dump`
-    // snippet does: the readings replace each other
+  test('reads what a one-statement run printed beside the value it returned', () => {
+    // dump() both prints its value and returns it: the print and the value are
+    // two facts, and one does not stand for the other
     const result = {
       value: {a: 1},
       error: null,
@@ -142,15 +142,21 @@ describe('the result panel', () => {
     const organized = render(result, 'organized')
     const raw = render(result, 'raw')
 
-    // organized is the tree, and the session's own words are not above it
+    // the print is drawn above the value, whatever reading the value is in
+    expect(organized).toContain('array:1 [')
     expect(organized).toContain('tree__row')
-    expect(organized).not.toContain('array:1 [')
-    expect(organized).not.toContain('printed')
+    expect(organized.indexOf('array:1 [')).toBeLessThan(organized.indexOf('tree__row'))
 
-    // raw is those words, and the tree is not under them
-    expect(raw).toContain('array:1 [')
+    // and it is said once: raw reads the value's own json, not the print again
+    expect(raw.match(/array:1 \[/g)).toHaveLength(1)
+    expect(raw).toContain('&quot;a&quot;')
     expect(raw).not.toContain('tree__row')
-    expect(raw).toContain('view-switch')
+  })
+
+  test('says nothing about a print the run did not make', () => {
+    const markup = render({value: {a: 1}, error: null, output: '', imported: {}}, 'organized')
+
+    expect(markup).not.toContain('class="printed"')
   })
 
   test('reads a value that was not printed raw as the json it is drawn from', () => {
@@ -210,8 +216,9 @@ describe('the result panel', () => {
     expect(html).toContain('html-view__frame')
     // the document is handed to the frame itself, whole, not read to it
     expect(html).toContain('srcDoc="&lt;!doctype html&gt;')
-    // and the frame runs nothing of the app's
-    expect(html).toContain('sandbox="allow-scripts"')
+    // and the frame runs nothing at all: markup from a value can be a payload
+    expect(html).toContain('sandbox=""')
+    expect(html).not.toContain('allow-scripts')
     expect(html).toContain('title="The rendered document"')
     expect(html).not.toContain('tree__row')
   })

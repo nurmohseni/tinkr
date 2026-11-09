@@ -33,6 +33,17 @@ describe('tabs store', () => {
     expect(store.get(tabs.openTabsAtom)).toEqual(['s1'])
   })
 
+  test('closing a tab that is not open writes nothing', () => {
+    store.set(tabs.openTabAtom, 's1')
+    const before = store.get(tabs.openTabsAtom)
+
+    store.set(tabs.closeTabAtom, 's2')
+
+    // the same list, not a copy of it: a reader that closes what it finds gone
+    // has nothing left to close on the next pass
+    expect(store.get(tabs.openTabsAtom)).toBe(before)
+  })
+
   test('a session named as a snippet keeps its tab where it was', () => {
     store.set(tabs.openTabAtom, 's1')
     store.set(tabs.openTabAtom, 'session:1')

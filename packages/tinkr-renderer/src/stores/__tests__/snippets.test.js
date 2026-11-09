@@ -101,6 +101,22 @@ describe('a snippet another process changed', () => {
     expect(store.get(snippets.snippetListAtom).map(one => one.id)).toEqual(['s2'])
   })
 
+  // the editor keeps the text of a snippet another writer deleted, so the next
+  // keystroke is still written: there is nowhere for it to go, and it must not
+  // throw inside the atom and take the window down with it
+  test('an edit to the snippet just deleted out there is dropped, not thrown', () => {
+    const {store, snippets} = load({s1: snippet})
+
+    store.set(snippets.snippetsConnectionAtom, {connection: 'c1', snippets: {}})
+
+    expect(() => {
+      store.set(snippets.updateSnippetAtom, {id: 's1', code: '1 + 2'})
+    }).not.toThrow()
+
+    expect(store.get(snippets.snippetDataAtom)).toEqual({})
+    expect(window.api.updateSnippet).not.toHaveBeenCalled()
+  })
+
   // the app keeps one window, and the watcher follows the connection it is on
   test('a change for another connection is not this window\'s', () => {
     const {store, snippets} = load({s1: snippet})

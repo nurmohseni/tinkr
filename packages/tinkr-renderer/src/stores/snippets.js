@@ -36,6 +36,15 @@ const createSnippetAtom = atom(null, (get, set, snippet) => {
 })
 
 const updateSnippetAtom = atom(null, (get, set, snippet) => {
+  // the file has another writer, so the snippet an editor is holding can be
+  // gone from the store by the time the next keystroke is written. There is
+  // nowhere for that write to go: the editor's text stays in its own buffer,
+  // and the file the other writer left is the truth. Writing anyway would
+  // throw inside the atom, so the edit is dropped
+  if (!get(snippetDataAtom)[snippet.id]) {
+    return
+  }
+
   set(snippetDataAtom, data => {
     for (const key in snippet) {
       if (key !== 'id') {
@@ -65,9 +74,11 @@ const deleteSnippetAtom = atom(null, (get, set, id) => {
  * to it — a snippet deleted out there has no message of its own, and one merged
  * in would only ever add.
  *
- * A snippet the window has open and another writer deleted is left in the store
- * as the writer left it: nothing is read back into the editor, and the list stops
- * offering it.
+ * A snippet the window has open and another writer deleted leaves the store with
+ * the rest of the file, so the list stops offering it. The editor keeps its own
+ * text, and nothing reads the file back into it; a write for the snippet that is
+ * no longer there is dropped rather than thrown (see `updateSnippetAtom`), and
+ * the deleted snippet is not brought back by it.
  */
 const snippetsConnectionAtom = atom(null, (get, set, {connection, snippets} = {}) => {
   // a change for a connection the window is not on is not this window's: the

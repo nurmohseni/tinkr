@@ -11,8 +11,9 @@ module.exports = {
   moduleNameMapper: {
     '^jotai/(.*)$': '<rootDir>/../../node_modules/jotai/dist/$1.js',
   },
-  // react-intl and the formatjs packages it is built from ship ES modules only
+  // react-intl and the formatjs packages it is built from ship ES modules only,
+  // and so does wouter, which the router the hook sits under is built from
   transformIgnorePatterns: [
-    '/node_modules/(?!(jotai|jotai-immer|nanoid|react-intl|@formatjs|intl-messageformat|hoist-non-react-statics)/)',
+    '/node_modules/(?!(jotai|jotai-immer|nanoid|react-intl|@formatjs|intl-messageformat|hoist-non-react-statics|wouter|regexparam)/)',
   ],
 }

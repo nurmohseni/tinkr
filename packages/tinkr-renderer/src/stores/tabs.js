@@ -25,7 +25,17 @@ const openTabAtom = atom(null, (get, set, id) => {
   }
 })
 
+/**
+ * Close a document's tab. A tab that is not open is already closed, so nothing
+ * is written: a close that writes the list it wrote a moment ago would wake
+ * every reader of it, and a reader closing what it finds gone has nothing left
+ * to close on the next pass either.
+ */
 const closeTabAtom = atom(null, (get, set, id) => {
+  if (!get(openTabsAtom).includes(id)) {
+    return
+  }
+
   set(openTabsAtom, tabs => tabs.filter(tab => tab !== id))
 })
 

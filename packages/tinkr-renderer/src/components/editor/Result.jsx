@@ -38,8 +38,9 @@ import {
  * offered, and a value a chosen reading does not have is read as its tree,
  * which is why a reading is never a blank pane.
  *
- * A run that printed is read as it printed in the raw reading, because its
- * raw reading would otherwise say the same words twice.
+ * A run that printed says so in a block of its own above the value it returned,
+ * because a print and a value are not the same fact: one answer does not stand
+ * for the other.
  */
 
 // the landing is drawn once per run, and React draws an element again only when
@@ -91,10 +92,10 @@ const onReading = (views, view) => (views.includes(view) ? view : 'organized')
  * else. Everything a reading needs to say about itself is in the strip above
  * it, so this is one surface whichever reading is on.
  */
-const Reading = ({value, view, output = ''}) => {
+const Reading = ({value, view}) => {
   switch (view) {
     case 'raw':
-      return <pre className='printed'>{output || json(value)}</pre>
+      return <pre className='printed'>{json(value)}</pre>
     case 'table':
       return <ResultTable value={value}/>
     case 'graph':
@@ -113,15 +114,14 @@ const Reading = ({value, view, output = ''}) => {
 Reading.propTypes = {
   value: PropTypes.any,
   view: PropTypes.oneOf(READINGS).isRequired,
-  output: PropTypes.string,
 }
 
 /**
  * What a reading does with the whole of itself, in the strip's own buttons: a
- * table is copied and saved as a csv, and every other reading copies what it
- * shows — the text it read, or the json the tree and the graph are drawn from.
+ * table is copied and saved as a csv, and every other reading copies the json
+ * the tree, the graph and the raw text are drawn from.
  */
-const ReadingActions = ({value, view, output = '', children = null}) => {
+const ReadingActions = ({value, view, children = null}) => {
   const intl = useIntl()
   const [menu, setMenu] = useState(null)
   const closeMenu = useCallback(() => setMenu(null), [])
@@ -186,8 +186,8 @@ const ReadingActions = ({value, view, output = '', children = null}) => {
       <button
         className='btn btn--ghost btn--sm'
         type='button'
-        title={intl.formatMessage({id: view === 'raw' ? 'result.copy_shown' : 'result.copy_json'})}
-        onClick={() => (view === 'raw' ? copyText(output || json(value)) : copy(value))}
+        title={intl.formatMessage({id: 'result.copy_json'})}
+        onClick={() => copy(value)}
       >
         {intl.formatMessage({id: 'result.copy_short'})}
       </button>
@@ -200,7 +200,6 @@ const ReadingActions = ({value, view, output = '', children = null}) => {
 ReadingActions.propTypes = {
   value: PropTypes.any,
   view: PropTypes.oneOf(READINGS).isRequired,
-  output: PropTypes.string,
   children: PropTypes.node,
 }
 
@@ -614,12 +613,11 @@ ViewSwitch.propTypes = {
  * The value the run returned: what came back, how it is being read, and what
  * that reading shows.
  *
- * A run that printed wrote the raw reading of its value itself, in psysh's
- * words, so that text is what the raw reading shows; a run that printed nothing
- * is read raw as the json the tree is drawn from. Either way the readings are
- * alternatives: one replaces the other, and neither is said twice.
+ * The readings read only the value. A run that printed has that print drawn in
+ * a block of its own above this one, so the raw reading here is the json the
+ * tree is drawn from, and the print is never said twice.
  */
-const Returned = ({value, view, onView, output = '', duration = null, markdown = null}) => {
+const Returned = ({value, view, onView, duration = null, markdown = null}) => {
   const intl = useIntl()
   const views = readingsOf([value])
   const reading = readingOf(view, value)
@@ -632,12 +630,12 @@ const Returned = ({value, view, onView, output = '', duration = null, markdown =
         <ViewSwitch views={views} view={reading} onChange={onView}/>
         <span className='grow'/>
         <Duration duration={duration}/>
-        <ReadingActions value={value} view={reading} output={output}>
+        <ReadingActions value={value} view={reading}>
           {markdown && <MarkdownAction {...markdown}/>}
         </ReadingActions>
       </div>
 
-      <Reading value={value} view={reading} output={output}/>
+      <Reading value={value} view={reading}/>
     </>
   )
 }
@@ -645,7 +643,6 @@ const Returned = ({value, view, onView, output = '', duration = null, markdown =
 Returned.propTypes = {
   value: PropTypes.any,
   duration: PropTypes.number,
-  output: PropTypes.string,
   markdown: PropTypes.object,
   view: PropTypes.oneOf(READINGS).isRequired,
   onView: PropTypes.func.isRequired,
@@ -900,14 +897,18 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
       {/* a run that printed and returned nothing is read as it printed */}
       {!error && value === null && output && <Printed output={output} markdown={markdown}/>}
 
-      {/* and a run that returned a value is read one way or the other: what it
-          printed is the raw reading of that value, and is drawn with it */}
+      {/* one statement can both print and answer: the print is a fact of its
+          own, drawn above the value the way a run of several statements draws
+          it, rather than hidden in one of the value's readings. The run's one
+          markdown action stays with the value, so it is offered once */}
+      {!error && value !== null && output && <Printed output={output}/>}
+
+      {/* and the value itself is read in the reading that is on */}
       {!error && value !== null && (
         <Returned
           value={value}
           view={view}
           onView={onView}
-          output={output}
           duration={duration}
           markdown={markdown}
         />

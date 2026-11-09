@@ -48,7 +48,9 @@ describe('the queries pane', () => {
     expect(markup).toContain('<span class="muted">1</span>')
     expect(markup).toContain('<span class="muted">2</span>')
     expect(markup).toContain('>1.82<')
-    expect(markup).toContain('&quot;[12]&quot;')
+    expect(markup).toContain('[12]')
+    expect(markup).not.toContain('[12]&quot;')
+    expect(markup).not.toContain('&quot;[12]&quot;')
     expect(markup).toContain('mysql')
   })
 

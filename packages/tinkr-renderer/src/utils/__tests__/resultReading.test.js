@@ -173,6 +173,27 @@ describe('test cellOf', () => {
     expect(cellOf(undefined).text).toBe('')
     expect(cellOf(undefined).cut).toBe(false)
   })
+
+  test('should write a text it is given as written, not as a string holding it', () => {
+    const bindings = JSON.stringify([1, 'Ada', true])
+
+    // the json a query's bindings are already written in is shown once, not
+    // quoted back as a string that holds it
+    expect(cellOf(bindings, {plain: true})).toEqual({
+      kind: 'string',
+      className: 't-string',
+      text: '[1,"Ada",true]',
+      full: '[1,"Ada",true]',
+      cut: false,
+    })
+
+    // and it is still cut to the cell, with the whole of it for the tooltip
+    const long = JSON.stringify(Array.from({length: 50}, (_, index) => index))
+
+    expect(cellOf(long, {plain: true}).cut).toBe(true)
+    expect(cellOf(long, {plain: true}).text).toBe(`${long.slice(0, 120)}…`)
+    expect(cellOf(long, {plain: true}).full).toBe(long)
+  })
 })
 
 describe('test the tree scalars', () => {
@@ -193,5 +214,16 @@ describe('test the tree scalars', () => {
   test('should cut a long string with one ellipsis at the end', () => {
     expect(truncate('abcdefghij', 5)).toBe('abcde…')
     expect(truncate('abc', 5)).toBe('abc')
+  })
+
+  test('should never cut a character in half', () => {
+    // an emoji is two utf-16 units, and a cut between them is half a character
+    const text = '😀'.repeat(200)
+
+    expect(truncate(text, 121)).toBe(`${'😀'.repeat(60)}…`)
+    expect(truncate(text, 121)).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])/)
+    expect(truncate(text, 122)).toBe(`${'😀'.repeat(61)}…`)
+    // a budget that ends between characters is untouched by the rule
+    expect(truncate('abcdefghij', 5)).toBe('abcde…')
   })
 })

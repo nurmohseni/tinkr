@@ -56,6 +56,27 @@ describe('a run as markdown', () => {
     expect(markdown).not.toContain('**Returned**')
   })
 
+  test('a print that carries a fence is held by a longer fence of its own', () => {
+    const markdown = runMarkdown(run({
+      result: {value: null, error: null, output: '```php\ninside a fence\n```', queries: []},
+    }))
+
+    // the block the run writes is not ended by the fence the print carries
+    expect(markdown).toContain('````text\n```php\ninside a fence\n```\n````')
+    // and a body with no fence of its own still gets the shortest fence
+    expect(runMarkdown(run({
+      result: {value: null, error: null, output: 'plain', queries: []},
+    }))).toContain('```text\nplain\n```')
+  })
+
+  test('a value that is itself a document does not end the block it is written in', () => {
+    const markdown = runMarkdown(run({
+      result: {value: 'a ``` fence', error: null, output: '', queries: []},
+    }))
+    // the json is fenced by four backticks, so its own three are just text
+    expect(markdown).toContain('````json\n"a ``` fence"\n````')
+  })
+
   test('carries the exception class and message when it threw', () => {
     const markdown = runMarkdown(run({
       result: {

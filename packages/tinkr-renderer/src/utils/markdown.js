@@ -33,6 +33,10 @@ export const markdownCell = value => String(value === null || value === undefine
 /**
  * A fenced block, with the note that says when its contents were cut.
  *
+ * The fence is longer than the longest run of backticks in what it holds, so a
+ * value or a print that carries a fence of its own never ends the block early;
+ * three is the shortest a fence can be.
+ *
  * @param {String} language
  * @param {String} text
  * @param {Function} truncated  characters omitted => the note's words
@@ -42,11 +46,13 @@ const fenced = (language, text, truncated) => {
   const value = typeof text === 'string' ? text : ''
   const cut = value.length - MARKDOWN_LIMIT
   const body = cut > 0 ? value.slice(0, MARKDOWN_LIMIT) : value
+  const longest = (body.match(/`+/g) || []).reduce((most, run) => Math.max(most, run.length), 0)
+  const fence = '`'.repeat(Math.max(3, longest + 1))
 
   return [
-    `\`\`\`${language}`,
+    `${fence}${language}`,
     body,
-    '```',
+    fence,
     cut > 0 ? `_${truncated(cut)}_` : '',
   ].filter(line => line !== '').join('\n')
 }

@@ -30,8 +30,24 @@ const CELL_TITLE_CHARS = 600
 // said what it is long before the budget runs out
 const MARKUP_CHARS = 8192
 
-/** Cuts text to a budget, saying it was cut, without touching what fits. */
-export const truncate = (text, max) => (text.length > max ? `${text.slice(0, max)}…` : text)
+/**
+ * Cuts text to a budget, saying it was cut, without touching what fits. The cut
+ * never lands inside a character: a string is measured in utf-16 units, so a
+ * cut can fall between the two halves of a surrogate pair, and half a character
+ * is drawn as a broken one. One unit is given back when that is where the cut
+ * would land.
+ */
+export const truncate = (text, max) => {
+  if (text.length <= max) {
+    return text
+  }
+
+  const split = max > 0
+    && text.charCodeAt(max - 1) >= 0xd800 && text.charCodeAt(max - 1) <= 0xdbff
+    && text.charCodeAt(max) >= 0xdc00 && text.charCodeAt(max) <= 0xdfff
+
+  return `${text.slice(0, split ? max - 1 : max)}…`
+}
 
 /** The design's colour-coded type of a leaf. */
 export const scalarClass = value => ({
@@ -102,10 +118,16 @@ export const graphOf = value => (isComposite(value) && entriesOf(value).length >
  * same in both. A composite says nothing here: what a cell can show of an
  * `array` is words, and those are the reading's to say.
  *
+ * A cell that is handed a text the caller wrote itself — the json of a query's
+ * bindings, which is already the form to show — asks for `plain`: quoting that
+ * would read as a string holding json rather than as the json it is.
+ *
  * @param {any} value
+ * @param {Object} [options]
+ * @param {Boolean} [options.plain]  the string is written, not a string to quote
  * @return {{kind: String, className: String, text: String, full: String}}
  */
-export const cellOf = value => {
+export const cellOf = (value, {plain = false} = {}) => {
   // a row that does not carry the key has no value to read there, and an empty
   // cell says that; the word for nothing would not
   if (value === undefined) {
@@ -116,12 +138,11 @@ export const cellOf = value => {
     return {kind: 'composite', className: 't-class', text: '', full: '', cut: false}
   }
 
-  const text = typeof value === 'string'
-    ? JSON.stringify(truncate(value, CELL_CHARS))
-    : scalarText(value)
-  const full = typeof value === 'string'
-    ? JSON.stringify(truncate(value, CELL_TITLE_CHARS))
-    : scalarText(value)
+  const written = (text, budget) => (typeof text === 'string'
+    ? (plain ? truncate(text, budget) : JSON.stringify(truncate(text, budget)))
+    : scalarText(text))
+  const text = written(value, CELL_CHARS)
+  const full = written(value, CELL_TITLE_CHARS)
 
   return {
     kind: value === null ? 'null' : typeof value,

@@ -435,7 +435,6 @@
     "graph": "graph",
     "html": "html",
     "show_all": "Show all {count, plural, one {# character} other {# characters}}",
-    "copy_shown": "Copy what is shown",
     "csv": "CSV",
     "copy_csv": "Copy CSV",
     "save_csv": "Save CSV…",

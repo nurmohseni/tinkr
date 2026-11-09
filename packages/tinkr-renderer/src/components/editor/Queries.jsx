@@ -146,7 +146,7 @@ const Queries = ({result, api = null}) => {
         <tbody>
           {queries.map((sent, index) => {
             const sql = sqlCell(sent.sql)
-            const bindings = cellOf(JSON.stringify(sent.bindings || []))
+            const bindings = cellOf(JSON.stringify(sent.bindings || []), {plain: true})
             const explainable = isExplainable(sent.sql)
             const plan = plans[index]
 

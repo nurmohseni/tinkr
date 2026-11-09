@@ -23,7 +23,9 @@ import {closeTabAtom, openTabAtom, openTabsAtom} from '../stores/tabs'
  * and closing all go through this one place, because what a closing tab leaves
  * behind is the same question whether that tab was a snippet's or a session's:
  * the next one along, or, when nothing is left, a fresh session for the window to
- * start from.
+ * start from. The same close happens when the connection's file loses a snippet
+ * another writer deleted, which is what keeps a tab from naming a document that
+ * is not there any more.
  *
  * A log is not a document of this window: it is read in a window of its own.
  *
@@ -105,6 +107,19 @@ const useOpenDocuments = () => {
       activate(next)
     }
   }, [ids, activeId, removeSession, closeTab, activate])
+
+  // the connection's file has another writer, and a snippet it deletes can be
+  // one this window has open: the tab is then a claim about a document that is
+  // no longer there. It is closed the way the tab bar closes one, which is also
+  // where the window goes when that tab was the one on screen. A session's tab
+  // is the window's own and is dropped only when the window closes it.
+  useEffect(() => {
+    const gone = ids.filter(id => !isSessionId(id) && !snippets.some(snippet => snippet.id === id))
+
+    for (const id of gone) {
+      close(id)
+    }
+  }, [ids, snippets, close])
 
   return {documents, activeId, activate, close}
 }

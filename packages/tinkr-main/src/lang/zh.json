@@ -435,7 +435,6 @@
     "graph": "图形",
     "html": "HTML",
     "show_all": "显示全部 {count, plural, other {# 个字符}}",
-    "copy_shown": "复制显示的内容",
     "csv": "CSV",
     "copy_csv": "复制 CSV",
     "save_csv": "保存 CSV…",
