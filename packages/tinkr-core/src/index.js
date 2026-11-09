@@ -20,6 +20,7 @@ module.exports = Object.assign(
   require('./sshControl'),
   require('./containerCommand'),
   require('./unguardable'),
+  require('./remoteCommand'),
   require('./cloud'),
   require('./remote'),
   require('./explain'),

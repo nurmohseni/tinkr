@@ -1,6 +1,6 @@
 const fs = require('fs')
 
-const {wrapRun, RunResultFilter} = require('./runResult')
+const {runRemoteCommand} = require('./remoteCommand')
 const {secretsFile} = require('./sshAskpass')
 
 /**
@@ -10,10 +10,15 @@ const {secretsFile} = require('./sshAskpass')
  * containers behind an HTTP API, and the documented way to run something inside
  * one is a command — `POST /environments/{id}/commands`, then `GET /commands/{id}`
  * until it ends. So a cloud connection is not a session, it is a run that travels
- * as a request, and everything below is the HTTP half of the run protocol: the
- * envelope wrapRun produces goes out as a `php artisan tinker --execute` command,
- * and what the command printed is fed through the same RunResultFilter a pty's
- * output goes through, so a cloud run answers exactly as a local one does.
+ * as a request: the envelope wrapRun produces goes out as a
+ * `php artisan tinker --execute` command, and what the command printed is fed
+ * through the same RunResultFilter a pty's output goes through, so a cloud run
+ * answers exactly as a local one does.
+ *
+ * The rest of such a run — the deadline, the stop, the wait between polls, the
+ * answer and the failure — is not here: it is the shared runner in
+ * remoteCommand.js, and what is below is the provider that runner drives, which
+ * is the endpoints, the attribute names and the words.
  *
  * The token is never part of a connection: it is one secret for the whole app,
  * kept in the same 0600 file a connection's ssh password is kept in, and it is
@@ -34,6 +39,15 @@ const CLOUD_SECRET_KEY = '@laravel-cloud'
  * validation error that says nothing about the snippet being the reason.
  */
 const CLOUD_COMMAND_LIMIT = 150000
+
+/**
+ * The statuses a command ends with.
+ *
+ * Every other status the API gives a command — `pending`, `command.created`,
+ * `command.running` — is "not yet", and nothing else is ever the answer. The
+ * runner reads them only as the provider's `done`, so the names stay here.
+ */
+const CLOUD_DONE_STATUSES = ['command.success', 'command.failure']
 
 /**
  * Where the API is.
@@ -288,7 +302,7 @@ const CLOUD_TRUNCATED_NOTE = '[Laravel Cloud returned only the last part of this
  *
  * A download that does not work is not the run failing. The tail is still an
  * answer, and the run says what it lost rather than throwing away a value it
- * has (see the truncated case in runCloud).
+ * has (see the truncated case in remoteCommand's answerOutput).
  *
  * @param {String} url
  * @param {{signal?: AbortSignal, fetch?: Function}} [options]
@@ -318,6 +332,26 @@ const cloudOutputText = async (url, options = {}) => {
  * @return {Object}
  */
 const attributesOf = item => (item && item.attributes) || {}
+
+/**
+ * A command's output as a run reads it: null while a finished command has not
+ * been given one, and the text otherwise.
+ *
+ * The two are not the same thing — null is a moment of waiting, and '' is a
+ * command that printed nothing — so the attribute's own null is kept, and
+ * anything that is not text is taken as no output rather than as a reason to
+ * wait.
+ *
+ * @param {Object} attrs
+ * @return {String|null}
+ */
+const commandOutput = attrs => {
+  if (attrs.output === null) {
+    return null
+  }
+
+  return typeof attrs.output === 'string' ? attrs.output : ''
+}
 
 /**
  * @param {Object|null} answer
@@ -462,26 +496,6 @@ const cloudCommand = code => {
 }
 
 /**
- * The last lines of what a command printed, for an error's message.
- *
- * The beginning of a failure is usually the framework booting; the end is the
- * exception, which is the part worth reading.
- *
- * @param {String} output
- * @param {Number} [count]
- * @return {String}
- */
-const lastLines = (output, count = 20) => {
-  const lines = String(output || '').replace(/\r\n/g, '\n').split('\n')
-
-  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
-    lines.pop()
-  }
-
-  return lines.slice(-count).join('\n').trim()
-}
-
-/**
  * The token saved in the app's data directory, or ''.
  *
  * A missing file, a file that is not JSON, a key that is not there: all of them
@@ -507,25 +521,68 @@ const cloudTokenOf = dataDir => {
 }
 
 /**
- * The run's own output, from session.js.
+ * The provider a Laravel Cloud environment is.
  *
- * Read here rather than at the top because session.js requires this module for
- * the cloud branch of runCode, and one of the two directions has to be resolved
- * when it is used rather than when it is loaded: this one, so the function is
- * taken from a module that has finished loading. Node caches the module, so the
- * require inside is a lookup and not a second load.
+ * The endpoints, the attribute names, the statuses a command ends with and the
+ * words a run's messages use — everything the shared runner must not know (see
+ * remoteCommand.runRemoteCommand). The token and the environment are closed over
+ * here, so a run is handed the API it talks to and nothing else.
  *
- * @param {RunResultFilter} filter
- * @return {String}
+ * @param {String} token
+ * @param {String} environmentId
+ * @param {{fetch?: Function}} [options]
+ * @return {Object} a provider, as remoteCommand documents one
  */
-const runOutputOf = filter => {
-  const session = require('./session')
+const cloudProvider = (token, environmentId, options = {}) => ({
+  name: 'Laravel Cloud',
+  ErrorClass: CloudError,
+  commandFor: cloudCommand,
+  create: async (command, {signal}) => {
+    // the command is non-interactive and runs in the application's root, so
+    // `php artisan tinker` is found without a working directory to set
+    const created = await cloudRequest(
+      token,
+      'POST',
+      `/environments/${encodeURIComponent(environmentId)}/commands`,
+      {body: {command}, signal, fetch: options.fetch},
+    )
 
-  return session.runOutput(filter)
-}
+    // an answer that carries no id gives the run nothing to follow, and the
+    // runner is the one that says so
+    return created && created.data && created.data.id !== undefined ? String(created.data.id) : ''
+  },
+  poll: async (id, {signal}) => {
+    const answer = await cloudRequest(token, 'GET', `/commands/${encodeURIComponent(id)}`, {
+      signal,
+      fetch: options.fetch,
+    })
+    const attrs = attributesOf(answer && answer.data)
+    const status = String(attrs.status || '')
+
+    return {
+      done: CLOUD_DONE_STATUSES.includes(status),
+      status,
+      output: commandOutput(attrs),
+      truncated: attrs.output_truncated === true,
+      outputUrl: typeof attrs.output_url === 'string' ? attrs.output_url : null,
+      exitCode: attrs.exit_code === undefined ? null : attrs.exit_code,
+      failureReason: attrs.failure_reason || null,
+    }
+  },
+  // the URL is signed already, and the token is deliberately not sent with the
+  // download (see cloudOutputText)
+  download: (url, {signal}) => cloudOutputText(url, {signal, fetch: options.fetch}),
+  truncatedNote: CLOUD_TRUNCATED_NOTE,
+})
 
 /**
  * Run a snippet inside a Laravel Cloud environment.
+ *
+ * What is here is what a Laravel Cloud run needs before there is anything to
+ * send — a token, an environment — and the provider those two make the run
+ * against. The run itself is the shared runner's (see
+ * remoteCommand.runRemoteCommand): the deadline, the stop, the polls, the
+ * output and the answer are the same for any API that runs commands.
  *
  * The run is one command, and the answer arrives when that command ends: the API
  * has no streaming and no cancel, so a run is created, followed until it reports
@@ -545,9 +602,7 @@ const runOutputOf = filter => {
  * @return {Promise<Object>} the same shape a pty run answers with, plus `commandId`
  */
 const runCloud = (connection, code, options = {}) => {
-  const {guard = null, timeout = 30000, interval = 1000, imports = {}} = options
   const token = options.token || ''
-  const callerSignal = options.signal
   const environmentId = String((connection && connection.cloud_environment_id) || '').trim()
 
   if (!token) {
@@ -564,306 +619,12 @@ const runCloud = (connection, code, options = {}) => {
     ))
   }
 
-  // the timeout goes into the wrapper as well as into the wait here: the app's
-  // own stop ends the wait, and pcntl_alarm ends the php where the environment
-  // has it, so a runaway snippet does not go on for the command's 30 minutes
-  const run = wrapRun(code, imports, guard, timeout)
-  const filter = new RunResultFilter(run.marker, run.start)
-  let command
-
-  try {
-    // the command is built before anything is sent: a run too large for the API
-    // fails here, instead of spending a command to be told it was too large
-    command = cloudCommand(run.code)
-  } catch (error) {
-    return Promise.reject(error)
-  }
-
-  return new Promise((resolve, reject) => {
-    // every fetch and every wait listens to this, and settling aborts it: a run
-    // that timed out or was stopped must not go on polling in the background
-    const stop = new AbortController()
-    let settled = false
-    let commandId = null
-    let timer = null
-
-    const settle = (error, result) => {
-      if (settled) {
-        return
-      }
-
-      settled = true
-
-      if (timer) {
-        clearTimeout(timer)
-        timer = null
-      }
-
-      if (callerSignal) {
-        callerSignal.removeEventListener('abort', aborted)
-      }
-
-      stop.abort()
-
-      if (error) {
-        reject(error)
-      } else {
-        resolve(result)
-      }
-    }
-
-    const aborted = () => settle(new CloudError(
-      'The run was stopped.' +
-      (commandId ? ` Laravel Cloud keeps running command ${commandId} until it ends.` : ''),
-      'aborted',
-      {commandId},
-    ))
-
-    if (callerSignal) {
-      if (callerSignal.aborted) {
-        aborted()
-
-        return
-      }
-
-      callerSignal.addEventListener('abort', aborted, {once: true})
-    }
-
-    if (timeout > 0) {
-      timer = setTimeout(() => settle(new CloudError(
-        `The run did not answer within ${timeout}ms.` +
-        (commandId
-          ? ` Laravel Cloud keeps running command ${commandId} until it ends.`
-          : ' Laravel Cloud keeps running whatever it started until it ends.'),
-        'timeout',
-        {commandId},
-      )), timeout)
-    }
-
-    const request = (method, path, body) => cloudRequest(token, method, path, {
-      body,
-      signal: stop.signal,
-      fetch: options.fetch,
-    })
-
-    /**
-     * @param {Number} ms
-     * @return {Promise<void>} resolves when the interval is over, rejects when
-     * the run settles first
-     */
-    const wait = ms => new Promise((resolve, reject) => {
-      if (stop.signal.aborted) {
-        reject(new CloudError('The run was stopped.', 'aborted'))
-
-        return
-      }
-
-      const cancel = () => {
-        clearTimeout(intervalTimer)
-        reject(new CloudError('The run was stopped.', 'aborted'))
-      }
-
-      const intervalTimer = setTimeout(() => {
-        stop.signal.removeEventListener('abort', cancel)
-        resolve()
-      }, ms)
-
-      stop.signal.addEventListener('abort', cancel, {once: true})
-    })
-
-    /**
-     * The output a finished command left, and whether it is only part of it.
-     *
-     * Laravel Cloud keeps the tail of a large output in the command's own
-     * answer and the whole of it behind `output_url`, so a run's answer is the
-     * whole of what it printed when that can be downloaded, and the tail with a
-     * note that the beginning is gone when it cannot.
-     *
-     * @param {Object} attrs
-     * @return {Promise<{text: String, lost: Boolean}>} `lost` says `text` is the
-     * tail alone
-     */
-    const answerOutput = async attrs => {
-      const text = typeof attrs.output === 'string' ? attrs.output : ''
-
-      if (attrs.output_truncated !== true) {
-        return {text, lost: false}
-      }
-
-      const url = typeof attrs.output_url === 'string' ? attrs.output_url.trim() : ''
-
-      if (url) {
-        const full = await cloudOutputText(url, {signal: stop.signal, fetch: options.fetch})
-
-        if (full !== null) {
-          return {text: full, lost: false}
-        }
-      }
-
-      return {text, lost: true}
-    }
-
-    const work = async () => {
-      let created
-
-      try {
-        // the command is non-interactive and runs in the application's root, so
-        // `php artisan tinker` is found without a working directory to set
-        created = await request(
-          'POST',
-          `/environments/${encodeURIComponent(environmentId)}/commands`,
-          {command},
-        )
-      } catch (error) {
-        // a POST that failed without the API answering it may still have created
-        // the command: a gateway that gave up after the request arrived, a
-        // connection that dropped on the way back. Running the snippet again
-        // would then run it twice on the same data, so the message says to look
-        // before it is run again. A 401, 403, 422 or 429 was answered by the API
-        // itself and created nothing
-        if (error instanceof CloudError && error.code === 'network') {
-          error.message += ' Laravel Cloud may have started it: check the environment\'s commands before running it again.'
-        }
-
-        throw error
-      }
-
-      const id = created && created.data && created.data.id !== undefined ? String(created.data.id) : ''
-
-      if (!id) {
-        throw new CloudError('Laravel Cloud did not answer with a command to follow.', 'failed')
-      }
-
-      commandId = id
-
-      // the run is followed until it says how it ended. `pending`,
-      // `command.created` and `command.running` are all "not yet", and nothing
-      // else is ever the answer
-      let failures = 0
-      let backoff = interval
-      let unprinted = 0
-
-      for (;;) {
-        if (settled) {
-          // a timeout or a stop already answered this run: the poll ends here
-          // rather than outliving the promise it was answering
-          throw new CloudError('The run was stopped.', 'aborted')
-        }
-
-        let answer
-
-        try {
-          answer = await request('GET', `/commands/${encodeURIComponent(id)}`)
-        } catch (error) {
-          // a poll the network dropped, or that the API rate limited, says
-          // nothing about the command: it was created, it is running, and it
-          // answers when it ends. So the poll is repeated rather than the run
-          // failed — a rate limit that says "try again in a moment" is exactly
-          // that, and failing here would invite the same snippet to be run a
-          // second time on top of the one already going
-          if (!(error instanceof CloudError) || (error.code !== 'network' && error.code !== 'rate_limited')) {
-            throw error
-          }
-
-          failures += 1
-
-          // nothing that keeps failing is worth waiting for forever: ten in a
-          // row is past a hiccup and past a rate limit's window. The last
-          // failure is kept as the cause rather than quoted: "try again in a
-          // moment" is what a rate limit says, and it is not what this says —
-          // the command is gone from this app's hands, not from Laravel Cloud
-          if (failures >= 10) {
-            throw new CloudError(
-              `Laravel Cloud could not be reached ${failures} times in a row while following the command.`,
-              'failed',
-              {cause: error},
-            )
-          }
-
-          // the wait doubles per consecutive failure and is capped, so a rate
-          // limit is backed off from rather than hammered and a network that is
-          // down is asked about every few seconds rather than every interval
-          await wait(backoff)
-          backoff = Math.min(backoff * 2, 5000)
-
-          continue
-        }
-
-        // the API answered: whatever went wrong before is over, and a later
-        // failure backs off from the interval again
-        failures = 0
-        backoff = interval
-
-        const attrs = attributesOf(answer && answer.data)
-        const status = String(attrs.status || '')
-
-        if (status === 'command.success' || status === 'command.failure') {
-          // a finished command's output is not always written by the time its
-          // status is: the status is stored first and the output follows. It
-          // arrives a moment later, so the command is asked again. Three asks is
-          // the whole of the wait: past that the
-          // command ended without output, which is an answer of its own
-          if (attrs.output === null && attrs.output_truncated !== true && unprinted < 3) {
-            unprinted += 1
-
-            await wait(interval)
-
-            continue
-          }
-
-          return attrs
-        }
-
-        await wait(interval)
-      }
-    }
-
-    work().then(async attrs => {
-      const {text, lost} = await answerOutput(attrs)
-      // the whole output goes in at once: the API has no chunks, and the filter
-      // reads a complete string exactly as it reads a session's stream
-      const {result} = filter.push(text ? `${text}\n` : '')
-      const printed = runOutputOf(filter)
-
-      if (!result) {
-        const reason = attrs.failure_reason ||
-          lastLines(text) ||
-          (lost && !text
-            ? `Laravel Cloud reported ${attrs.status || 'no status'} and the run's output was too large for Laravel Cloud to return.`
-            : `Laravel Cloud reported ${attrs.status || 'no status'} and printed nothing.`)
-        const exitCode = attrs.exit_code === undefined ? null : attrs.exit_code
-        const said = exitCode === null || exitCode === undefined
-          ? reason
-          : `${reason}\n\nThe command exited with code ${exitCode}.`
-
-        throw new CloudError(said, 'failed', {commandId, exitCode, output: printed})
-      }
-
-      // the start marker is the first thing the run printed, so a tail of the
-      // output holds the value and none of the text printed before it. The
-      // value is the answer, and the text is said to be missing rather than left
-      // to look like a run that printed nothing
-      const output = lost
-        ? (printed ? `${CLOUD_TRUNCATED_NOTE}\n${printed}` : CLOUD_TRUNCATED_NOTE)
-        : printed
-
-      settle(null, Object.assign({}, result, {output, commandId}))
-    }).catch(error => {
-      // once the command exists, every error that ends the run names it: the run
-      // was given up on here and the command is still going in Laravel Cloud, and
-      // an error that says only what failed invites the same snippet to be run
-      // again on top of the one already there.
-      //
-      // An error that already carries the id was made from the command's own
-      // final answer (see the output handling above): that answer says the
-      // command has ended, so it says nothing about it still running
-      if (commandId && error instanceof CloudError && error.commandId === undefined) {
-        error.commandId = commandId
-        error.message = `${error.message} Laravel Cloud keeps running command ${commandId} until it ends.`
-      }
-
-      settle(error)
-    })
+  return runRemoteCommand(code, cloudProvider(token, environmentId, options), {
+    guard: options.guard,
+    timeout: options.timeout,
+    interval: options.interval,
+    imports: options.imports,
+    signal: options.signal,
   })
 }
 
