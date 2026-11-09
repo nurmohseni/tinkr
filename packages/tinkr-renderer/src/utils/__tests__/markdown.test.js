@@ -240,3 +240,42 @@ describe('a run as markdown', () => {
     expect(runMarkdown({labels})).toBe('')
   })
 })
+
+describe('what a run dumped, how it ended, what it spent', () => {
+  const facts = {
+    dumped: 'Dumped',
+    ended: {label: 'Ended', text: 'The run ended with dd() on line 2'},
+    stats: {label: 'Stats', text: '12 ms · 1.5 MB'},
+  }
+
+  test('carries the value a dump was shown, under the line it was dumped from', () => {
+    const markdown = runMarkdown(run({
+      labels: Object.assign({}, labels, {dumped: facts.dumped}),
+      result: {
+        value: null,
+        error: null,
+        output: 'dumped:{"name":"z"}',
+        blocks: [{line: 2, value: null, error: null, dumps: [{line: 2, value: {name: 'z'}}]}],
+        ended: {by: 'dd', line: 2},
+        queries: [],
+      },
+      ended: facts.ended,
+      stats: facts.stats,
+    }))
+
+    expect(markdown).toContain('**Ended**\n\nThe run ended with dd() on line 2')
+    expect(markdown).toContain('**Stats**\n\n12 ms · 1.5 MB')
+    expect(markdown).toContain('**Dumped · Line 2**')
+    expect(markdown).toContain('"name": "z"')
+    // the print is still the print: the block carries both facts
+    expect(markdown).toContain('**Printed**')
+  })
+
+  test('says nothing about an ending, a measurement or a dump a run did not have', () => {
+    const markdown = runMarkdown(run())
+
+    expect(markdown).not.toContain('**Ended**')
+    expect(markdown).not.toContain('**Stats**')
+    expect(markdown).not.toContain('**Dumped')
+  })
+})

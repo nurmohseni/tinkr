@@ -284,11 +284,17 @@ const render = (result, guard = null) => {
       continue
     }
 
-    if (block.value === null || block.value === undefined) {
-      continue
+    if (block.value !== null && block.value !== undefined) {
+      lines.push(`Line ${block.line}: ${json(block.value)}`)
     }
 
-    lines.push(`Line ${block.line}: ${json(block.value)}`)
+    // what the statement dumped is the value the person asked to look at, and it
+    // is answered as data beside the statement's own
+    for (const dump of (Array.isArray(block.dumps) ? block.dumps : [])) {
+      if (dump && dump.value !== undefined) {
+        lines.push(`Line ${Number(dump.line) || block.line}: dumped ${json(dump.value)}`)
+      }
+    }
   }
 
   // a run that ended without a statement's answer — exit(), a fatal error, a
@@ -298,8 +304,26 @@ const render = (result, guard = null) => {
     lines.push(...errorSite(result.error))
   }
 
-  if (lines.length === 0) {
+  // a run that left through exit() or dd() is not a failure: it ended, and the
+  // line it ended on is the last thing it did. It is also not a run that
+  // answered nothing for no reason, so the default below is not said over it
+  const ended = isRecord(result.ended)
+
+  if (lines.length === 0 && !ended) {
     lines.push('no value returned')
+  }
+
+  if (ended) {
+    const call = result.ended.by === 'dd' ? 'dd()' : 'exit()'
+    const line = Number(result.ended.line)
+
+    lines.push(Number.isInteger(line) && line > 0
+      ? `ended with ${call} on line ${line}`
+      : `ended with ${call}`)
+  }
+
+  if (isRecord(result.stats)) {
+    lines.push(`spent ${Math.round(Number(result.stats.time) || 0)} ms in PHP, peaking at ${bytesOf(result.stats.memory)}`)
   }
 
   lines.push(...renderTransaction(result.transaction, guard))
@@ -479,13 +503,39 @@ const bound = result => {
 
       budget -= value.size
 
-      if (!value.cut && error === block.error) {
+      // a dump is a value of the answer too, and is cut the way a statement's
+      // is: one budget for the block, so a run of a hundred dumps cannot hand
+      // back more than the text it was cut from
+      let dumps = block.dumps
+      let cutDumps = false
+
+      if (Array.isArray(block.dumps)) {
+        dumps = block.dumps.map(dump => {
+          if (!isRecord(dump)) {
+            return dump
+          }
+
+          const one = cutValue(dump.value, budget)
+
+          budget -= one.size
+
+          if (!one.cut) {
+            return dump
+          }
+
+          cutDumps = true
+
+          return Object.assign({}, dump, {value: one.value})
+        })
+      }
+
+      if (!value.cut && error === block.error && !cutDumps) {
         return block
       }
 
       mark('blocks')
 
-      return Object.assign({}, block, {value: value.value, error})
+      return Object.assign({}, block, {value: value.value, error, dumps})
     })
   }
 
@@ -1082,10 +1132,40 @@ const runOutput = {
           line: {type: 'number'},
           value: {},
           error: errorOutput,
+          dumps: {
+            type: 'array',
+            description: 'What `dump()`/`dd()` were shown inside this statement, in the order ' +
+              'they were dumped: the snippet line of the call and the value itself, as data.',
+            items: {
+              type: 'object',
+              properties: {
+                line: {type: ['number', 'null']},
+                value: {},
+              },
+            },
+          },
         },
       },
     },
     error: errorOutput,
+    ended: {
+      type: ['object', 'null'],
+      description: 'How the run ended when it ended on purpose: `{by, line}` with `by` "dd" or ' +
+        '"exit". It is not an error — `error` stays null and the blocks the run answered stand.',
+      properties: {
+        by: {type: 'string'},
+        line: {type: ['number', 'null']},
+      },
+    },
+    stats: {
+      type: ['object', 'null'],
+      description: 'What the snippet itself spent, measured inside PHP: its own time in ' +
+        'milliseconds and the memory it peaked at, in bytes. Not the wall clock of the call.',
+      properties: {
+        time: {type: 'number'},
+        memory: {type: 'number'},
+      },
+    },
     output: {type: 'string', description: 'What the code printed.'},
     imported: {
       type: 'object',
@@ -1154,7 +1234,8 @@ const TOOLS = [
     title: 'Run PHP in a project',
     description: 'Run PHP in a project on this machine, or in a Laravel Cloud or Laravel Vapor ' +
       'environment, in that project\'s own Tinker session, ' +
-      'and answer with what every statement returned and what the code printed. The session ' +
+      'and answer with what every statement returned, what it dumped, and what the code printed. ' +
+      'A run that ends in exit() or dd() answers through `ended` and is not an error. The session ' +
       'is booted for the call, so the code on disk is the code that runs, and the code runs ' +
       'with the project booted: its classes, its configuration, its database. Every statement ' +
       'is evaluated in order and the run stops at the first one that throws. Pass ' +

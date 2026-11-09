@@ -739,3 +739,167 @@ describe('where an error was thrown', () => {
     expect(payload.error.previous.trace).toEqual([])
   })
 })
+
+/**
+ * The dumper the run would have in a project with symfony's var-dumper.
+ *
+ * The php this suite runs is bare — no framework, no composer — so `dump()` and
+ * `dd()` are not there and symfony's class is not either. This is the smallest
+ * thing that answers like it: a `setHandler` that remembers what it replaced, a
+ * `dump` that prints through whatever handler is set, and the two functions every
+ * project with the dumper has. The class is written in the php that runs before
+ * the wrapper rather than eval'd, because a class declared in an eval'd file
+ * would be a file the wrapper has to tell the snippet's own code from — and that
+ * distinction is the one thing this fixture must not blur.
+ *
+ * It opens a namespace block the run is written inside; `dumperEnd` closes it.
+ *
+ * @type {String}
+ */
+const dumper = `namespace Symfony\\Component\\VarDumper {
+class VarDumper {
+  public static $handler = null;
+  public static function setHandler($handler) { $previous = self::$handler; self::$handler = $handler; return $previous; }
+  public static function dump($value, $label = null) {
+    if (self::$handler !== null) { return (self::$handler)($value, $label); }
+    echo "dumped:", json_encode($value), "\\n";
+    return $value;
+  }
+} }
+namespace {
+function dump(...$values) {
+  foreach ($values as $value) { \\Symfony\\Component\\VarDumper\\VarDumper::dump($value); }
+  return count($values) === 1 ? $values[0] : $values;
+}
+function dd(...$values) {
+  foreach ($values as $value) { \\Symfony\\Component\\VarDumper\\VarDumper::dump($value); }
+  exit(1);
+}
+`
+
+const dumperEnd = '\n}'
+
+/**
+ * A run in the project whose dumper is above.
+ *
+ * @param {String} source
+ * @return {{payload: Object, printed: String, tail: String}}
+ */
+const runDumped = source => {
+  const run = wrapRun(source)
+  let out = ''
+
+  // a run that ends through exit() or dd() ends the process with a status, which
+  // is the run's answer and not a failure of the harness
+  try {
+    out = execFileSync('php', [], {encoding: 'utf8', input: `<?php ${dumper} ${run.code}${dumperEnd}`})
+  } catch (stop) {
+    out = stop.stdout || ''
+  }
+
+  const at = out.indexOf(`${run.marker}@`)
+
+  if (at < 0) {
+    throw new Error(`the run printed no envelope: ${JSON.stringify(out)}`)
+  }
+
+  const rest = out.slice(at + run.marker.length + 1)
+
+  return {
+    payload: JSON.parse(Buffer.from(rest.slice(0, rest.indexOf('@')), 'base64').toString('utf8')),
+    printed: out.slice(0, at).split(run.start).join(''),
+  }
+}
+
+describe('what a run dumped, and how it ended', () => {
+  test('keeps what dump() showed, in the statement that showed it', () => {
+    const {payload, printed} = runDumped('dump(1); 2')
+
+    expect(payload.blocks[0]).toMatchObject({line: 1, value: 1, dumps: [{line: 1, value: 1}]})
+    expect(payload.blocks[1]).toMatchObject({line: 1, value: 2, dumps: []})
+    expect(payload.value).toBe(2)
+    expect(payload.error).toBe(null)
+    expect(payload.ended).toBe(null)
+    // the dump still printed: the handler the run replaced is the one that shows
+    // it, which is what leaves a run's output exactly as it was
+    expect(printed).toBe('dumped:1\n')
+  })
+
+  test('answers a dd() as a value and an ending, not as an error', () => {
+    const {payload, printed} = runDumped("dd(['a' => 1])")
+
+    expect(payload.error).toBe(null)
+    expect(payload.ended).toEqual({by: 'dd', line: 1})
+    // the array the person asked to look at is the tree, not the text of one
+    expect(payload.blocks).toEqual([{line: 1, value: null, error: null, dumps: [{line: 1, value: {a: 1}}]}])
+    expect(payload.value).toBe(null)
+    expect(printed).toBe('dumped:{"a":1}\n')
+  })
+
+  test('answers an exit() as an ending, with nothing to report as thrown', () => {
+    const {payload, printed} = runDumped('exit(3)')
+
+    expect(payload.error).toBe(null)
+    expect(payload.ended).toEqual({by: 'exit', line: 1})
+    expect(payload.blocks).toEqual([{line: 1, value: null, error: null, dumps: []}])
+    expect(printed).toBe('')
+  })
+
+  test('does not call an exit() after a completed dump() a dd()', () => {
+    const {payload} = runDumped('dump(1);\nexit(2);')
+
+    expect(payload.ended).toEqual({by: 'exit', line: 2})
+    expect(payload.blocks[0].dumps).toEqual([{line: 1, value: 1}])
+  })
+
+  test('keeps the statement a dump() was in when a later statement threw', () => {
+    const {payload} = runDumped("dump('kept');\nthrow new RuntimeException('boom');")
+
+    expect(payload.blocks[0].dumps).toEqual([{line: 1, value: 'kept'}])
+    expect(payload.blocks[1].error).toMatchObject({class: 'RuntimeException', line: 2})
+    expect(payload.error).toMatchObject({class: 'RuntimeException', line: 2})
+  })
+
+  test('reads the snippet line of a dump() inside a closure', () => {
+    const {payload} = runDumped("$tinkrTest = function () {\n  dump('inner');\n\n  return 1;\n};\n$tinkrTest();")
+
+    expect(payload.blocks[1].dumps).toEqual([{line: 2, value: 'inner'}])
+  })
+
+  test('keeps a dump() of a closure the same statement called', () => {
+    const {payload} = runDumped("$map = array_map(function ($n) {\n  dump($n);\n\n  return $n;\n}, [7]);\n$map;")
+
+    expect(payload.blocks[0].dumps).toEqual([{line: 2, value: 7}])
+  })
+
+  test('keeps what a dump() was shown when the same statement died', () => {
+    const {payload} = runDumped("dump('kept') + trigger_error('boom', E_USER_ERROR);")
+
+    // the statement is kept with the value it showed, and the fatal is the
+    // run's error rather than an ending
+    expect(payload.blocks[0]).toMatchObject({line: 1, value: null, error: null, dumps: [{line: 1, value: 'kept'}]})
+    expect(payload.error).toMatchObject({class: 'FatalError', message: 'boom', line: 1})
+    expect(payload.ended).toBe(null)
+    expect(payload.stats.memory).toBeGreaterThan(0)
+  })
+
+  test('does nothing when the project has no dumper', () => {
+    // a project with its own dump(): no symfony class to hook, so nothing is
+    // recorded — and the print is still the project's own
+    const {payload, printed} = runPhp('dump(1); 2', '', 'function dump($value) { echo "own:", $value, "\\n"; }\n')
+
+    // the project's dump() returns nothing, so the statement answered nothing —
+    // and nothing about it was recorded, because there is no handler to replace
+    expect(payload.blocks[0]).toMatchObject({line: 1, value: null, dumps: []})
+    expect(printed).toBe('own:1\n')
+  })
+
+  test('measures the snippet itself: its own time and the memory it peaked at', () => {
+    const {payload} = runPhp('usleep(3000); 1')
+
+    expect(payload.stats.time).toBeGreaterThan(0)
+    expect(Number.isInteger(payload.stats.time)).toBe(true)
+    expect(payload.stats.memory).toBeGreaterThan(0)
+    expect(Number.isInteger(payload.stats.memory)).toBe(true)
+  })
+})

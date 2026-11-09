@@ -456,7 +456,18 @@
     "html_frame": "The rendered document",
     "more_rows": "+{count} more rows",
     "more_nodes": "+{count} more nodes",
-    "save_failed": "The file could not be saved: {message}"
+    "save_failed": "The file could not be saved: {message}",
+    "markdown_dumped": "Dumped",
+    "markdown_ended": "Ended",
+    "markdown_stats": "Stats",
+    "ended": "ended",
+    "ended_func": "The run ended with {call}",
+    "ended_func_line": "The run ended with {call} on line {line}",
+    "dump": "dump()",
+    "stats": "{time} ms · {memory}",
+    "stats_title": "PHP spent {time} ms of the {seconds} seconds the run took, and it peaked at {memory}",
+    "memory_kb": "{size} KB",
+    "memory_mb": "{size} MB"
   },
   "queries": {
     "sent": "{count, plural, one {# query} other {# queries}} in {ms} ms",

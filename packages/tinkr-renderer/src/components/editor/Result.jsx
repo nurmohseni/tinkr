@@ -12,6 +12,7 @@ import ResultTable from './ResultTable'
 import ResultValue from './ResultValue'
 import {copy, copyText} from '../../utils/clipboard'
 import {guardReport, sandboxReport} from '../../utils/guardReport'
+import {endingSentence, memoryLabel, statsLine} from '../../utils/runFacts'
 import {
   entriesOf,
   isComposite,
@@ -209,7 +210,9 @@ ReadingActions.propTypes = {
  *
  * The time is what the person waited through, boot of the session included, and
  * it is measured by the main process — the side that knows when the code was
- * sent and when the answer came back — rather than guessed at here.
+ * sent and when the answer came back — rather than guessed at here. It is what
+ * the head falls back to when the run answered no measurement of its own (see
+ * Stats), and it is the wait the tooltip of that figure names.
  */
 const Duration = ({duration}) => {
   const intl = useIntl()
@@ -234,6 +237,142 @@ const Duration = ({duration}) => {
 
 Duration.propTypes = {
   duration: PropTypes.number,
+}
+
+/**
+ * What the run spent, in the language of the machine rather than of the wait:
+ * the php time of its statements and the memory they peaked at, measured inside
+ * php (see runResult's STATS_ARM) and not guessed at from here.
+ *
+ * The wall clock is still the number the person waited through — the boot of the
+ * session included — so it is what the title says, and a run whose envelope has
+ * no measurement (an older session, a run that never got there) still shows it
+ * in place of this.
+ */
+const Stats = ({stats, duration = null}) => {
+  const intl = useIntl()
+  const line = statsLine(intl, stats)
+  const memory = stats ? memoryLabel(intl, stats.memory) : null
+
+  if (line === null) {
+    return <Duration duration={duration}/>
+  }
+
+  // the wall clock is the wait, so it is what the tooltip adds: the number in
+  // the head is what the snippet itself spent
+  const waited = typeof duration === 'number' && Number.isFinite(duration) && duration >= 0
+    ? (duration / 1000).toFixed(duration < 10000 ? 1 : 0)
+    : null
+
+  return (
+    <span
+      className='result-summary__duration mono'
+      title={waited === null
+        ? undefined
+        : intl.formatMessage({id: 'result.stats_title'}, {time: Math.round(Number(stats.time)), memory, seconds: waited})}
+    >
+      {line}
+    </span>
+  )
+}
+
+Stats.propTypes = {
+  duration: PropTypes.number,
+  stats: PropTypes.shape({
+    time: PropTypes.number,
+    memory: PropTypes.number,
+  }),
+}
+
+/**
+ * What a run did when it left on purpose: `dd()`, `exit()` or `die()` stopped it
+ * on a line of the snippet, and nothing about that is a failure.
+ *
+ * It is said in the run's own voice — a badge and a sentence, no error surface
+ * and no struck-through bars — because the run answered what it was asked and
+ * then stopped, which is what the line that stopped it was for.
+ */
+const Ended = ({ended}) => {
+  const intl = useIntl()
+
+  return (
+    <div className='result-summary result-summary--wrap'>
+      <span className='badge'>
+        {intl.formatMessage({id: 'result.ended'})}
+      </span>
+      <span>{endingSentence(intl, ended)}</span>
+    </div>
+  )
+}
+
+Ended.propTypes = {
+  ended: PropTypes.shape({
+    by: PropTypes.string,
+    line: PropTypes.number,
+  }).isRequired,
+}
+
+/**
+ * What one `dump()`/`dd()` was shown, as the same tree a returned value is read
+ * in: the line it was dumped from, and the value itself.
+ *
+ * A dump is not the run's answer, so it is not drawn as one: the value is under a
+ * head of its own, inside the statement it was written in, and the run's own head
+ * is still the one that says what the run returned.
+ */
+const Dumped = ({dump}) => {
+  const intl = useIntl()
+  const line = Number(dump && dump.line)
+
+  return (
+    <div className='block__dump'>
+      <div className='result-summary result-summary--wrap'>
+        <span className='badge'>{intl.formatMessage({id: 'result.dump'})}</span>
+        {Number.isInteger(line) && line > 0 && (
+          <span className='muted'>{intl.formatMessage({id: 'result.line'}, {line})}</span>
+        )}
+        <span className='grow'/>
+        <span className='result-summary__actions'>
+          <button
+            className='btn btn--ghost btn--sm'
+            type='button'
+            title={intl.formatMessage({id: 'result.copy_value'})}
+            onClick={() => copy(dump ? dump.value : null)}
+          >
+            {intl.formatMessage({id: 'result.copy_short'})}
+          </button>
+        </span>
+      </div>
+
+      <Reading value={dump ? dump.value : null} view='organized'/>
+    </div>
+  )
+}
+
+Dumped.propTypes = {
+  dump: PropTypes.shape({
+    line: PropTypes.number,
+    value: PropTypes.any,
+  }).isRequired,
+}
+
+/** Every dump of a run, in the order they were dumped. */
+const Dumps = ({dumps}) => {
+  const shown = Array.isArray(dumps) ? dumps.filter(Boolean) : []
+
+  if (shown.length === 0) {
+    return null
+  }
+
+  return (
+    <div className='dumps'>
+      {shown.map((dump, index) => <Dumped key={index} dump={dump}/>)}
+    </div>
+  )
+}
+
+Dumps.propTypes = {
+  dumps: PropTypes.arrayOf(PropTypes.object),
 }
 
 /**
@@ -331,7 +470,7 @@ Trace.propTypes = {
 }
 
 /** The run's exception: the class over its message, as the design's surface. */
-const Failure = ({error, duration = null, markdown = null}) => {
+const Failure = ({error, duration = null, stats = null, markdown = null}) => {
   const intl = useIntl()
   const where = threwAt(intl, error)
 
@@ -341,7 +480,7 @@ const Failure = ({error, duration = null, markdown = null}) => {
       <Outcome kind='threw' label animate key={failureKey(error)}/>
       <span className='muted'>{intl.formatMessage({id: 'result.no_value'})}</span>
       <span className='grow'/>
-      <Duration duration={duration}/>
+      <Stats stats={stats} duration={duration}/>
       <span className='result-summary__actions'>
         <button
           className='btn btn--ghost btn--sm'
@@ -369,6 +508,7 @@ const Failure = ({error, duration = null, markdown = null}) => {
 
 Failure.propTypes = {
   duration: PropTypes.number,
+  stats: PropTypes.object,
   markdown: PropTypes.object,
   error: PropTypes.shape({
     class: PropTypes.string,
@@ -459,6 +599,11 @@ const Block = ({block, view, id, ordinal}) => {
           : block.value !== null && <ReadingActions value={block.value} view={reading}/>}
       </div>
 
+      {/* what the statement dumped, under its own head: the value is the
+          statement's, and it is read the same whether the statement went on to
+          answer, to throw or to end the run */}
+      <Dumps dumps={block.dumps}/>
+
       {failed && (
         <>
           <div className='error-surface' role='alert'>
@@ -485,6 +630,10 @@ Block.propTypes = {
   block: PropTypes.shape({
     line: PropTypes.number,
     value: PropTypes.any,
+    dumps: PropTypes.arrayOf(PropTypes.shape({
+      line: PropTypes.number,
+      value: PropTypes.any,
+    })),
     error: PropTypes.shape({
       class: PropTypes.string,
       message: PropTypes.string,
@@ -736,7 +885,7 @@ ViewSwitch.propTypes = {
  * a block of its own above this one, so the raw reading here is the json the
  * tree is drawn from, and the print is never said twice.
  */
-const Returned = ({value, view, onView, duration = null, markdown = null}) => {
+const Returned = ({value, view, onView, duration = null, stats = null, markdown = null}) => {
   const intl = useIntl()
   const views = readingsOf([value])
   const reading = readingOf(view, value)
@@ -748,7 +897,7 @@ const Returned = ({value, view, onView, duration = null, markdown = null}) => {
         <span>{describe(intl, value)}</span>
         <ViewSwitch views={views} view={reading} onChange={onView}/>
         <span className='grow'/>
-        <Duration duration={duration}/>
+        <Stats stats={stats} duration={duration}/>
         <ReadingActions value={value} view={reading}>
           {markdown && <MarkdownAction {...markdown}/>}
         </ReadingActions>
@@ -762,6 +911,7 @@ const Returned = ({value, view, onView, duration = null, markdown = null}) => {
 Returned.propTypes = {
   value: PropTypes.any,
   duration: PropTypes.number,
+  stats: PropTypes.object,
   markdown: PropTypes.object,
   view: PropTypes.oneOf(READINGS).isRequired,
   onView: PropTypes.func.isRequired,
@@ -908,7 +1058,11 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
   // the top rather than with statements nobody asked this run to hide
   const [failedOnlyOn, setFailedOnlyOn] = useState(null)
   const onlyFailed = failedOnlyOn === result
-  const {value, error, output, imported, blocks, transaction, sandbox, duration} = result
+  const {value, error, output, imported, blocks, transaction, sandbox, duration, stats, ended} = result
+  // every dump the run was shown, whichever statement it was in: a run of one
+  // statement reads them under the run's head, a run of several inside the
+  // statement each belongs to
+  const dumps = (Array.isArray(blocks) ? blocks : []).flatMap(block => (block && Array.isArray(block.dumps) ? block.dumps : []))
 
   // what a Markdown export needs beyond the envelope: the snippet the run was
   // sent with, and the connection it ran on
@@ -944,7 +1098,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
             <span>{intl.formatMessage({id: 'result.statements'}, {count: blocks.length})}</span>
             <ViewSwitch views={views} view={onReading(views, view)} onChange={onView}/>
             <span className='grow'/>
-            <Duration duration={duration}/>
+            <Stats stats={stats} duration={duration}/>
             <span className='result-summary__actions'>
               {threw.length > 0 && (
                 <span className='badge badge--error'>
@@ -973,6 +1127,10 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
           )}
         </div>
 
+        {/* a run that left on purpose says so before anything it did, because
+            it is why the run stopped */}
+        {ended && <Ended ended={ended}/>}
+
         <Guard transaction={transaction} sandbox={sandbox} run={result} onKeep={onKeep}/>
 
         {/* what the guard took back, row by row, under its own report */}
@@ -993,7 +1151,7 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
 
           {/* a run that ended outside every statement — exit, a fatal error,
               a session that died — has its failure on the run, not on a block */}
-          {error && !blocks.some(block => block.error) && <Failure error={error} markdown={markdown}/>}
+          {error && !blocks.some(block => block.error) && <Failure error={error} stats={stats} markdown={markdown}/>}
         </div>
       </>
     )
@@ -1001,17 +1159,26 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
 
   return (
     <>
+      {/* the run ended on purpose: everything it answered before that stands
+          under this line, and nothing about it is a failure */}
+      {ended && <Ended ended={ended}/>}
+
       <Guard transaction={transaction} sandbox={sandbox} run={result} onKeep={onKeep}/>
 
       <ResultChanges transaction={transaction}/>
 
       <Imported imported={imported}/>
 
+      {/* what `dump()` was shown, as the values it was shown, above what the run
+          printed and returned: a run of one statement has no statement head of
+          its own to put them under */}
+      <Dumps dumps={dumps}/>
+
       {/* what a run that failed printed first is kept: `exit()` and `dd()` end
           the run after they have printed what they were for */}
       {error && output && <Printed output={output} markdown={markdown}/>}
 
-      {error && <Failure error={error} duration={duration} markdown={markdown}/>}
+      {error && <Failure error={error} duration={duration} stats={stats} markdown={markdown}/>}
 
       {/* a run that printed and returned nothing is read as it printed */}
       {!error && value === null && output && <Printed output={output} markdown={markdown}/>}
@@ -1029,11 +1196,13 @@ const Result = ({result, view = 'organized', onView = () => {}, onKeep = () => {
           view={view}
           onView={onView}
           duration={duration}
+          stats={stats}
           markdown={markdown}
         />
       )}
 
-      {!error && value === null && !output && <NothingReturned/>}
+      {/* a run that ended in dd() or exit() already says why it has no value */}
+      {!error && value === null && !output && !ended && dumps.length === 0 && <NothingReturned/>}
     </>
   )
 }
@@ -1059,6 +1228,14 @@ Result.propTypes = {
     imported: PropTypes.object,
     transaction: PropTypes.object,
     ranAt: PropTypes.string,
+    stats: PropTypes.shape({
+      time: PropTypes.number,
+      memory: PropTypes.number,
+    }),
+    ended: PropTypes.shape({
+      by: PropTypes.string,
+      line: PropTypes.number,
+    }),
   }).isRequired,
 }
 

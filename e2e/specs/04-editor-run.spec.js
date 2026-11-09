@@ -4,7 +4,7 @@ const {launchTinkr} = require('../support/tinkr')
 const {chooseOutputView, outputText, runCode, setEditorCode} = require('../support/actions')
 
 test.describe('running a snippet', () => {
-  test('returns a value, shows the duration and brings the output view forward', async () => {
+  test('returns a value, shows what it spent and brings the output view forward', async () => {
     const {page, close, errors} = await launchTinkr()
 
     try {
@@ -18,7 +18,12 @@ test.describe('running a snippet', () => {
       await expect(page.locator('.output')).toContainText('returned')
       await expect(page.locator('.output')).toContainText('a number')
       await expect(page.locator('.t-number').first()).toHaveText('2')
-      await expect(page.locator('.result-summary__duration')).toHaveText(/<0\.1s|\d+(\.\d+)?s/)
+      // the head is what php spent: its own time and the memory it peaked at.
+      // The wall clock — the session's boot included — is what the tooltip adds
+      const spent = page.locator('.result-summary__duration')
+
+      await expect(spent).toHaveText(/\d+ ms · \d+(\.\d+)? (KB|MB)/)
+      await expect(spent).toHaveAttribute('title', /PHP spent \d+ ms of the /)
 
       expect(errors).toEqual([])
     } finally {

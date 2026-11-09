@@ -261,6 +261,135 @@ const VALIDATE_BLOCK = "try{token_get_all('<?php '.$tinkr_code,TOKEN_PARSE);}" +
   '}}'
 
 /**
+ * The php that keeps what `dump()` and `dd()` were shown, as values.
+ *
+ * A dump is the value the person asked to look at, and until this it reached the
+ * pane only as the text the dumper printed: `dd($model)` lost the tree exactly
+ * when the tree was the point of the line. Symfony's dumper dispatches every
+ * `dump()` and `dd()` through one handler, so the handler is replaced for the
+ * length of the run and put back where it was afterwards: what is recorded is
+ * the value itself, in the statement it was dumped from, and what is printed is
+ * still the handler that was there before — psysh's own, or symfony's default —
+ * so the run's output is byte for byte what it was without this.
+ *
+ * The line is read the way an exception's line is (see ERROR_BLOCK): the
+ * innermost frame of the snippet's own eval is the call, and it is walked back
+ * to the snippet's line. A dump inside a closure is that closure's line, which
+ * is what a person reading the tree under it is looking for — and a closure can
+ * outlive the statement that wrote it, while every statement is eval'd on its
+ * own and reports its lines from its own first one. So the span of each
+ * statement's eval is kept: the raw line is read against the statement that is
+ * running first, and then against the other statements the run got through, at
+ * the one where the snippet's own text has the call. A dump whose line cannot be
+ * placed is still kept, with no line, rather than dropped.
+ *
+ * The value stays raw until the snippet has ended, like a statement's, and is
+ * described with the same encoder then: a serializer is not asked between two of
+ * the snippet's own statements. The list is bounded — a hundred dumps, and each
+ * of them no deeper than any other value — so a run inside a loop cannot send a
+ * megabyte back through the terminal.
+ *
+ * A project without symfony's dumper has no handler to replace, and then nothing
+ * is recorded: `dump()` is not one of the wrapper's, and a run whose framework
+ * prints its own way is not the run this can speak for.
+ *
+ * @type {String}
+ */
+const DUMP_BLOCK = '$tinkr_dumps=[];$tinkr_dump_total=0;$tinkr_dump_seen=0;$tinkr_dump_previous=null;$tinkr_dump_handler=null;' +
+  // where each statement's eval begins and ends, so a frame of one of them can
+  // be read back to the snippet's line it was written on, and the snippet's own
+  // lines, which are what says which statement that was
+  '$tinkr_span=[];$tinkr_lines=explode("\n",$tinkr_code);' +
+  "if(class_exists('Symfony\\\\Component\\\\VarDumper\\\\VarDumper')){" +
+  '$tinkr_dump_handler=function($tinkr_dumped,$tinkr_label=null)use(&$tinkr_dumps,&$tinkr_dump_total,' +
+  '&$tinkr_dump_previous,&$tinkr_dump_handler,&$tinkr_in_snippet,&$tinkr_in_statement,&$tinkr_span,' +
+  '&$tinkr_lines){' +
+  '$tinkr_dump_total++;' +
+  '$tinkr_dump_at=null;' +
+  // the call site, out of the frames of the snippet's own eval: the innermost
+  // one, which is the code that called dump()
+  'foreach(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS,40) as $tinkr_dump_step){' +
+  'if(!isset($tinkr_dump_step["file"])||!$tinkr_in_snippet($tinkr_dump_step["file"])){continue;}' +
+  '$tinkr_dump_raw=(int)$tinkr_dump_step["line"];' +
+  // the statement that is running, when its own code covers the line: a dump
+  // written where the snippet is, and one inside a closure the same statement
+  // wrote, are both on a line of it
+  'if(isset($tinkr_span[$tinkr_in_statement])&&$tinkr_dump_raw>=$tinkr_span[$tinkr_in_statement][0]' +
+  '&&$tinkr_dump_raw<=$tinkr_span[$tinkr_in_statement][1]){' +
+  '$tinkr_dump_at=(int)max(1,$tinkr_span[$tinkr_in_statement][2]+$tinkr_dump_raw-$tinkr_span[$tinkr_in_statement][3]-1);}' +
+  // a closure can be called from another statement than the one that wrote it,
+  // and both evals can have a line with that number. The snippet says which: the
+  // call is on the line `dump(` was written on, and a line that has none is not
+  // the one. The statements that ran are read in order, which is the order a
+  // closure could have been written in
+  'if($tinkr_dump_at===null||!isset($tinkr_lines[$tinkr_dump_at-1])' +
+  '||!preg_match("/(dump|dd)\\\\s*\\\\(/",$tinkr_lines[$tinkr_dump_at-1])){' +
+  'foreach($tinkr_span as $tinkr_dump_one){' +
+  'if($tinkr_dump_raw<$tinkr_dump_one[0]||$tinkr_dump_raw>$tinkr_dump_one[1]){continue;}' +
+  '$tinkr_dump_line=(int)max(1,$tinkr_dump_one[2]+$tinkr_dump_raw-$tinkr_dump_one[3]-1);' +
+  'if(isset($tinkr_lines[$tinkr_dump_line-1])&&preg_match("/(dump|dd)\\\\s*\\\\(/",$tinkr_lines[$tinkr_dump_line-1])){' +
+  '$tinkr_dump_at=$tinkr_dump_line;break;}}}' +
+  'break;}' +
+  'if(count($tinkr_dumps)<100){$tinkr_dumps[]=["line"=>$tinkr_dump_at,"value"=>$tinkr_dumped];}' +
+  // the dump prints the way it printed before the run: the handler that was
+  // there is put back for the call and this one returns after it. A dumper that
+  // throws is a broken dumper, not a failed run
+  '\\Symfony\\Component\\VarDumper\\VarDumper::setHandler($tinkr_dump_previous);' +
+  'try{\\Symfony\\Component\\VarDumper\\VarDumper::dump($tinkr_dumped,$tinkr_label);}catch(\\Throwable $tinkr_dump_broken){}' +
+  '\\Symfony\\Component\\VarDumper\\VarDumper::setHandler($tinkr_dump_handler);};' +
+  // `setHandler` answers the handler it replaced, which is what the run puts
+  // back when it is over
+  '$tinkr_dump_previous=\\Symfony\\Component\\VarDumper\\VarDumper::setHandler($tinkr_dump_handler);' +
+  '}'
+
+/**
+ * The php that puts the dumper back, once the snippet has ended.
+ *
+ * A run that ends through `exit()` restores nothing: the session it ran in is
+ * being ended with it. A run that answers normally gives the session back the
+ * handler it had, so a later run — and psysh's own `dump()` — is unchanged by
+ * this one.
+ *
+ * @type {String}
+ */
+const DUMP_RESTORE = 'if($tinkr_dump_handler!==null){' +
+  '\\Symfony\\Component\\VarDumper\\VarDumper::setHandler($tinkr_dump_previous);}'
+
+/**
+ * The php that measures the snippet: its own time, and the memory it peaked at.
+ *
+ * `duration` is the wall clock the pane shows, and it is the boot of the session
+ * as well: it is the wait the person sat through. This is the other half of that
+ * figure, measured where the snippet is — the time the statements themselves
+ * took, and the memory they held at their highest.
+ *
+ * The peak is reset before the first statement when php can (8.2 and after), so
+ * the figure is the snippet's own and not the framework's boot under it. An older
+ * php has no reset, and there the peak is the high-water mark the whole session
+ * had: it is subtracted from the mark the run started at, which is the growth the
+ * run caused rather than what the framework already held.
+ *
+ * @type {String}
+ */
+const STATS_ARM = '$tinkr_stats_start=microtime(true);$tinkr_stats_base=memory_get_usage();' +
+  "if(function_exists('memory_reset_peak_usage')){memory_reset_peak_usage();}"
+
+/**
+ * The php that writes the measurement into the envelope's `stats`.
+ *
+ * It is the same code on both paths: a run that ends through `exit()`, `dd()` or
+ * a fatal never reaches the normal close, and its time and memory are still what
+ * it spent up to the line it stopped on.
+ *
+ * @type {String}
+ */
+const STATS_FINISH = '$tinkr_stats_memory=0;' +
+  "if(function_exists('memory_get_peak_usage')){" +
+  "if(function_exists('memory_reset_peak_usage')){$tinkr_stats_memory=memory_get_peak_usage();}" +
+  'else{$tinkr_stats_memory=max(0,memory_get_peak_usage()-$tinkr_stats_base);}}' +
+  "$tinkr_stats=['time'=>(int)round((microtime(true)-$tinkr_stats_start)*1000),'memory'=>(int)$tinkr_stats_memory];"
+
+/**
  * The loop that evaluates what the splitter found, one statement at a time.
  *
  * Every statement is evaluated in turn and its value kept beside its line, and
@@ -316,14 +445,21 @@ const VALIDATE_BLOCK = "try{token_get_all('<?php '.$tinkr_code,TOKEN_PARSE);}" +
  * keep being.
  */
 const EVAL_BLOCKS = [
-  '$tinkr_results=[];$tinkr_value=null;$tinkr_uses=\'\';$tinkr_hoisted=[];$tinkr_last=null;',
+  '$tinkr_results=[];$tinkr_value=null;$tinkr_uses=\'\';$tinkr_hoisted=[];$tinkr_last=null;$tinkr_in_statement=null;',
+  // the snippet's own time and memory are measured from here to the end of the
+  // loop, and nothing of the wrapper's boot is inside them (see STATS_ARM)
+  STATS_ARM,
   // the declarations first: what php compiles before it runs the first line,
   // compiled with the imports that precede each of them and nothing else
   'foreach($tinkr_stmts as $tinkr_i=>$tinkr_one){',
   "$tinkr_source=rtrim($tinkr_one['code']);",
   "if($tinkr_one['head']===T_USE){if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}$tinkr_uses.=$tinkr_source;continue;}",
   "if($tinkr_one['head']!==T_FUNCTION){continue;}",
-  'try{eval($tinkr_uses.$tinkr_source);$tinkr_hoisted[$tinkr_i]=true;}' +
+  // the declaration's own eval, recorded where a dump inside it is read back
+  // from (see DUMP_BLOCK)
+  '$tinkr_span[$tinkr_i]=[substr_count($tinkr_uses,"\n")+1,substr_count($tinkr_uses.$tinkr_source,"\n")+1,' +
+    "$tinkr_one['from'],substr_count($tinkr_uses,\"\\n\")];" +
+    'try{eval($tinkr_uses.$tinkr_source);$tinkr_hoisted[$tinkr_i]=true;}' +
     // a declaration that threw is on the line the snippet wrote it on, and its
     // frames are read from there
     "catch(\\Throwable $tinkr_hoist_failure){$tinkr_error=$tinkr_error_of($tinkr_hoist_failure,$tinkr_one['from'],$tinkr_uses);break;}",
@@ -336,16 +472,19 @@ const EVAL_BLOCKS = [
   'foreach($tinkr_stmts as $tinkr_one){',
   '$tinkr_i++;',
   "$tinkr_query_line=$tinkr_one['line'];",
+  // what was dumped before this statement is not this statement's: the count
+  // taken here is what tells a `dd()` from an `exit()` (see printer)
+  '$tinkr_dump_seen=$tinkr_dump_total;',
   // the declaration was made before the first statement, and is recorded where
   // the snippet wrote it
-  "if(isset($tinkr_hoisted[$tinkr_i])){$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>null,'error'=>null];continue;}",
+  "if(isset($tinkr_hoisted[$tinkr_i])){$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>null,'error'=>null,'dumps'=>[]];continue;}",
   "$tinkr_source=rtrim($tinkr_one['code']);",
   // a `use` is compile-time, and every statement is its own eval: it is kept by
   // the token the statement opens with — not a regular expression — and written
   // in front of what comes after it, so a comment before it does not hide it and
   // a closure's own `use (...)` is not mistaken for one
   "if($tinkr_one['head']===T_USE){if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}$tinkr_uses.=$tinkr_source;" +
-    "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>null,'error'=>null];continue;}",
+    "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>null,'error'=>null,'dumps'=>[]];continue;}",
   'if(substr($tinkr_source,-1)!==\';\'){$tinkr_source.="\\n;";}',
   '$tinkr_block_error=null;$tinkr_completed=false;$tinkr_expression=false;',
   // syntax only: nothing of the statement runs to find out what it is, so a
@@ -354,6 +493,13 @@ const EVAL_BLOCKS = [
   // the parse error as the run's own
   "try{token_get_all('<?php '.$tinkr_uses.'return '.$tinkr_source,TOKEN_PARSE);$tinkr_expression=true;}" +
     'catch(\\Throwable $tinkr_preflight){$tinkr_expression=false;}',
+  // the statement is in progress from here: a `dd()`, an `exit()` or a fatal
+  // ends the run inside it, and the shutdown path records it as the statement it
+  // was in rather than losing it (see printer). Its eval is also where a dump's
+  // frame is read back from (see DUMP_BLOCK)
+  '$tinkr_span[$tinkr_i]=[substr_count($tinkr_uses,"\n")+1,substr_count($tinkr_uses.$tinkr_source,"\n")+1,' +
+    "$tinkr_one['from'],substr_count($tinkr_uses,\"\\n\")];" +
+    '$tinkr_in_statement=$tinkr_i;',
   'try{',
   "$tinkr_value=$tinkr_expression?eval($tinkr_uses.'return '.$tinkr_source):" +
     "eval($tinkr_uses.$tinkr_source.\"\\n\".'$tinkr_completed=true;');",
@@ -364,14 +510,17 @@ const EVAL_BLOCKS = [
   // ERROR_BLOCK)
   "$tinkr_block_error=$tinkr_error_of($tinkr_failure,$tinkr_one['from'],$tinkr_uses);",
   '}',
-  // the raw value stays raw until the snippet has ended: a serializer asked
-  // here would run between two of the snippet's own statements
-  "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>$tinkr_block_error];$tinkr_last=count($tinkr_results)-1;",
+  // the raw value and the raw dumps stay raw until the snippet has ended: a
+  // serializer asked here would run between two of the snippet's own statements
+  "$tinkr_results[]=['line'=>$tinkr_one['line'],'value'=>$tinkr_value,'error'=>$tinkr_block_error," +
+    "'dumps'=>$tinkr_dumps];$tinkr_dumps=[];$tinkr_last=count($tinkr_results)-1;$tinkr_in_statement=null;",
   'if($tinkr_block_error!==null){$tinkr_error=$tinkr_block_error;break;}',
   // a statement that returned left the flag false, and the snippet ended there
   'if(!$tinkr_completed&&!$tinkr_expression){break;}',
   '}',
   '}',
+  // the snippet has ended, so the measurement is what its statements spent
+  STATS_FINISH,
   // the snippet has ended, so every block can be described once: the same object
   // is serialized once however many blocks hold it, arrays are the snapshots
   // their statements answered with, and the run's final value is the last
@@ -379,7 +528,12 @@ const EVAL_BLOCKS = [
   // serializer runs now belongs to no statement of the snippet, so it is on line
   // 0; what it prints lands before the envelope, with the run's own output
   '$tinkr_query_line=0;' +
-  "foreach($tinkr_results as $tinkr_i=>$tinkr_block){if($tinkr_block['error']===null){$tinkr_results[$tinkr_i]['value']=$tinkr_safe($tinkr_block['value']);}}",
+  'foreach($tinkr_results as $tinkr_i=>$tinkr_block){' +
+  "if($tinkr_block['error']===null){$tinkr_results[$tinkr_i]['value']=$tinkr_safe($tinkr_block['value']);}" +
+  // a dump is described whether or not its statement threw: the value was asked
+  // for before the statement failed, and it is still what was asked for
+  "foreach($tinkr_block['dumps'] as $tinkr_j=>$tinkr_dump){" +
+  "$tinkr_results[$tinkr_i]['dumps'][$tinkr_j]['value']=$tinkr_safe($tinkr_dump['value']);}}",
   "if($tinkr_error!==null){$tinkr_value=null;}elseif($tinkr_last!==null){$tinkr_value=$tinkr_results[$tinkr_last]['value'];}else{$tinkr_value=null;}",
 ]
 
@@ -985,9 +1139,13 @@ const guardFinish = "$tinkr_tx_outcome='failed';$tinkr_tx_open=false;" +
  * before it prints.
  *
  * A fatal error is `error_get_last()`. Leaving any other way is the run ending
- * on purpose, and that is said as itself: a `dd()` that showed its value and
- * stopped is a run that answered and then stopped, which is not a failure of the
- * wrapper.
+ * on purpose — `exit()`, `die()`, a `dd()` that showed its value and stopped —
+ * and that is said as itself: the envelope says which of them ended the run and
+ * on which line, its `error` stays `null`, and the blocks it had are kept. A
+ * `dd()` is told from an `exit()` by the dumper: the handler this run installed
+ * (see DUMP_BLOCK) counts what it showed, and a dump recorded inside the
+ * statement that was running is a `dd()`. An `exit()` after a `dump()` in the
+ * statement before it counted nothing here, and is the `exit()` it is.
  *
  * @param {String} keys the envelope's own keys, comma separated
  * @return {{print: String, shutdown: String}} both lines
@@ -1000,7 +1158,7 @@ const printer = (keys, close = '') => {
   // have no answer at all
   const echo = `$tinkr_payload=base64_encode(json_encode(${keys},JSON_PARTIAL_OUTPUT_ON_ERROR));` +
     'echo $tinkr,"@",$tinkr_payload,"@";'
-  const ended = '$tinkr_last=error_get_last();' +
+  const stopped = '$tinkr_last=error_get_last();' +
     'if($tinkr_error===null&&$tinkr_last!==null&&in_array($tinkr_last["type"],' +
     '[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR,E_USER_ERROR,E_RECOVERABLE_ERROR],true)){' +
     // a fatal leaves no exception to read a trace from: the file and the line it
@@ -1010,9 +1168,18 @@ const printer = (keys, close = '') => {
     'isset($tinkr_one["from"])?$tinkr_one["from"]:0,isset($tinkr_uses)?$tinkr_uses:"")+' +
     '["class"=>"FatalError","message"=>$tinkr_clean($tinkr_last["message"]),"trace"=>[]];}' +
     'elseif($tinkr_error===null){' +
-    // the run ended on purpose, so there is no throw to point at
-    '$tinkr_error=["class"=>"Exit","message"=>"exit(), die() or dd() stopped the run before it answered",' +
-    '"line"=>null,"file"=>null,"fileLine"=>null,"trace"=>[]];}'
+    // the run ended on purpose: it is not a failure, and the line it ended on is
+    // the statement it ended in
+    '$tinkr_ended=["by"=>$tinkr_dump_total>$tinkr_dump_seen?"dd":"exit",' +
+    '"line"=>isset($tinkr_one["line"])?(int)$tinkr_one["line"]:null];}' +
+    // the statement the run ended in answered nothing, and may have dumped
+    // something first: it is kept as the block it was, after the ones that
+    // finished. A fatal keeps it only when there is a dump to show of it, since
+    // the statement itself did not answer
+    'if($tinkr_in_statement!==null&&($tinkr_ended!==null||$tinkr_dumps)){' +
+    '$tinkr_results[]=["line"=>isset($tinkr_one["line"])?(int)$tinkr_one["line"]:null,' +
+    '"value"=>null,"error"=>null,"dumps"=>$tinkr_dumps];$tinkr_dumps=[];' +
+    '$tinkr_in_statement=null;}'
 
   return {
     /**
@@ -1034,18 +1201,31 @@ const printer = (keys, close = '') => {
       // a fatal is read where it happened, so the statement that was being
       // evaluated and the imports its eval was written with come along: they are
       // what turns the eval's line into the snippet's own
-      '&$tinkr_place,&$tinkr_clean,&$tinkr_one,&$tinkr_uses' +
+      '&$tinkr_place,&$tinkr_clean,&$tinkr_one,&$tinkr_uses,' +
+      // how it ended, what was dumped, and the measurement: a run that left this
+      // way never reached the loop's own close
+      '&$tinkr_ended,&$tinkr_dumps,&$tinkr_dump_total,&$tinkr_dump_seen,&$tinkr_in_statement,' +
+      '&$tinkr_stats,&$tinkr_stats_start,&$tinkr_stats_base,&$tinkr_dump_handler,&$tinkr_dump_previous' +
       (close
         ? ',&$tinkr_db,&$tinkr_tx,&$tinkr_tx_armed,&$tinkr_tx_error,&$tinkr_tx_mode,&$tinkr_tx_level,' +
         '&$tinkr_query_connections,&$tinkr_tx_diff'
         : '') + '){' +
-      `if($tinkr_sent){return;}${ended}` +
+      `if($tinkr_sent){return;}${stopped}` +
       // the run left through exit(), dd() or a fatal before the loop could
       // describe what it had answered, so its blocks are described here, once
       // each: they are the same values the normal path would have walked, and
       // a query a serializer runs belongs to no statement of the snippet
       '$tinkr_query_line=0;' +
-      "foreach($tinkr_results as $tinkr_i=>$tinkr_block){if($tinkr_block['error']===null){$tinkr_results[$tinkr_i]['value']=$tinkr_safe($tinkr_block['value']);}}" +
+      'foreach($tinkr_results as $tinkr_i=>$tinkr_block){' +
+      "if($tinkr_block['error']===null){$tinkr_results[$tinkr_i]['value']=$tinkr_safe($tinkr_block['value']);}" +
+      "if(isset($tinkr_block['dumps'])){foreach($tinkr_block['dumps'] as $tinkr_j=>$tinkr_dump){" +
+      "$tinkr_results[$tinkr_i]['dumps'][$tinkr_j]['value']=$tinkr_safe($tinkr_dump['value']);}}}" +
+      // what the snippet spent up to the line it stopped on, measured the way
+      // the normal path measures it
+      'if($tinkr_stats===null&&isset($tinkr_stats_start)){' + STATS_FINISH + '}' +
+      // the dumper the session had is put back, so a later run of it is not
+      // answered into this one's list
+      DUMP_RESTORE +
       '$tinkr_value=null;' +
       (close ? 'if($tinkr_tx_armed&&!isset($tinkr_transaction)){' + close + '}' : '') +
       `${echo}});`,
@@ -1137,6 +1317,14 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
     // block's snapshot, kept rather than made again
     "'value'=>$tinkr_error!==null?null:$tinkr_value,",
     "'error'=>$tinkr_error,",
+    // how the run ended when it ended on purpose — a `dd()`, an `exit()` — and
+    // nothing at all when it ran to its own end. It is not an error: the error
+    // stays null, and this is the sentence the pane reads (see printer)
+    "'ended'=>$tinkr_ended,",
+    // what the snippet's statements spent: their own time in milliseconds and
+    // the memory they peaked at, in bytes (see STATS_ARM). Null for a run whose
+    // statements never ran
+    "'stats'=>$tinkr_stats,",
     "'queries'=>$tinkr_safe($tinkr_queries),'queriesTotal'=>$tinkr_query_total",
     // what the run's own names resolved to. It is always an object: a project
     // that resolved nothing answers `{}` rather than dropping the key, so a
@@ -1181,6 +1369,7 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
       // what the envelope reads, present even when the snippet is rejected
       // before it runs: the run's error, and the empty answers it then has
       '$tinkr_error=null;$tinkr_sent=false;$tinkr_imported=[];$tinkr_results=[];$tinkr_value=null;' +
+        '$tinkr_ended=null;$tinkr_stats=null;' +
         '$tinkr_queries=[];$tinkr_query_total=0;' + guardNames + (sandbox ? '$tinkr_effects=[];$tinkr_sandbox=[];' : ''),
       // from here to the envelope, an interrupt ends the run (see INTERRUPT_ARM)
       INTERRUPT_ARM,
@@ -1208,6 +1397,10 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
       // the side effects are swapped for recorders before anything runs: the
       // mailer, the queues, the http client, the disks, the cache and the log
       sandboxArm(guard),
+      // what `dump()` and `dd()` are shown is kept as values from here (see
+      // DUMP_BLOCK): the handler is the run's, and the session's is put back
+      // once the snippet has ended
+      DUMP_BLOCK,
       // the classes the snippet named by their short names are aliased before
       // its body is compiled
       importBlock(entries),
@@ -1220,6 +1413,9 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
       // the close and the sandbox's report, in that order: the transaction is
       // closed first, then what the run caught is counted
       closing,
+      // the handler the session's dumper had before this run, so a later run in
+      // the same session is answered into a list of its own
+      DUMP_RESTORE,
       print,
       INTERRUPT_RESTORE,
       deadline.clear,

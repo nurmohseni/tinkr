@@ -135,6 +135,27 @@ const queriesTable = (queries, labels) => {
 }
 
 /**
+ * What a statement dumped, one section per value: the line it was dumped from,
+ * and the value as json — the same value the pane draws as a tree, because a
+ * dump is data and a fenced block is how the block carries data.
+ *
+ * @param {Object} block
+ * @param {Object} labels
+ * @return {String} empty when the statement dumped nothing
+ */
+const dumpSections = (block, labels) => {
+  const dumps = Array.isArray(block.dumps) ? block.dumps.filter(Boolean) : []
+
+  return dumps.map(dump => {
+    const line = Number.isInteger(Number(dump.line)) && Number(dump.line) > 0
+      ? ` · ${labels.line(Number(dump.line))}`
+      : ''
+
+    return `**${labels.dumped}${line}**\n\n${fenced('json', json(dump.value), labels.truncated)}`
+  })
+}
+
+/**
  * The whole of a run as one Markdown block.
  *
  * @param {Object} run
@@ -144,9 +165,21 @@ const queriesTable = (queries, labels) => {
  * @param {String} [run.when]  when the run was sent, already formatted
  * @param {Object} run.labels  the words, built by the pane with intl
  * @param {Object} [run.guarded]  `{dryRun: Array<String>, sandbox: Array<String>}`
+ * @param {{label: String, text: String}|null} [run.ended]  how the run ended on
+ *   purpose, when it did, and the label it is written under
+ * @param {{label: String, text: String}|null} [run.stats]  what the snippet spent
  * @return {String}
  */
-export const runMarkdown = ({code = '', result = {}, connection = '', when = '', labels = {}, guarded = {}}) => {
+export const runMarkdown = ({
+  code = '',
+  result = {},
+  connection = '',
+  when = '',
+  labels = {},
+  guarded = {},
+  ended = null,
+  stats = null,
+}) => {
   const sections = []
   const where = []
 
@@ -164,6 +197,15 @@ export const runMarkdown = ({code = '', result = {}, connection = '', when = '',
 
   if (code) {
     sections.push(fenced('php', code, labels.truncated))
+  }
+
+  // a run that left on purpose says so before what it answered: it is why the
+  // block has no more than it has. What the snippet spent is the run's own
+  // measurement, and is said beside it
+  for (const fact of [ended, stats]) {
+    if (fact) {
+      sections.push(`**${fact.label}**\n\n${fact.text}`)
+    }
   }
 
   // a run of several statements is read statement by statement: its value is
@@ -188,6 +230,8 @@ export const runMarkdown = ({code = '', result = {}, connection = '', when = '',
       } else if (block.value !== null && block.value !== undefined) {
         sections.push(`${label}\n\n${fenced('json', json(block.value), labels.truncated)}`)
       }
+
+      sections.push(...dumpSections(block, labels))
     }
 
     // a failure that ended the run outside its statements has no block of its
@@ -200,6 +244,12 @@ export const runMarkdown = ({code = '', result = {}, connection = '', when = '',
       ].filter(Boolean).join('\n\n'))
     }
   } else {
+    for (const block of blocks) {
+      if (block) {
+        sections.push(...dumpSections(block, labels))
+      }
+    }
+
     if (result.value !== null && result.value !== undefined) {
       sections.push(`**${labels.returned}**\n\n${fenced('json', json(result.value), labels.truncated)}`)
     }

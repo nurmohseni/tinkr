@@ -9,6 +9,7 @@ import {configAtom} from '../stores/config'
 import {snippetAtomWithId} from '../stores/snippets'
 import appVersion from '../utils/appVersion'
 import kindOf from '../utils/connectionKind'
+import {statsLine} from '../utils/runFacts'
 
 // the status bar is mounted above the router, so on the root route there is no
 // snippet to read a caret position from
@@ -19,8 +20,9 @@ const noSnippetAtom = atom(null)
  *
  * It prints what the app knows: the connection this window was opened with,
  * where the caret is in the open snippet, whether the AI completions are on,
- * and the version. Run time, memory and the PHP version are shown by the
- * design but nothing in the app measures them, so they are left out.
+ * what the last run spent, and the version. The run's time and memory are
+ * measured inside php (see runResult's STATS_ARM) rather than guessed at here,
+ * so they are the snippet's own and not the window's.
  *
  * A run that threw is the outcome glyph and its class, in the error ink: the
  * strip says what happened where the eye already is, in the language the rest
@@ -35,6 +37,7 @@ const Statusbar = () => {
   const [, params] = useRoute('/snippets/:id/:mode')
   const snippet = useAtomValue(params?.id ? snippetAtomWithId(params.id) : noSnippetAtom)
   const position = snippet?.position
+  const spent = result ? statsLine(intl, result.stats) : null
 
   return (
     <footer className='statusbar'>
@@ -58,6 +61,10 @@ const Statusbar = () => {
         <span className='statusbar__item mono'>
           {intl.formatMessage({id: 'statusbar.php'}, {version: php.version})}
         </span>
+      )}
+
+      {spent !== null && (
+        <span className='statusbar__item mono'>{spent}</span>
       )}
 
       {position && (

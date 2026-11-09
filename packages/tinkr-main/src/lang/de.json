@@ -456,7 +456,18 @@
     "html_frame": "Das gerenderte Dokument",
     "more_rows": "+{count} weitere Zeilen",
     "more_nodes": "+{count} weitere Knoten",
-    "save_failed": "Die Datei konnte nicht gespeichert werden: {message}"
+    "save_failed": "Die Datei konnte nicht gespeichert werden: {message}",
+    "markdown_dumped": "Ausgegeben",
+    "markdown_ended": "Beendet",
+    "markdown_stats": "Werte",
+    "ended": "beendet",
+    "ended_func": "Der Lauf endete mit {call}",
+    "ended_func_line": "Der Lauf endete mit {call} in Zeile {line}",
+    "dump": "dump()",
+    "stats": "{time} ms · {memory}",
+    "stats_title": "PHP brauchte {time} ms der {seconds} Sekunden des Laufs und erreichte einen Speicherpeak von {memory}",
+    "memory_kb": "{size} KB",
+    "memory_mb": "{size} MB"
   },
   "queries": {
     "sent": "{count, plural, one {# Abfrage} other {# Abfragen}} in {ms} ms",

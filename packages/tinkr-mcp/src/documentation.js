@@ -45,7 +45,7 @@ const topics = [
   {
     name: 'reading',
     title: 'Reading an answer',
-    summary: 'The envelope: blocks, value, error, queries, transaction, sandbox.',
+    summary: 'The envelope: blocks (with dumps), value, error, ended, stats, queries, transaction, sandbox.',
   },
   {
     name: 'logs',
@@ -95,9 +95,9 @@ A run is one snippet, evaluated in a session of its own.
 
 ## What that means for you
 
-- **Ask for a value, not a printout.** \`return $user;\` answers with the model;
-  \`dump($user);\` answers with text. Both work, but only the first is data you can
-  reason about.
+- **A value comes back as data.** \`return $user;\` answers with the model, and so
+  does \`dump($user);\` — the value is in \`blocks[].dumps\` as well as in the text
+  the dumper printed. Prefer whichever the snippet is clearer written as.
 - **One snippet, several statements.** \`$u = User::first(); $u->name;\` is two
   blocks, and the second is the name.
 - **A run is not a REPL.** Variables do not survive between calls: every call is
@@ -402,9 +402,11 @@ a person.
 
 \`\`\`json
 {
-  "blocks": [{"line": 1, "value": 42, "error": null}],
+  "blocks": [{"line": 1, "value": 42, "error": null, "dumps": []}],
   "value": 42,
   "error": null,
+  "ended": null,
+  "stats": {"time": 4, "memory": 37474032},
   "output": "",
   "queries": [{"line": 1, "sql": "select count(*) …", "bindings": [], "time": 0.4, "connection": "mysql"}],
   "queriesTotal": 1,
@@ -423,14 +425,37 @@ One entry per statement that answered, in order. \`line\` is the line of the sni
 the statement started on; several statements can share a line. \`error\` is set
 when that statement threw, and the run stopped there.
 
+\`dumps\` is what \`dump()\` and \`dd()\` were shown inside that statement, in the order
+they were dumped: \`{line, value}\` with the snippet line of the call. The value is the
+value itself, written the way every value of the answer is written, and not the
+text the dumper printed — so \`dd($user)\` answers the model you asked to look at.
+A statement that dumped and then threw keeps its dumps.
+
 ## \`value\`
 The last statement's value, or \`null\` for a run that threw or ended without one.
 This is the one to read when the snippet is one expression.
 
+## \`ended\`
+\`{by, line}\` when the run ended on purpose — \`by\` is \`"dd"\` (a \`dd()\` was shown) or
+\`"exit"\` (an \`exit()\`, \`die()\`, or a \`dd()\` with nothing to show), and \`line\` is the line
+of the snippet it ended on. It is \`null\` for a run that ran to its own end.
+
+A run that ended this way is **not an error**: \`error\` stays \`null\`, the blocks it
+answered before it stopped keep their values, and the statement it ended in is
+kept with its dumps. Read \`ended\` before concluding that a null \`value\` means that
+nothing happened.
+
+## \`stats\`
+What the snippet itself spent, measured inside php: \`{time, memory}\` — its own time
+in milliseconds, and the memory it peaked at in bytes. The time is the statements
+alone: the framework's boot and the session's are not in it, which is what the
+call's own duration measures. \`null\` for a run whose statements never ran — a
+snippet php would not compile.
+
 ## \`output\`
 What the code printed — \`echo\`, \`print\`, \`dump\`, \`var_dump\`. It is **text**, cut
-at 100 000 characters with a note saying so. Anything you need as data belongs in
-the return value, not in the output.
+at 100 000 characters with a note saying so. A \`dump()\` prints here, and the same
+value is answered as data in \`blocks[].dumps\`.
 
 ## \`queries\` and \`queriesTotal\`
 Every SQL statement the run sent through Laravel's connection, with its
@@ -498,13 +523,15 @@ line of the snippet, and is set only when the snippet's own code threw; otherwis
 root when the file is inside it. \`trace\` is up to thirty frames of
 \`{file, line, class, function, snippet}\`, innermost first: a frame of the snippet
 has \`snippet: true\` and its own line of the snippet, and the rest have the file
-and line the call was made from. A frame never carries its arguments. Two
-classes you may see that are not exceptions in the code:
+and line the call was made from. A frame never carries its arguments.
 
-- \`Exit\` — the run ended in \`exit()\`, \`die()\` or \`dd()\`. What the run printed
-  before it stopped is in \`output\`, and \`value\` is \`null\`.
+A class you may see that is not an exception in the code:
+
 - \`FatalError\` — a memory limit, a redeclared class, a stack overflow. The run's
   statements before it keep their values.
+
+An \`exit()\`, a \`die()\` and a \`dd()\` are not errors at all: they answer through
+\`ended\` (see above), with \`error\` left null.
 
 A run whose connection's command never booted — no \`artisan\` in the directory, a
 platform check that refuses the php, a php that is not on the path — fails as the

@@ -669,3 +669,76 @@ describe('the transaction guard', () => {
     expect(printed).toContain('title="Copy as Markdown"')
   })
 })
+
+describe('what the run spent and what it dumped', () => {
+  test('the head says the php time and the peak memory, with the wait in the title', () => {
+    const markup = render({
+      value: 42,
+      error: null,
+      output: '',
+      imported: {},
+      duration: 1800,
+      stats: {time: 12, memory: 1572864},
+    })
+
+    // php's own measurement is the figure in the head: the wall clock is what
+    // the tooltip adds, because that is the wait and not the run
+    expect(markup).toContain('12 ms · 1.5 MB')
+    expect(markup).toContain('PHP spent 12 ms of the 1.8 seconds')
+    expect(markup).not.toContain('1.8s<')
+  })
+
+  test('a dumped value is read as a tree, under the line it was dumped from', () => {
+    const markup = render({
+      value: null,
+      error: null,
+      output: 'dumped:{"a":1}',
+      imported: {},
+      blocks: [{line: 1, value: null, error: null, dumps: [{line: 1, value: {a: 1}}]}],
+      ended: {by: 'dd', line: 1},
+      stats: {time: 3, memory: 700000},
+    })
+
+    expect(markup).toContain('dump()')
+    expect(markup).toContain('Line 1')
+    // the value itself, not only the text the dumper printed
+    expect(markup).toContain('tree__row')
+    expect(markup).toContain('>a<')
+  })
+
+  test('an exit() is a neutral notice, not the error surface', () => {
+    const markup = render({
+      value: null,
+      error: null,
+      output: '',
+      imported: {},
+      blocks: [{line: 2, value: null, error: null, dumps: []}],
+      ended: {by: 'exit', line: 2},
+    })
+
+    expect(markup).toContain('The run ended with exit() on line 2')
+    expect(markup).toContain('ended')
+    expect(markup).not.toContain('error-surface')
+    expect(markup).not.toContain('result-summary__duration')
+    // and it is not read as a run that answered nothing for no reason
+    expect(markup).not.toContain(english.result.nothing_returned)
+  })
+
+  test('a statement of a run of several carries its own dumps', () => {
+    const markup = render({
+      value: 2,
+      error: null,
+      output: '',
+      imported: {},
+      blocks: [
+        {line: 1, value: 1, error: null, dumps: [{line: 1, value: 1}]},
+        {line: 2, value: 2, error: null, dumps: []},
+      ],
+      ended: null,
+      stats: {time: 1, memory: 512000},
+    }, 'organized', true)
+
+    expect(markup).toContain('dump()')
+    expect(markup).toContain('500 KB')
+  })
+})

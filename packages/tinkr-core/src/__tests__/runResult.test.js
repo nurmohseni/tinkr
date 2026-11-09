@@ -65,7 +65,7 @@ describe('the run result filter', () => {
     expect(wrapped.output).toBe('')
 
     filter.push('"DUMPED"\r\n')
-    filter.push(`${start}${envelope({value: null, error: {class: 'Exit', message: 'stopped'}})}`)
+    filter.push(`${start}${envelope({value: null, ended: {by: 'dd', line: 1}})}`)
 
     // what the run printed is the dump, and nothing of the echo
     expect(filter.printedText()).toBe('"DUMPED"\r\n')
@@ -84,7 +84,7 @@ describe('the run result filter', () => {
 
     // psysh dumps, and aborts before the marker is written
     filter.push('"DUMPED" // vendor/psy/psysh/src/ExecutionLoopClosure.php(55) : eval()\'d code:2\r\n')
-    filter.push(`${start}TINKRTEST@${Buffer.from(JSON.stringify({value: null, error: {class: 'Exit', message: 'stopped'}})).toString('base64')}@`)
+    filter.push(`${start}TINKRTEST@${Buffer.from(JSON.stringify({value: null, ended: {by: 'dd', line: 1}})).toString('base64')}@`)
 
     expect(filter.printedText()).toContain('"DUMPED"')
     expect(filter.printedText()).not.toContain('tinkr')

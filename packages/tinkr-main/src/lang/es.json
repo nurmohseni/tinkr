@@ -456,7 +456,18 @@
     "html_frame": "El documento renderizado",
     "more_rows": "+{count} filas más",
     "more_nodes": "+{count} nodos más",
-    "save_failed": "No se pudo guardar el archivo: {message}"
+    "save_failed": "No se pudo guardar el archivo: {message}",
+    "markdown_dumped": "Volcado",
+    "markdown_ended": "Final",
+    "markdown_stats": "Estadísticas",
+    "ended": "terminada",
+    "ended_func": "La ejecución terminó con {call}",
+    "ended_func_line": "La ejecución terminó con {call} en la línea {line}",
+    "dump": "dump()",
+    "stats": "{time} ms · {memory}",
+    "stats_title": "PHP tardó {time} ms de los {seconds} segundos que duró la ejecución, y alcanzó un máximo de {memory}",
+    "memory_kb": "{size} KB",
+    "memory_mb": "{size} MB"
   },
   "queries": {
     "sent": "{count, plural, one {# consulta} other {# consultas}} en {ms} ms",

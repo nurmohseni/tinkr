@@ -456,7 +456,18 @@
     "html_frame": "渲染后的文档",
     "more_rows": "另有 {count} 行",
     "more_nodes": "另有 {count} 个节点",
-    "save_failed": "无法保存文件：{message}"
+    "save_failed": "无法保存文件：{message}",
+    "markdown_dumped": "转储",
+    "markdown_ended": "结束",
+    "markdown_stats": "统计",
+    "ended": "已结束",
+    "ended_func": "运行以 {call} 结束",
+    "ended_func_line": "运行在第 {line} 行以 {call} 结束",
+    "dump": "dump()",
+    "stats": "{time} ms · {memory}",
+    "stats_title": "运行耗时 {seconds} 秒，其中 PHP 用了 {time} ms，内存峰值 {memory}",
+    "memory_kb": "{size} KB",
+    "memory_mb": "{size} MB"
   },
   "queries": {
     "sent": "{count, plural, other {# 个查询}}，共 {ms} ms",

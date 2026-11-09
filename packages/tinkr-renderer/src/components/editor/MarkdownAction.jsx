@@ -4,6 +4,7 @@ import {FormattedMessage, useIntl} from 'react-intl'
 
 import {copyText} from '../../utils/clipboard'
 import {guardReport, sandboxReport} from '../../utils/guardReport'
+import {endingSentence, statsLine} from '../../utils/runFacts'
 import {runMarkdown} from '../../utils/markdown'
 
 /**
@@ -55,6 +56,7 @@ const MarkdownAction = ({result, code = '', connection = ''}) => {
     }
 
     const at = result.ranAt ? new Date(result.ranAt) : null
+    const spent = statsLine(intl, result.stats)
 
     copyText(runMarkdown({
       code,
@@ -74,6 +76,7 @@ const MarkdownAction = ({result, code = '', connection = ''}) => {
         queries: intl.formatMessage({id: 'result.markdown_queries'}),
         dryRun: intl.formatMessage({id: 'result.markdown_dry_run'}),
         sandbox: intl.formatMessage({id: 'result.markdown_sandbox'}),
+        dumped: intl.formatMessage({id: 'result.markdown_dumped'}),
         statement: line => intl.formatMessage({id: 'result.markdown_statement'}, {line}),
         truncated: count => intl.formatMessage({id: 'result.markdown_truncated'}, {count}),
         moreQueries: count => intl.formatMessage({id: 'queries.more'}, {count}),
@@ -83,6 +86,17 @@ const MarkdownAction = ({result, code = '', connection = ''}) => {
         connectionColumn: intl.formatMessage({id: 'queries.col_connection'}),
       },
       guarded: {dryRun, sandbox},
+      // the two facts of the run that are not what it answered: why it stopped,
+      // and what it spent doing it
+      ended: result.ended
+        ? {
+            label: intl.formatMessage({id: 'result.markdown_ended'}),
+            text: endingSentence(intl, result.ended),
+          }
+        : null,
+      stats: spent === null
+        ? null
+        : {label: intl.formatMessage({id: 'result.markdown_stats'}), text: spent},
     }))
 
     setCopied(true)

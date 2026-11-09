@@ -1305,3 +1305,65 @@ describe('the arguments of a call', () => {
     }
   })
 })
+
+describe('a run that dumped a value, and one that ended on purpose', () => {
+  test('answers a dd() as its value and its ending, not as an error', async () => {
+    const {server} = opened({
+      at: project,
+      run: async () => envelope({
+        blocks: [{line: 3, value: null, error: null, dumps: [{line: 3, value: {name: 'z'}}]}],
+        value: null,
+        error: null,
+        ended: {by: 'dd', line: 3},
+        stats: {time: 12, memory: 1572864},
+      }),
+    })
+
+    const answer = await server.call('tinkr_run_php', {code: 'dd(User::make($attributes));'})
+
+    expect(answer.isError).toBe(false)
+    // what the dump was shown is the value itself, on the line it was dumped from
+    expect(answer.content[0].text).toContain('Line 3: dumped {\n  "name": "z"\n}')
+    expect(answer.content[0].text).toContain('ended with dd() on line 3')
+    expect(answer.content[0].text).toContain('spent 12 ms in PHP, peaking at 1.5 MB')
+    expect(answer.structuredContent.ended).toEqual({by: 'dd', line: 3})
+    expect(answer.structuredContent.stats).toEqual({time: 12, memory: 1572864})
+    expect(answer.structuredContent.blocks[0].dumps).toEqual([{line: 3, value: {name: 'z'}}])
+    expect(answer.structuredContent.error).toBe(null)
+  })
+
+  test('says an exit() as an ending, and leaves the error empty', () => {
+    const text = render({
+      blocks: [{line: 2, value: null, error: null, dumps: []}],
+      value: null,
+      error: null,
+      ended: {by: 'exit', line: 2},
+      stats: {time: 0, memory: 512},
+      output: '',
+    })
+
+    expect(text).toContain('ended with exit() on line 2')
+    expect(text).toContain('peaking at 512 B')
+    expect(text).not.toContain('threw')
+    // a run that ended without answering is not called a run that returned
+    // nothing for no reason
+    expect(text).not.toContain('no value returned')
+  })
+
+  test('cuts a dumped value the way it cuts a statement value', async () => {
+    const huge = {text: 'x'.repeat(300000)}
+    const {server} = opened({
+      at: project,
+      run: async () => envelope({
+        blocks: [{line: 1, value: null, error: null, dumps: [{line: 1, value: huge}]}],
+        value: null,
+      }),
+    })
+
+    const answer = await server.call('tinkr_run_php', {code: 'dd($huge);'})
+
+    expect(answer.structuredContent.cut).toContain('blocks')
+    expect(typeof answer.structuredContent.blocks[0].dumps[0].value).toBe('string')
+    expect(answer.structuredContent.blocks[0].dumps[0].value.length).toBeLessThan(300000)
+  })
+})

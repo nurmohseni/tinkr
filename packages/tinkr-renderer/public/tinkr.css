@@ -699,6 +699,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
    browser paints; the row grows to hold it */
 .tree__long { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }
 .tree__more { margin-left: var(--s1); vertical-align: baseline; }
+/* what a statement dumped: each value under a head of its own, inside the
+   statement it was written in, and the list keeps two of them apart */
+.dumps { display: flex; flex-direction: column; gap: var(--s3); }
+.block__dump { display: flex; flex-direction: column; gap: 4px; }
 /* a statement's line, in the strip of the statement it belongs to */
 .block__line {
   font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint);
