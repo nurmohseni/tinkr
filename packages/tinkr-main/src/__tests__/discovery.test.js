@@ -100,7 +100,7 @@ describe('what a container connection can offer', () => {
     answered('prod-eu\nstaging\n')
 
     expect(await contexts({kube_config: '/home/me/.kube/prod.yaml'})).toEqual(['prod-eu', 'staging'])
-    expect(exec.mock.calls[0][1]).toBe("kubectl --kubeconfig /home/me/.kube/prod.yaml config get-contexts -o name")
+    expect(exec.mock.calls[0][1]).toBe('kubectl --kubeconfig /home/me/.kube/prod.yaml config get-contexts -o name')
 
     // `-o name` prints a namespace as `namespace/<name>`, and the name is what
     // the field and the flag take

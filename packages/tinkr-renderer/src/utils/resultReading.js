@@ -162,9 +162,9 @@ export const truncate = (text, max) => {
     return text
   }
 
-  const split = max > 0
-    && text.charCodeAt(max - 1) >= 0xd800 && text.charCodeAt(max - 1) <= 0xdbff
-    && text.charCodeAt(max) >= 0xdc00 && text.charCodeAt(max) <= 0xdfff
+  const split = max > 0 &&
+    text.charCodeAt(max - 1) >= 0xd800 && text.charCodeAt(max - 1) <= 0xdbff &&
+    text.charCodeAt(max) >= 0xdc00 && text.charCodeAt(max) <= 0xdfff
 
   return `${text.slice(0, split ? max - 1 : max)}…`
 }

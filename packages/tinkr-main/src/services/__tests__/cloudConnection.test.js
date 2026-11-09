@@ -11,14 +11,14 @@ const {setEditorWindow} = require('../../processes')
 // Laravel Cloud is asked over the network, so the answer is held until the test
 // says when it lands and what it says
 const deferred = () => {
-  let resolve, reject
+  let settle
 
-  const promise = new Promise((res, rej) => {
-    resolve = res
-    reject = rej
+  // the executor runs synchronously, so the handles are set before the return
+  const promise = new Promise((resolve, reject) => {
+    settle = {resolve, reject}
   })
 
-  return {promise, resolve, reject}
+  return {promise, resolve: settle.resolve, reject: settle.reject}
 }
 
 describe('connecting to Laravel Cloud', () => {
@@ -47,7 +47,7 @@ describe('connecting to Laravel Cloud', () => {
 
     expect(win.webContents.send).toHaveBeenCalledWith(
       'outputConnection',
-      'Laravel Cloud · App / Production (running)\n'
+      'Laravel Cloud · App / Production (running)\n',
     )
     expect(win.webContents.send).toHaveBeenCalledWith('phpVersion', {version: '8.3'})
   })

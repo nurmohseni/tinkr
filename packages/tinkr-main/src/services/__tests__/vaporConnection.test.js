@@ -12,14 +12,14 @@ const {setEditorWindow} = require('../../processes')
 // Vapor is asked over the network, so the answer is held until the test says
 // when it lands and what it says
 const deferred = () => {
-  let resolve, reject
+  let settle
 
-  const promise = new Promise((res, rej) => {
-    resolve = res
-    reject = rej
+  // the executor runs synchronously, so the handles are set before the return
+  const promise = new Promise((resolve, reject) => {
+    settle = {resolve, reject}
   })
 
-  return {promise, resolve, reject}
+  return {promise, resolve: settle.resolve, reject: settle.reject}
 }
 
 // what Vapor answers for a project with one environment, which is what the
@@ -62,7 +62,7 @@ describe('connecting to Laravel Vapor', () => {
     expect(vaporEnvironments).toHaveBeenCalledWith('token', 'proj-1')
     expect(win.webContents.send).toHaveBeenCalledWith(
       'outputConnection',
-      'Laravel Vapor · App / Production\n'
+      'Laravel Vapor · App / Production\n',
     )
     // Vapor reports no php version for an environment, and the status bar is
     // told that rather than left showing the previous connection's
@@ -119,7 +119,7 @@ describe('connecting to Laravel Vapor', () => {
 
     expect(win.webContents.send).toHaveBeenCalledWith(
       'outputConnection',
-      'Laravel Vapor: no API token is saved. Add one in Preferences → Laravel Vapor.\n'
+      'Laravel Vapor: no API token is saved. Add one in Preferences → Laravel Vapor.\n',
     )
     expect(vaporEnvironments).not.toHaveBeenCalled()
   })
@@ -131,7 +131,7 @@ describe('connecting to Laravel Vapor', () => {
 
     expect(win.webContents.send).toHaveBeenCalledWith(
       'outputConnection',
-      'Laravel Vapor: this connection names no project and environment. Pick them in its settings.\n'
+      'Laravel Vapor: this connection names no project and environment. Pick them in its settings.\n',
     )
     expect(vaporEnvironments).not.toHaveBeenCalled()
   })
@@ -147,7 +147,7 @@ describe('connecting to Laravel Vapor', () => {
 
     expect(win.webContents.send).toHaveBeenCalledWith(
       'outputConnection',
-      'Laravel Vapor: Production is not in the project any more.\n'
+      'Laravel Vapor: Production is not in the project any more.\n',
     )
     expect(win.webContents.send).not.toHaveBeenCalledWith('phpVersion', expect.anything())
   })
@@ -160,7 +160,7 @@ describe('connecting to Laravel Vapor', () => {
 
     expect(win.webContents.send).toHaveBeenCalledWith(
       'outputConnection',
-      'Laravel Vapor: Laravel Vapor is unavailable\n'
+      'Laravel Vapor: Laravel Vapor is unavailable\n',
     )
   })
 })

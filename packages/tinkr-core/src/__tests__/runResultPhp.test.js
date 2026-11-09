@@ -243,14 +243,14 @@ describe('splitting a run into statements', () => {
 
   test('reports the line a statement starts on, not the line the token before it did', () => {
     const {payload} = runPhp(
-      'null;' + "\n" +
-      "['name' => 'Ada'];" + "\n" +
-      "\n" +
-      "/* a note\n" +
-      "   over two lines */" + "\n" +
-      '// and one line more' + "\n" +
-      '  [1, 2];' + "\n" +
-      '$a = 1; $b = [2];' + "\n" +
+      'null;' + '\n' +
+      "['name' => 'Ada'];" + '\n' +
+      '\n' +
+      '/* a note\n' +
+      '   over two lines */' + '\n' +
+      '// and one line more' + '\n' +
+      '  [1, 2];' + '\n' +
+      '$a = 1; $b = [2];' + '\n' +
       '(function () { return 3; })();',
     )
 
@@ -1010,7 +1010,7 @@ describe('what a run dumped, and how it ended', () => {
   })
 
   test('keeps a dump() of a closure the same statement called', () => {
-    const {payload} = runDumped("$map = array_map(function ($n) {\n  dump($n);\n\n  return $n;\n}, [7]);\n$map;")
+    const {payload} = runDumped('$map = array_map(function ($n) {\n  dump($n);\n\n  return $n;\n}, [7]);\n$map;')
 
     expect(payload.blocks[0].dumps).toEqual([{line: 2, value: 7}])
   })
