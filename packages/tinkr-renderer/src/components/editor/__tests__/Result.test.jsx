@@ -372,6 +372,9 @@ describe('where an error was thrown', () => {
     // the throw's own line, which is the snippet's: a statement that spans
     // several lines threw on one of them
     expect(markup).toContain('Line 3')
+    // the location reads as its own row after the message, not as a message
+    expect(markup).toContain('<p class="error-surface__where mono">Line 3</p>')
+    expect(markup.match(/error-surface__message/g)).toHaveLength(1)
     expect(markup).toContain('RuntimeException')
     expect(markup).not.toContain('trace__group')
   })
@@ -380,6 +383,7 @@ describe('where an error was thrown', () => {
     const markup = render(threw({class: 'QueryException', message: 'nope', line: null, file: 'app/Models/User.php', fileLine: 42, trace: []}))
 
     expect(markup).toContain('app/Models/User.php:42')
+    expect(markup).toContain('<p class="error-surface__where mono">app/Models/User.php:42</p>')
   })
 
   test('keeps the frames behind a disclosure, the snippet one named as its line', () => {

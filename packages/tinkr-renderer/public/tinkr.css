@@ -1535,6 +1535,9 @@ details:not([open]) > summary .tree__caret::before {
 }
 .error-surface__class { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: var(--fw-strong); color: var(--error); overflow-wrap: anywhere; }
 .error-surface__message { margin: 4px 0 0; font-family: var(--font-mono); font-size: var(--fs-code); line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* the file and line a throw came from: read after the message, so one step
+   back in size and ink */
+.error-surface__where { margin: 4px 0 0; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted); overflow-wrap: anywhere; }
 
 /* .trace: scrollable frame list; the dying frame is tinted and edged in red,
    vendor frames sit one step back, and folding groups are plain disclosures */

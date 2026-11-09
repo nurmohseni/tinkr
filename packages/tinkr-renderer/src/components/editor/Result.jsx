@@ -507,7 +507,7 @@ const Failure = ({error, duration = null, stats = null, markdown = null}) => {
     <div className='error-surface' role='alert'>
       <div className='error-surface__class mono'>{error.class}</div>
       <p className='error-surface__message mono'>{error.message}</p>
-      {where && <p className='error-surface__message mono'>{where}</p>}
+      {where && <p className='error-surface__where mono'>{where}</p>}
     </div>
 
     <Trace error={error}/>
@@ -621,7 +621,7 @@ const Block = ({block, view, id, ordinal}) => {
             {/* the statement's own line is in its head; this is the line of the
                 snippet the throw itself was on, which is another line when the
                 statement spans several */}
-            {where && <p className='error-surface__message mono'>{where}</p>}
+            {where && <p className='error-surface__where mono'>{where}</p>}
           </div>
 
           <Trace error={block.error}/>
