@@ -1133,6 +1133,20 @@ const TYPED_END = '/*tinkr:end*/'
 const typedLineLength = 1000
 
 /**
+ * How much of an unfinished line the filter holds before it lets it through.
+ *
+ * A line is read as a whole because the session talks about the run a line at a
+ * time: the echo of the typed run is dropped line by line, and where that echo
+ * ends is a line too. Every one of those lines carries one of the tags below
+ * and is cut at typedLineLength, so none of them is anywhere near this long.
+ * A line past this is the run printing, and holding it to its end is what made
+ * a minified JSON body, a base64 payload or a single-row CSV arrive as one late
+ * dump instead of streaming. So past this the line is let through, keeping back
+ * only a tail that could still begin one of those tags (see `release`).
+ */
+const holdLineLength = 64 * 1024
+
+/**
  * The run, as the lines a session is typed.
  *
  * The wrapped code travels base64-encoded and is evaluated in one statement, so
@@ -1170,6 +1184,8 @@ class RunResultFilter {
   constructor(marker, start) {
     this.marker = marker
     this.start = start
+    // a marker can arrive split across chunks, so a tail long enough to still
+    // hold one is held back until the next chunk settles whether it was there
     this.buffer = ''
     this.capturing = false
     this.captured = []
@@ -1191,9 +1207,23 @@ class RunResultFilter {
     // whether the marker's own line ending has been dropped from the run yet
     this.trimmed = false
     this.done = false
-    // a marker can arrive split across chunks, so a tail long enough to still
-    // hold one is held back until the next chunk settles whether it was there
-    this.tail = ''
+    // the unfinished line, as the pieces it arrived in. A line is only read
+    // once it ends (see `consume`), and the pieces are joined once, there: joining
+    // them on every chunk to search them again copies the whole line per chunk,
+    // which a line that never ends makes quadratic in what the run printed
+    this.pending = []
+    this.pendingLength = 0
+    // whether the unfinished line holds one of the tags and so is read whole
+    // however long it grows, since letting it through would be letting a line
+    // of the session's own echo through (see `release`)
+    this.pendingHeld = false
+    // the strings the session's own noise is written in: the value marker, the
+    // run's start marker, and the two tags the echo of the typed run carries
+    this.tags = [marker, start, TYPED_END, TYPED]
+    // the same, for the hold at a chunk boundary: there the echo tags are read
+    // a line at a time already, so only the two markers can be cut in half by a
+    // chunk ending in the middle of one
+    this.markerTags = [marker, start]
   }
 
   /**
@@ -1260,6 +1290,10 @@ class RunResultFilter {
    * came in
    */
   push(data) {
+    // each chunk is searched as it comes, joined only onto the few bytes a
+    // marker could have been cut in half at, so a chunk costs what it is long.
+    // What of it does not end on a line ending is kept as pieces and joined
+    // when the line ends, not rebuilt on every chunk — see `consume`
     const buffer = this.buffer + data
 
     this.buffer = ''
@@ -1276,70 +1310,13 @@ class RunResultFilter {
 
       this.buffer = held
 
-      let output = this.tail + buffer.slice(0, buffer.length - held.length)
-
-      this.tail = ''
-
-      // the partial line is held until it ends, so a line is always seen whole
-      const lastNewline = output.lastIndexOf('\n')
-
-      this.tail = output.slice(lastNewline + 1)
-      output = output.slice(0, lastNewline + 1)
-
-      // the session echoes the typed run back, a line at a time (see typedRun);
-      // its last line is the point the session stops booting and the snippet
-      // starts printing, and none of it is the terminal's to show
-      const lines = output.split('\n')
-      const kept = []
-      let end = -1
-
-      lines.forEach((line, index) => {
-        if (line.includes(TYPED_END)) {
-          this.typing = false
-          this.asked = true
-          end = index
-
-          return
-        }
-
-        if (line.includes(TYPED)) {
-          this.typing = true
-        }
-
-        // the last piece is what follows the last line ending, which is always
-        // empty: it is kept so the lines rejoin with their endings
-        if (!this.typing || index === lines.length - 1) {
-          kept.push(line)
-        }
-      })
-
-      // after the echo and before the marker: what the run wrote without going
-      // through the wrapper. `dd()` and `exit()` do exactly that — they dump
-      // and abort, so the wrapper's marker is never flushed and this is the
-      // only place their output exists. It is taken before the marker is looked
-      // for, because the two often share a chunk, and once the run has started
-      // what came before its marker would be read as the session booting
-      this.keepEarly(end === -1 ? output : lines.slice(end + 1).join('\n'))
-
-      const run = this.runOf(output)
-
-      if (this.started && !this.done) {
-        this.printed += run
-      }
-
-      // the terminal keeps the session as it is, minus the readline echoing the
-      // typed run back
-      const terminal = kept
-        .join('\n')
-        .split(this.start)
-        .join('')
-
-      return {output: terminal, run: this.done ? '' : run, result: null}
+      return this.consume(buffer.slice(0, buffer.length - held.length))
     }
 
-    const before = this.tail + buffer.slice(0, found)
-
-    this.tail = ''
+    // the marker is looked for in the raw stream rather than a line at a time,
+    // so the line it falls in comes along whole: what was held of it, and the
+    // part of this chunk before the marker
+    const before = this.takeLine() + buffer.slice(0, found)
 
     this.keepEarly(before)
 
@@ -1360,6 +1337,272 @@ class RunResultFilter {
       run,
       result: captured.result,
     }
+  }
+
+  /**
+   * Everything in a chunk the value marker is not in: the lines it finishes,
+   * and the line it leaves unfinished.
+   *
+   * A line is the unit the session's own noise is told apart by — the echo of
+   * the typed run is dropped a line at a time, and the run's own output only
+   * starts at the line the echo ends on — so a line is read once it has ended
+   * and not before. The piece that has not is kept as the pieces it arrived in:
+   * joining them on every chunk to look through them again copies the whole
+   * unfinished line per chunk, and a run that prints a few megabytes without a
+   * newline made that quadratic in what it printed.
+   *
+   * @param {String} text the chunk, less any tail held for a marker
+   * @return {{output: String, run: String, result: Object|null}}
+   */
+  consume(text) {
+    const shown = []
+    const run = []
+    const lines = []
+    // where in the chunk each of them ends, so what follows one can be named
+    // without rebuilding the chunk
+    const ends = []
+    let carried = ''
+    let prefix = ''
+    let at = 0
+
+    for (;;) {
+      const end = text.indexOf('\n', at)
+
+      if (end === -1) {
+        break
+      }
+
+      // the unfinished line comes in whole with the first line the chunk ends
+      if (this.pending.length) {
+        carried = this.takeLine()
+        prefix = carried
+      }
+
+      lines.push(`${carried}${text.slice(at, end)}`)
+      ends.push(end)
+      carried = ''
+      at = end + 1
+    }
+
+    if (at < text.length) {
+      this.pending.push(text.slice(at))
+      this.pendingLength += text.length - at
+    }
+
+    // the session's own noise is read for the whole chunk before any of it is
+    // read as the run's: where the echo of the typed run ends is where the run
+    // begins, and a line of the echo is a line the terminal does not get
+    let closed = -1
+
+    lines.forEach((line, index) => {
+      if (this.readLine(line, shown)) {
+        closed = index
+      }
+    })
+
+    if (this.asked && !this.started && !this.done) {
+      // after the echo and before the marker: what the run wrote without going
+      // through the wrapper. `dd()` and `exit()` do exactly that — they dump
+      // and abort, so the wrapper's marker is never flushed and this is the
+      // only place their output exists. The line the echo closes on is left out
+      // of it, because that line is the session's, not the run's
+      this.keepEarly(closed === -1
+        ? `${prefix}${text.slice(0, at)}`
+        : text.slice(ends[closed] + 1, at))
+    }
+
+    lines.forEach(line => this.readRun(line, run))
+
+    // a line this long is the run printing, not the session talking about it:
+    // see `release`
+    const released = this.release()
+
+    if (released) {
+      this.keepEarly(released)
+
+      const printed = this.runOf(released)
+
+      if (this.started && !this.done) {
+        this.printed += printed
+      }
+
+      run.push(printed)
+      // nothing in it is one of the tags — `release` only lets a line through
+      // when it holds none — so the terminal takes it as it is
+      shown.push(released)
+    }
+
+    return {
+      output: shown.join(''),
+      run: this.done ? '' : run.join(''),
+      result: null,
+    }
+  }
+
+  /**
+   * One line of the session's stream, as far as the session's own noise goes.
+   *
+   * The echo of the typed run is dropped here. Every line of it but the last
+   * carries TYPED and the last TYPED_END, and a line the terminal wrapped onto
+   * a line of its own carries neither — it is dropped because the echo is not
+   * over yet. What follows the last of them is what the run itself printed.
+   *
+   * @param {String} line the line, without its line ending
+   * @param {Array<String>} shown the terminal's output of the chunk
+   * @return {Boolean} whether this is the line the echo closes on
+   */
+  readLine(line, shown) {
+    const closes = line.includes(TYPED_END)
+
+    if (closes) {
+      this.typing = false
+      this.asked = true
+    } else if (line.includes(TYPED)) {
+      this.typing = true
+    }
+
+    // the terminal keeps the session as it is, minus the readline echoing the
+    // typed run back. The line the echo closes on is dropped too: the echo is
+    // over by the time it is read, so it would look like output otherwise
+    if (!closes && !this.typing) {
+      shown.push(`${line}\n`.split(this.start).join(''))
+    }
+
+    return closes
+  }
+
+  /**
+   * One line of the session's stream, as far as the run goes.
+   *
+   * @param {String} line the line, without its line ending
+   * @param {Array<String>} run the run's own stream of the chunk
+   */
+  readRun(line, run) {
+    // the line ending goes back on, because the text has to be what the session
+    // wrote: the line ending a marker is printed with is dropped from the run by
+    // matching it, and it is a line ending only with the newline on
+    const printed = this.runOf(`${line}\n`)
+
+    if (this.started && !this.done) {
+      this.printed += printed
+    }
+
+    run.push(printed)
+  }
+
+  /**
+   * Lets a long unfinished line through, instead of holding it to its end.
+   *
+   * A line is held because its whole text decides something: whether it is the
+   * session echoing the run back, and where that echo ends. Both of those are
+   * the session talking about the run, and both are short — every line of the
+   * echo carries a tag and is cut at typedLineLength, and the tags never appear
+   * in anything the run prints. A line past `holdLineLength` is therefore the
+   * run's own output, and holding it means the pane shows nothing until the
+   * line ends, which for a multi-megabyte line is the whole run.
+   *
+   * What is let through is the line up to a tail that could still begin one of
+   * those tags, and only when the line holds none of them: a marker arriving is
+   * still found whole, and a line of the echo is still dropped. The bytes are
+   * the same either way — the terminal gets them now rather than at the line's
+   * end, and the run's stream gets them in the same order.
+   *
+   * @return {String} what is let through, empty while the line is held
+   */
+  release() {
+    // while the session is echoing the run back every line of it is being
+    // dropped, so a line is left alone: an echo line is short (see typedLineLength)
+    // and a long one in the middle of the echo is a wrapping, not an answer
+    if (this.done || this.typing || this.pendingLength <= holdLineLength) {
+      return ''
+    }
+
+    // a line that does hold one of the tags is read whole, however long it is.
+    // The check is not made again for the rest of that line, so the one case
+    // that cannot be let through costs no more than the ordinary one
+    if (this.pendingHeld) {
+      return ''
+    }
+
+    if (this.holdsTag(this.pending)) {
+      this.pendingHeld = true
+
+      return ''
+    }
+
+    const text = this.pending.length === 1 ? this.pending[0] : this.pending.join('')
+    const held = this.prefixTail(text, this.tags)
+    const released = held ? text.slice(0, text.length - held.length) : text
+
+    this.pending = held ? [held] : []
+    this.pendingLength = held.length
+
+    return released
+  }
+
+  /**
+   * @param {Array<String>} pieces
+   * @return {Boolean} whether the text they make up holds one of the tags
+   */
+  holdsTag(pieces) {
+    // a tag can be cut in half where one piece ends and the next begins, so a
+    // piece is read with as much of the piece before it as the longest tag needs
+    const reach = this.tagReach()
+    let across = ''
+
+    for (const piece of pieces) {
+      const text = `${across}${piece}`
+
+      if (this.tags.some(tag => text.includes(tag))) {
+        return true
+      }
+
+      across = text.slice(Math.max(0, text.length - reach))
+    }
+
+    return false
+  }
+
+  /**
+   * @return {String} the unfinished line as it stands, and it is unfinished no
+   * more: the pieces are joined once, at the point the line is read whole
+   */
+  takeLine() {
+    const text = this.pending.length === 1 ? this.pending[0] : this.pending.join('')
+
+    this.pending = []
+    this.pendingLength = 0
+    this.pendingHeld = false
+
+    return text
+  }
+
+  /**
+   * @return {Number} how far back a tag cut by a boundary can begin: one short
+   * of the longest of them
+   */
+  tagReach() {
+    return this.tags.reduce((length, tag) => Math.max(length, tag.length), 0) - 1
+  }
+
+  /**
+   * @param {String} data
+   * @param {Array<String>} tags
+   * @return {String} the longest tail of `data` that is a prefix of one of the
+   * tags, and so could still become one
+   */
+  prefixTail(data, tags) {
+    const longest = tags.reduce((length, tag) => Math.max(length, tag.length), 0) - 1
+
+    for (let length = Math.min(longest, data.length); length > 0; length--) {
+      const tail = data.slice(data.length - length)
+
+      if (tags.some(tag => tag.startsWith(tail))) {
+        return tail
+      }
+    }
+
+    return ''
   }
 
   /**
@@ -1422,17 +1665,7 @@ class RunResultFilter {
    * @return {String} the longest tail of `data` that is a prefix of the marker
    */
   heldTail(data) {
-    const longest = Math.max(this.marker.length, this.start.length) - 1
-
-    for (let length = Math.min(longest, data.length); length > 0; length--) {
-      const tail = data.slice(data.length - length)
-
-      if (this.marker.startsWith(tail) || this.start.startsWith(tail)) {
-        return tail
-      }
-    }
-
-    return ''
+    return this.prefixTail(data, this.markerTags)
   }
 }
 

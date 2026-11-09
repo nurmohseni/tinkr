@@ -193,6 +193,128 @@ describe('the run result filter', () => {
   })
 })
 
+describe('a line that does not end', () => {
+  // the session up, the echo of the typed run behind it, and the run's own
+  // marker printed with nothing after it: what the filter has read when the run
+  // starts printing
+  const booted = () => {
+    const filter = new RunResultFilter(marker, start)
+
+    filter.push('Psy Shell v0.12.24\n> ')
+    filter.push(typedEcho())
+    filter.push(`${start}\r\n`)
+
+    return filter
+  }
+
+  const feed = (filter, text, size) => {
+    const shown = []
+    let run = ''
+
+    for (let at = 0; at < text.length; at += size) {
+      const {output, run: printed} = filter.push(text.slice(at, at + size))
+
+      shown.push(output)
+      run += printed
+    }
+
+    return {shown: shown.join(''), run}
+  }
+
+  test('is let through as it comes, not held to its end', () => {
+    const filter = booted()
+    const chunk = 'x'.repeat(64 * 1024)
+    let shown = ''
+
+    for (let times = 0; times < 4; times++) {
+      shown += filter.push(chunk).output
+    }
+
+    // the run has not answered, and its line has not ended: what it printed is
+    // in the pane all the same
+    expect(filter.capturing).toBe(false)
+    expect(shown.length).toBeGreaterThan(64 * 1024)
+    expect(shown).toBe('x'.repeat(shown.length))
+  })
+
+  test('reaches the pane and the run whole, byte for byte', () => {
+    const size = 8 * 1024 * 1024
+    const line = 'x'.repeat(size)
+    const filter = booted()
+
+    const {shown} = feed(filter, line, 64 * 1024)
+    // the envelope arrives on the same line the run printed, as it does when
+    // the run prints and answers without a newline between them
+    const {output} = filter.push(envelope({value: null, error: null}))
+
+    expect(shown + output).toBe(line)
+    expect(filter.printed).toBe(line)
+  })
+
+  test('holds a long line that carries one of the echo tags', () => {
+    const filter = booted()
+    const [tagged] = typedRun(wrapRun('$a = 1;').code)
+
+    // the tag is there before the line is long enough to be let through, so the
+    // line is read whole and, being a line of the echo, dropped whole
+    filter.push('x'.repeat(40 * 1024))
+    filter.push(`${tagged}${'y'.repeat(40 * 1024)}`)
+
+    const {output} = filter.push('tail\n')
+
+    expect(output).toBe('')
+    expect(filter.typing).toBe(true)
+  })
+
+  test('costs what it prints, whether it ends or not', () => {
+    // the same volume twice: as one line, and a line at a time. Holding the
+    // unfinished line meant rebuilding it on every chunk — 8MB cost seconds and
+    // grew fourfold per doubling. Both are linear now, so the ratio of the two
+    // is what is asserted: wall-clock absolutes belong to the machine, not CI
+    const size = 8 * 1024 * 1024
+    const straight = 'x'.repeat(size)
+    const lined = `${'x'.repeat(79)}\n`.repeat(size / 80)
+    const time = text => {
+      const filter = booted()
+      const started = Date.now()
+
+      feed(filter, text, 4096)
+
+      return Date.now() - started
+    }
+    const best = text => Math.min(...[0, 1, 2].map(() => time(text)))
+    const one = best(straight)
+    const many = best(lined)
+
+    expect(many).toBeGreaterThan(0)
+    expect(one / many).toBeLessThan(3)
+  })
+
+  test('finds the marker wherever a chunk ends inside it', () => {
+    const payload = `@${Buffer.from(JSON.stringify({value: 7}), 'utf8').toString('base64')}@`
+
+    for (let at = 0; at <= marker.length; at++) {
+      const filter = new RunResultFilter(marker, start)
+
+      expect(filter.push(marker.slice(0, at)).result).toBe(null)
+      expect(filter.push(`${marker.slice(at)}${payload}`).result).toEqual({value: 7})
+    }
+  })
+
+  test('finds the run start wherever a chunk ends inside it', () => {
+    for (let at = 0; at <= start.length; at++) {
+      const filter = new RunResultFilter(marker, start)
+
+      filter.push('Psy Shell\n')
+      filter.push(start.slice(0, at))
+
+      const {run} = filter.push(`${start.slice(at)}\r\nvalue\n`)
+
+      expect(run).toBe('value\n')
+    }
+  })
+})
+
 describe('a large envelope', () => {
   test('is read from many chunks without going quadratic', () => {
     // a run that returns a few megabytes arrives in hundreds of chunks, and
