@@ -54,14 +54,25 @@ test.describe('reading a result', () => {
     const {page, close} = await launchTinkr()
 
     try {
-      await runCode(page, "'<h1>Hello fixture</h1>'")
+      // markup a run answers may have been read out of a database, so the frame
+      // is a document that draws and runs nothing: the script here would rewrite
+      // the heading if it were given the right to run
+      await runCode(page, "'<h1>Hello fixture</h1>" +
+        '<script>document.querySelector("h1").textContent = "scripted"</script>' + "'")
 
       await reading(page, 'html')
 
+      const element = page.locator('iframe.html-view__frame')
       const frame = page.frameLocator('iframe.html-view__frame')
 
       await expect(frame.locator('h1')).toHaveText('Hello fixture')
-      await expect(page.locator('iframe.html-view__frame')).toHaveAttribute('sandbox', 'allow-scripts')
+
+      // the attribute is there whatever it is set to, and the frame never has the
+      // right to run a script: a sandbox that grew that token back is a regression
+      const sandbox = await element.getAttribute('sandbox')
+
+      expect(sandbox).not.toBeNull()
+      expect(sandbox).not.toContain('allow-scripts')
     } finally {
       await close()
     }

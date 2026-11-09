@@ -211,7 +211,11 @@ test.describe('what a dry run changed', () => {
 
       await type(page, updated)
 
-      await expect(page.locator('.output .tree .t-number').first()).toHaveText('1')
+      // the run's own answer is the tree of its last statement: this snippet
+      // opens with an assignment that answers a model, and a model's fields are
+      // drawn too — its key is a number, and reading the pane's first number
+      // would read that key rather than the value the run was asked for
+      await expect(page.locator('.output .tree').last().locator('.t-number').first()).toHaveText('1')
 
       // a write nothing could describe is counted rather than left out
       await type(page, raw)
@@ -256,7 +260,9 @@ test.describe('what a dry run changed', () => {
 
       await type(page, updated)
 
-      await expect(page.locator('.output .tree .t-number').first()).toHaveText('0')
+      // the last statement's tree is the run's answer; the assignment above it
+      // answers a model whose key is a number of its own
+      await expect(page.locator('.output .tree').last().locator('.t-number').first()).toHaveText('0')
     } finally {
       await close()
       fs.rmSync(project, {recursive: true, force: true})

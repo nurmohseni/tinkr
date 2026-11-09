@@ -140,7 +140,13 @@ test.describe('the MCP server', () => {
 
       expect(answer.isError).toBe(false)
       expect(answer.structuredContent.value).toBe(2)
-      expect(answer.content[0].text).toBe('Line 1: 2')
+
+      // the first line is the statement's answer, and what the snippet spent is
+      // the run's own measurement: the line is there, its numbers are not pinned
+      const [valueLine, ...spent] = answer.content[0].text.split('\n')
+
+      expect(valueLine).toBe('Line 1: 2')
+      expect(spent.join('\n')).toMatch(/^spent \d+ ms in PHP, peaking at [\d.]+ (B|KB|MB)$/)
 
       // the project's own logs, read the way the viewer reads them and scanned
       // the way an agent looking for something does
