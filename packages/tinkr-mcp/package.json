@@ -1,6 +1,6 @@
 {
   "name": "tinkr-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "The Tinkr MCP server: run PHP in a project, for an MCP client",
   "license": "MIT",
   "private": true,
@@ -13,7 +13,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "tinkr-core": "0.5.0"
+    "tinkr-core": "0.6.0"
   },
   "devDependencies": {
     "eslint": "^8.0.1",
