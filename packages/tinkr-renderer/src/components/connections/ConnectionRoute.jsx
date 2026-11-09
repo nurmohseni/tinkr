@@ -76,8 +76,16 @@ const ConnectionRoute = () => {
 
     // docker and podman are told where to run with -w; sail runs from the
     // project on the machine, where its compose file is; kubectl has no working
-    // directory of its own to be given, so the pod's is the one there is
-    if (engine !== 'kubectl') {
+    // directory flag either, so its directory is a `cd` inside the pod — and it
+    // is only known when the connection names it, because the machine's path is
+    // not a directory the pod's image need have
+    if (engine === 'kubectl') {
+      const dir = text(inContainer)
+
+      if (dir) {
+        stops.push({value: dir})
+      }
+    } else {
       const dir = engine && engine !== 'sail' ? (text(inContainer) || text(path)) : text(path)
 
       stops.push(dir ? {value: dir} : {missing: say('connections.path')})

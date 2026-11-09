@@ -37,7 +37,7 @@ const {
   reconnectConnection,
 } = require('./services/connections')
 const {setLocale, getLocale, allConfig, setConfig} = require('./services/config')
-const {containers, projectDirs} = require('./services/discovery')
+const {containers, projectDirs, contexts, namespaces} = require('./services/discovery')
 const {createSnippet, allSnippets, updateSnippet, deleteSnippet} = require('./services/snippets')
 const {allHistory, clearHistory} = require('./services/history')
 const {parsePhpForm, stringifyPhpForm} = require('./services/php')
@@ -143,6 +143,17 @@ ipcMain.handle('listContainers', async (event, connection) => containers(connect
  * is the one thing a form cannot know: this is what it can be picked from.
  */
 ipcMain.handle('listProjectDirs', async (event, connection) => projectDirs(connection))
+
+/**
+ * The contexts a kubeconfig names, and the namespaces a cluster has.
+ *
+ * A pod connection can name a context and a namespace, and neither is something
+ * to type from memory: what the file and the cluster hold is what the form
+ * offers, and a typed value is still the one a connection the app cannot list
+ * uses.
+ */
+ipcMain.handle('listKubeContexts', async (event, connection) => contexts(connection))
+ipcMain.handle('listKubeNamespaces', async (event, connection) => namespaces(connection))
 
 ipcMain.on('connectConnection', async (event, connection) => {
   // the password the form was holding is written here, and what the session

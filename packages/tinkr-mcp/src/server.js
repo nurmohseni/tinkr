@@ -874,6 +874,26 @@ const connectionInfo = connection => {
     }
   }
 
+  if (connection.container_engine) {
+    info.container = {
+      engine: connection.container_engine || null,
+      name: connection.container_name || null,
+      // the project's directory inside the container, which is where the reads
+      // of the index and the logs go, and what the machine's `path` is not
+      path: connection.container_path || null,
+      command: connection.container_command || null,
+    }
+
+    // a pod is reached in a namespace, in a context, from a kubeconfig, and in
+    // one of its containers: each is a field here and a flag of the command, and
+    // one that is not set is a flag the command does not carry
+    for (const field of ['kube_config', 'kube_context', 'kube_namespace', 'kube_container']) {
+      if (connection[field]) {
+        info.container[field] = connection[field]
+      }
+    }
+  }
+
   return info
 }
 

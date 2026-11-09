@@ -44,6 +44,14 @@ const newConnection = name => ({
   // nothing follows the app's setting, which is what Settings → MCP offers as
   // "Follow the setting"
   mcp_access: '',
+  // a kubectl connection reaches a pod through a kubeconfig, in a context, a
+  // namespace and a container of it, and each is empty here: an empty field is a
+  // flag left out of the command, so a pod the current context reaches is named
+  // by nothing at all
+  kube_config: '',
+  kube_context: '',
+  kube_namespace: '',
+  kube_container: '',
 })
 
 export {newConnectionId, newConnection}

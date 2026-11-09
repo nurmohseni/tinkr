@@ -21,6 +21,14 @@ const {shellQuote, shellWord, connectionShell} = require('./shell')
  * @property {String} container_name the container, pod, or sail service
  * @property {String} container_command what runs inside it, `php artisan tinker`
  *   by default
+ * @property {String} [kube_config] the kubeconfig a pod is reached through,
+ *   which is kubectl's own default when it is empty
+ * @property {String} [kube_context] the context in it, and the current one when
+ *   it is empty
+ * @property {String} [kube_namespace] the namespace the pod is in, and the
+ *   context's own when it is empty
+ * @property {String} [kube_container] the container of a pod that has several,
+ *   and the pod's default when it is empty
  */
 
 /**
@@ -49,9 +57,17 @@ const engines = {
   sail: {
     exec: ({name, command}) => `./vendor/bin/sail ${name} ${command}`,
   },
-  // kubectl has no working-directory flag: the container's own default is used
+  // kubectl has no working-directory flag, so where the command runs is a `cd`
+  // inside the pod: it is handed to a shell there as one word, the way a read
+  // does it (see containerRead). That payload's own words are posix — every
+  // image this app reaches has a posix `sh` — while the word the shell is given
+  // is quoted for the shell that reads this line
   kubectl: {
-    exec: ({name, command}) => `kubectl exec -it ${name} -- ${command}`,
+    exec: ({name, command, where, shell, cluster, namespace, container}) =>
+      `kubectl${cluster} exec -it${namespace}${container} ${name} -- ${
+        where
+          ? `sh -c ${whole(`cd ${word(where, 'posix')} && ${command}`, shell)}`
+          : command}`,
   },
 }
 
@@ -71,7 +87,8 @@ const reads = {
   // sail runs its command through compose, which has no terminal to allocate
   // here either
   sail: ({name, command}) => `./vendor/bin/sail ${name} ${command}`,
-  kubectl: ({name, command}) => `kubectl exec -i ${name} -- ${command}`,
+  kubectl: ({name, command, cluster, namespace, container}) =>
+    `kubectl${cluster} exec -i${namespace}${container} ${name} -- ${command}`,
 }
 
 /**
@@ -99,7 +116,13 @@ const lists = {
   docker: platform => `docker ps --format ${word('{{.Names}}\t{{.Image}}', platform)}`,
   podman: platform => `podman ps --format ${word('{{.Names}}\t{{.Image}}', platform)}`,
   sail: platform => `docker ps --format ${word('{{.Names}}\t{{.Image}}', platform)}`,
-  kubectl: platform => `kubectl get pods --no-headers -o custom-columns=${word('NAME:.metadata.name,IMAGE:.spec.containers[0].image', platform)}`,
+  // a pod in another namespace is not in `get pods` without `-n`, and one in
+  // another cluster is not in it without `--kubeconfig`/`--context`
+  kubectl: (platform, connection) => {
+    const kube = kubeSelection(connection, platform)
+
+    return `kubectl${kube.cluster} get pods${kube.namespace} --no-headers -o custom-columns=${word('NAME:.metadata.name,IMAGE:.spec.containers[0].image', platform)}`
+  },
 }
 
 /**
@@ -123,6 +146,91 @@ const engineNames = Object.keys(engines)
  * @return {String}
  */
 const word = (value, platform = process.platform) => shellWord(value, platform)
+
+/**
+ * What each of a kubectl connection's fields is a flag of the command.
+ *
+ * The fields are kept on the connection under names that say what they are, and
+ * kubectl takes them by letter or by a long option: what differs between the two
+ * is the flag, not the value.
+ *
+ * @type {Object<String, String>}
+ */
+const kubeFlags = {
+  kube_config: '--kubeconfig',
+  kube_context: '--context',
+  kube_namespace: '-n',
+  kube_container: '-c',
+}
+
+/**
+ * The flags that name which cluster, namespace and container a kubectl command is
+ * about, as words of the shell that reads it.
+ *
+ * A pod is not always the one the current context reaches: it can be in another
+ * namespace, in another cluster, in a kubeconfig that is not the default one, and
+ * in one of a pod's several containers. Each of the connection's four fields is
+ * one of those, and a field left empty is a flag left out — so a connection that
+ * names none builds exactly the line it built before the fields existed.
+ *
+ * kubectl reads a flag before or after the verb, and each is printed where its own
+ * help prints it: `--kubeconfig` and `--context` before `exec` or `get`, `-n` and
+ * `-c` after it, which is also the order a line typed by hand has.
+ *
+ * @param {Record<String, any>} connection
+ * @param {String} [shell] the shell that reads the line
+ * @return {{file: String, cluster: String, namespace: String, container: String}}
+ */
+const kubeSelection = (connection = {}, shell = process.platform) => {
+  const flag = field => {
+    const text = String((connection || {})[field] || '').trim()
+
+    return text ? ` ${kubeFlags[field]} ${word(text, shell)}` : ''
+  }
+
+  const file = flag('kube_config')
+
+  return {
+    // the file alone: a context is listed by the file it is in, and `--context`
+    // would say nothing about which one that is
+    file,
+    // the file and then the context, in kubectl's order
+    cluster: file + flag('kube_context'),
+    namespace: flag('kube_namespace'),
+    container: flag('kube_container'),
+  }
+}
+
+/**
+ * Where a kubectl connection's command runs inside its pod.
+ *
+ * `container_path` and nothing else: the other engines fall back to the machine's
+ * `path`, which is right for a project mounted in at its host path, and a pod's
+ * filesystem is its image's — a machine path there is a directory the image need
+ * not have. A pod that names none runs where its image starts, which is what
+ * kubectl does on its own.
+ *
+ * @param {Record<String, any>} connection
+ * @return {String}
+ */
+const kubePath = connection => String((connection && connection.container_path) || '').trim()
+
+/**
+ * Where the project is inside the container a connection runs in.
+ *
+ * Every engine but kubectl is told the directory by a flag, and the machine's
+ * `path` is the container's own for a project mounted in at its host path, which
+ * is why it is the fallback there (see containerPath). A pod is told nothing by a
+ * flag — the command cd's — and its directory is the one the connection names
+ * (see kubePath).
+ *
+ * @param {Record<String, any>} connection
+ * @return {String}
+ */
+const containerDir = connection => (
+  connection && connection.container_engine === 'kubectl'
+    ? kubePath(connection)
+    : containerPath(connection))
 
 /**
  * Whether a connection's project is inside a container.
@@ -175,6 +283,7 @@ const containerCommand = (connection = {}, platform = null) => {
   }
 
   const inside = String(command || '').trim() || 'php artisan tinker'
+  const kube = kubeSelection(connection, shell)
 
   // the command runs where the container's project is, not where the session
   // happens to be: a local session starts in the project on this machine, and
@@ -185,7 +294,15 @@ const containerCommand = (connection = {}, platform = null) => {
   return chosen.exec({
     name: word(container, shell),
     command: inside,
+    // where the command runs, as the engine's own flag takes it (docker, podman)
     dir: dir ? word(dir, shell) : null,
+    // and the same path as the container names it, which is what a `cd` inside
+    // it is given: kubectl has no flag, so its `cd` is quoted for the pod's shell
+    where: engine === 'kubectl' ? kubePath(connection) : null,
+    shell,
+    cluster: kube.cluster,
+    namespace: kube.namespace,
+    container: kube.container,
   })
 }
 
@@ -228,12 +345,20 @@ const containerRead = (connection, command, platform = null) => {
   // machine's path: a compose file can mount it anywhere, and a deployed image
   // can hold it at its own. So the `cd` goes inside the same command as the
   // question, and the two are handed to a shell there as one word
-  const project = containerPath(connection)
+  const project = containerDir(connection)
   const inside = project
     ? `sh -c ${whole(`cd ${word(project, 'posix')} && ${command}`, shell)}`
     : command
 
-  return chosen({name: word(container, shell), command: inside})
+  const kube = kubeSelection(connection, shell)
+
+  return chosen({
+    name: word(container, shell),
+    command: inside,
+    cluster: kube.cluster,
+    namespace: kube.namespace,
+    container: kube.container,
+  })
 }
 
 /**
@@ -332,12 +457,61 @@ const projectDirsCommand = (root = '/', platform = 'posix') => `php -r ${word(
  * that machine's: this one's for a local connection — cmd when the app is on
  * windows — and the far login shell's when the connection is over ssh.
  *
+ * The connection goes with it because kubectl's listing is not the same list for
+ * every connection: a pod in a namespace or a cluster of its own is not in the
+ * one the current context reaches.
+ *
  * @param {String} engine
+ * @param {String} [platform] the shell that reads the line
+ * @param {Record<String, any>} [connection] what the listing is asked for
+ * @return {String}
+ */
+const containerList = (engine, platform = process.platform, connection = {}) =>
+  (lists[engine] ? lists[engine](platform, connection) : '')
+
+/**
+ * The contexts a kubeconfig names, as the command that prints one a line.
+ *
+ * A pod can be in a cluster the current context does not reach, and a context is
+ * a name nobody should have to recall: what the form offers is what the file
+ * holds. `-o name` prints just the name, which is what `--context` takes.
+ *
+ * @param {Record<String, any>} [connection] what names the kubeconfig
  * @param {String} [platform] the shell that reads the line
  * @return {String}
  */
-const containerList = (engine, platform = process.platform) =>
-  (lists[engine] ? lists[engine](platform) : '')
+const kubeContextsCommand = (connection = {}, platform = process.platform) =>
+  `kubectl${kubeSelection(connection, platform).file} config get-contexts -o name`
+
+/**
+ * The namespaces of the cluster a connection reaches, as the command that prints
+ * them.
+ *
+ * @param {Record<String, any>} [connection] what names the cluster
+ * @param {String} [platform] the shell that reads the line
+ * @return {String}
+ */
+const kubeNamespacesCommand = (connection = {}, platform = process.platform) =>
+  `kubectl${kubeSelection(connection, platform).cluster} get namespaces -o name`
+
+/**
+ * What a listing of contexts or namespaces answered, as the names a form offers.
+ *
+ * A context is printed as its name. A namespace is printed as its kind and its
+ * name — `namespace/production` — because `-o name` is the same option for every
+ * kind, and the name is what a `-n` flag takes. Neither answer is a listing of
+ * containers, so a header is not filtered here: there is none.
+ *
+ * @param {String} answer what the listing printed
+ * @return {Array<String>}
+ */
+const kubeNamesIn = answer => String(answer || '')
+  .split('\n')
+  .map(line => line.trim())
+  .filter(line => line !== '')
+  .map(line => line.replace(/^namespace\//, ''))
+  .filter((line, at, all) => all.indexOf(line) === at)
+  .sort()
 
 /**
  * What a listing answered, as the containers a form offers.
@@ -463,11 +637,15 @@ module.exports = {
   engineNames,
   containerCommand,
   containerList,
+  kubeContextsCommand,
+  kubeNamespacesCommand,
+  kubeNamesIn,
   containersIn,
   projectDirsCommand,
   projectDirsIn,
   containerRead,
   containerPath,
+  containerDir,
   sessionCommand,
   inContainer,
   connectionKind,

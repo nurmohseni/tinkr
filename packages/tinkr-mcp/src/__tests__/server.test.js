@@ -5,7 +5,7 @@ const path = require('path')
 const {makeAppDir, removeAppDir, connection} = require('../__fixtures__/app')
 const app = require('../app')
 const target = require('../target')
-const {createServer, render} = require('../server')
+const {createServer, render, connectionInfo} = require('../server')
 
 // the run tools refuse a directory that is not there, because the session would
 // otherwise boot in the home directory, so the project a run names exists
@@ -601,6 +601,44 @@ describe('the tools', () => {
         ssh: {server: 'example.com', user: 'deploy', port: 2222},
       },
     ])
+  })
+
+  // what an MCP client is told about a connection: a pod's namespace, context,
+  // kubeconfig and container are how the code reaches it, so they are in the
+  // answer rather than left for the client to guess
+  test('says which pod, namespace and container a connection reaches', () => {
+    const pod = connectionInfo({
+      id: 'pod',
+      name: 'Production pod',
+      container_engine: 'kubectl',
+      container_name: 'api-7f9',
+      container_path: '/var/www/html',
+      container_command: 'php artisan tinker',
+      kube_config: '/home/me/.kube/prod.yaml',
+      kube_context: 'prod-eu',
+      kube_namespace: 'production',
+      kube_container: 'php',
+    })
+
+    expect(pod.container).toEqual({
+      engine: 'kubectl',
+      name: 'api-7f9',
+      path: '/var/www/html',
+      command: 'php artisan tinker',
+      kube_config: '/home/me/.kube/prod.yaml',
+      kube_context: 'prod-eu',
+      kube_namespace: 'production',
+      kube_container: 'php',
+    })
+
+    // a field the connection does not name is a flag the command does not carry,
+    // and is not in the answer either
+    const podOnly = connectionInfo({id: 'pod', container_engine: 'kubectl', container_name: 'api-7f9'})
+
+    expect(Object.keys(podOnly.container)).toEqual(['engine', 'name', 'path', 'command'])
+
+    // and a connection that is not in a container has no container to describe
+    expect(connectionInfo({id: 'local', path: project}).container).toBe(undefined)
   })
 
   test('reads and keeps the snippets of a connection the app knows', async () => {

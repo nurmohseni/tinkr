@@ -98,6 +98,10 @@ contextBridge.exposeInMainWorld('api', {
   // named per deploy cannot be typed, and neither can its path
   listContainers: connection => ipcRenderer.invoke('listContainers', connection),
   listProjectDirs: connection => ipcRenderer.invoke('listProjectDirs', connection),
+  // a pod connection names a context and a namespace, and what the kubeconfig
+  // and the cluster hold is what the form offers
+  listKubeContexts: connection => ipcRenderer.invoke('listKubeContexts', connection),
+  listKubeNamespaces: connection => ipcRenderer.invoke('listKubeNamespaces', connection),
   connectConnection: connection => ipcRenderer.send('connectConnection', connection),
   reconnectConnection: connection => ipcRenderer.send('reconnectConnection', connection),
   quickConnect: () => ipcRenderer.send('quickConnect'),

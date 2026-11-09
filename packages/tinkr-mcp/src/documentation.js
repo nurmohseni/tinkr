@@ -237,6 +237,16 @@ A connection is a project plus the command that reaches it. The app saves them;
   in, and \`path\` is that directory. The app lists the running containers of an
   engine and the projects inside one, because a compose file or a PaaS names a
   container per deploy and the stored name goes stale after the next one.
+
+  A pod is not always the one the current context reaches, and a kubectl
+  connection can name all of it: \`kube_namespace\` (\`-n\`), \`kube_container\`
+  (\`-c\`) for a pod that runs several, \`kube_context\` (\`--context\`) and
+  \`kube_config\` (\`--kubeconfig\`) for a kubeconfig that is not the default
+  one. A field left empty is a flag left out, so a pod in the current context's
+  namespace is named by nothing at all. kubectl has no working-directory flag:
+  the session's directory is a \`cd\` inside the pod, \`sh -c 'cd <path> && …'\`,
+  and for a pod only \`container_path\` is a directory it has — the machine's
+  \`path\` is not one, and a pod that names neither starts where its image does.
 - **ssh** — the project is on a server, reached with \`ssh\`: a private key when
   the connection names one, and otherwise the password it saved. A password is
   answered by the app's own helper, so it never reaches the terminal; a

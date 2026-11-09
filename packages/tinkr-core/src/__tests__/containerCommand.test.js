@@ -1,6 +1,7 @@
 const {
-  containerCommand, sessionCommand, containerRead, containerPath, inContainer, connectionKind, engineNames,
+  containerCommand, sessionCommand, containerRead, containerPath, containerDir, inContainer, connectionKind, engineNames,
   containerList, containersIn, projectDirsCommand, projectDirsIn,
+  kubeContextsCommand, kubeNamespacesCommand, kubeNamesIn,
 } = require('../containerCommand')
 const {parseSSHCommand} = require('../parseSSHCommand')
 const {controlOptions} = require('../sshControl')
@@ -207,6 +208,138 @@ describe('a container connection', () => {
 
   test('offers the engines the app builds for', () => {
     expect(engineNames).toEqual(['docker', 'podman', 'sail', 'kubectl'])
+  })
+})
+
+// a pod is not always the one the current context reaches: it can be in another
+// namespace, in another cluster, from a kubeconfig that is not the default one,
+// and in one of a pod's several containers. Each of the connection's four fields
+// is one of those, and a field left empty is a flag left out
+describe('a pod connection that names where its pod is', () => {
+  const pod = extra => Object.assign({container_engine: 'kubectl', container_name: 'api-7f9'}, extra)
+
+  test('carries every flag, in kubectl\'s own order', () => {
+    expect(containerCommand(pod({
+      kube_config: '/home/me/.kube/prod.yaml',
+      kube_context: 'prod-eu',
+      kube_namespace: 'production',
+      kube_container: 'php',
+    })))
+      .toBe('kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -it -n production -c php api-7f9 -- php artisan tinker')
+
+    // the file and the context come before the verb, the namespace and the
+    // container after it: the two pairs are not on the same side of `exec`
+    expect(containerCommand(pod({kube_namespace: 'production'})))
+      .toBe('kubectl exec -it -n production api-7f9 -- php artisan tinker')
+    expect(containerCommand(pod({kube_container: 'php'})))
+      .toBe('kubectl exec -it -c php api-7f9 -- php artisan tinker')
+  })
+
+  // the bug this waits against: a pod outside the current namespace, or in
+  // another cluster, was unreachable — the flag it needed was never built
+  test('is the line it was before when the pod is the current context\'s own', () => {
+    expect(containerCommand(pod())).toBe('kubectl exec -it api-7f9 -- php artisan tinker')
+    // and a field that is only whitespace is a field that is not there
+    expect(containerCommand(pod({kube_config: '  ', kube_context: '', kube_namespace: ' ', kube_container: '\t'})))
+      .toBe('kubectl exec -it api-7f9 -- php artisan tinker')
+  })
+
+  test('quotes every value as one word of the shell that reads the line', () => {
+    // a posix shell reads the value between quotes as it is, so a namespace with
+    // a space in it stays one word
+    expect(containerCommand(pod({kube_namespace: 'a b', kube_context: 'prod eu'})))
+      .toBe("kubectl --context 'prod eu' exec -it -n 'a b' api-7f9 -- php artisan tinker")
+
+    // a value that holds a quote is still one word, in each shell's own way
+    expect(containerCommand(pod({kube_container: "it's"})))
+      .toBe("kubectl exec -it -c 'it'\\''s' api-7f9 -- php artisan tinker")
+    expect(containerCommand(pod({kube_namespace: 'my ns', kube_container: "it's"}), 'win32'))
+      .toBe('kubectl exec -it -n "my ns" -c "it\'s" api-7f9 -- php artisan tinker')
+
+    // cmd expands a name between percents before it looks at quotes, so a path
+    // holding one is caret-escaped rather than left to the environment
+    expect(containerCommand(pod({kube_config: 'C:\\Users\\me\\.kube\\prod %USERNAME%.yaml'}), 'win32'))
+      .toBe('kubectl --kubeconfig "C:\\Users\\me\\.kube\\prod ^%USERNAME^%.yaml" exec -it api-7f9 -- php artisan tinker')
+
+    // and an ssh line is read there rather than here, so its words stay posix
+    // even in a windows app
+    expect(containerCommand(Object.assign({is_over_ssh: true}, pod({kube_config: '/srv/kube config.yaml', kube_namespace: 'prod'})), 'win32'))
+      .toBe("kubectl --kubeconfig '/srv/kube config.yaml' exec -it -n prod api-7f9 -- php artisan tinker")
+  })
+
+  // kubectl has no working-directory flag, so the directory is a `cd` inside the
+  // pod — and the machine's `path` is not the pod's, because a pod's filesystem
+  // is its image's
+  test('cds inside the pod, and only into a directory the pod is said to have', () => {
+    expect(containerCommand(pod({container_path: '/var/www/html', path: '/home/me/app'})))
+      .toBe("kubectl exec -it api-7f9 -- sh -c 'cd /var/www/html && php artisan tinker'")
+    // the machine's path is not a directory the image need have
+    expect(containerCommand(pod({path: '/home/me/app'})))
+      .toBe('kubectl exec -it api-7f9 -- php artisan tinker')
+
+    // the payload is read by the pod's own `sh`, which is posix, while the word
+    // the shell is given is quoted for the shell that reads the line
+    expect(containerCommand(pod({container_path: '/srv/app'}), 'win32'))
+      .toBe('kubectl exec -it api-7f9 -- sh -c "cd /srv/app && php artisan tinker"')
+    expect(containerCommand(pod({container_path: '/srv/my app', kube_namespace: 'a b'})))
+      .toBe("kubectl exec -it -n 'a b' api-7f9 -- sh -c 'cd '\\''/srv/my app'\\'' && php artisan tinker'")
+  })
+
+  test('asks the pod for a read with the same flags', () => {
+    const connection = pod({
+      kube_config: '/home/me/.kube/prod.yaml',
+      kube_context: 'prod-eu',
+      kube_namespace: 'production',
+      kube_container: 'php',
+      container_path: '/var/www/html',
+    })
+
+    expect(containerRead(connection, 'php -r 1'))
+      .toBe("kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -i -n production -c php api-7f9 -- sh -c 'cd /var/www/html && php -r 1'")
+    expect(containerRead(connection, 'php -r 1', 'win32'))
+      .toBe('kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -i -n production -c php api-7f9 -- sh -c "cd /var/www/html && php -r 1"')
+
+    // a pod's filesystem is its image's, so the machine's path is not a directory
+    // the read is given: a pod that names none is read where it starts
+    expect(containerRead(pod({path: '/home/me/app'}), 'php -r 1'))
+      .toBe('kubectl exec -i api-7f9 -- php -r 1')
+    expect(containerDir(pod({path: '/home/me/app'}))).toBe('')
+    // and the engine with a flag for it still falls back to the machine's path
+    expect(containerDir({container_engine: 'docker', path: '/srv/app'})).toBe('/srv/app')
+  })
+
+  test('lists the pods of the namespace and the cluster the connection names', () => {
+    expect(containerList('kubectl', 'posix', pod({kube_namespace: 'production'})))
+      .toBe("kubectl get pods -n production --no-headers -o custom-columns='NAME:.metadata.name,IMAGE:.spec.containers[0].image'")
+    expect(containerList('kubectl', 'win32', pod({
+      kube_config: '/c/kube/prod.yaml',
+      kube_context: 'prod-eu',
+      kube_namespace: 'production',
+    })))
+      .toBe('kubectl --kubeconfig /c/kube/prod.yaml --context prod-eu get pods -n production --no-headers -o custom-columns="NAME:.metadata.name,IMAGE:.spec.containers[0].image"')
+
+    // a listing with nothing named is the one it always was
+    expect(containerList('kubectl', 'posix', pod())).toBe(containerList('kubectl', 'posix'))
+  })
+
+  test('offers the contexts and the namespaces a pod can be in', () => {
+    // the contexts are the file's, so the question names the file and not one of
+    // the contexts in it
+    expect(kubeContextsCommand({kube_config: '/c k/kube.yaml'}, 'posix'))
+      .toBe("kubectl --kubeconfig '/c k/kube.yaml' config get-contexts -o name")
+    expect(kubeContextsCommand()).toBe('kubectl config get-contexts -o name')
+
+    // and the namespaces are the cluster's, which is the file and the context
+    expect(kubeNamespacesCommand({kube_context: 'prod-eu'}, 'posix'))
+      .toBe('kubectl --context prod-eu get namespaces -o name')
+
+    // `-o name` prints a namespace as its kind and its name, and the name is what
+    // `-n` takes; a context is printed as itself
+    expect(kubeNamesIn('namespace/production\nnamespace/staging\nnamespace/production\n'))
+      .toEqual(['production', 'staging'])
+    expect(kubeNamesIn('dev\nprod\n')).toEqual(['dev', 'prod'])
+    expect(kubeNamesIn('')).toEqual([])
+    expect(kubeNamesIn(null)).toEqual([])
   })
 })
 

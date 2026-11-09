@@ -26,6 +26,12 @@ describe('newConnection', () => {
       vapor_environment_id: '',
       vapor_environment_name: '',
       mcp_access: '',
+      // a kubectl connection's four fields, empty on a draft: an empty field is
+      // a flag left out of the command
+      kube_config: '',
+      kube_context: '',
+      kube_namespace: '',
+      kube_container: '',
     })
   })
 

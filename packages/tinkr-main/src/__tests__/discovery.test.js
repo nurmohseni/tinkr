@@ -2,7 +2,7 @@ jest.mock('../remote', () => ({exec: jest.fn()}))
 
 const {exec} = require('../remote')
 
-const {containers, projectDirs} = require('../services/discovery')
+const {containers, projectDirs, contexts, namespaces} = require('../services/discovery')
 
 const answered = (stdout, code = 0) => exec.mockResolvedValue({stdout, stderr: '', code})
 
@@ -71,5 +71,47 @@ describe('what a container connection can offer', () => {
     answered('', 1)
 
     expect(await projectDirs({container_engine: 'docker', container_name: 'gone'})).toEqual([])
+  })
+
+  // a pod in another namespace, or in another cluster, is not in the list of the
+  // one the current context reaches
+  test('lists the pods of the namespace and the cluster a connection names', async () => {
+    answered('NAME   IMAGE\napi-7f9  my/app:latest\n')
+
+    const found = await containers({
+      container_engine: 'kubectl',
+      kube_config: '/home/me/.kube/prod.yaml',
+      kube_context: 'prod-eu',
+      kube_namespace: 'production',
+    })
+
+    expect(found).toEqual([{name: 'api-7f9', image: 'my/app:latest'}])
+
+    const question = exec.mock.calls[0][1]
+
+    expect(question).toContain('--kubeconfig /home/me/.kube/prod.yaml')
+    expect(question).toContain('--context prod-eu')
+    expect(question).toContain('get pods -n production')
+  })
+
+  // a context and a namespace are names nobody should have to recall, and a
+  // machine that cannot list them offers nothing rather than failing
+  test('offers the contexts of a kubeconfig and the namespaces of a cluster', async () => {
+    answered('prod-eu\nstaging\n')
+
+    expect(await contexts({kube_config: '/home/me/.kube/prod.yaml'})).toEqual(['prod-eu', 'staging'])
+    expect(exec.mock.calls[0][1]).toBe("kubectl --kubeconfig /home/me/.kube/prod.yaml config get-contexts -o name")
+
+    // `-o name` prints a namespace as `namespace/<name>`, and the name is what
+    // the field and the flag take
+    answered('namespace/production\nnamespace/staging\n')
+
+    expect(await namespaces({kube_context: 'prod-eu'})).toEqual(['production', 'staging'])
+    expect(exec.mock.calls[1][1]).toBe('kubectl --context prod-eu get namespaces -o name')
+
+    answered('', 1)
+
+    expect(await contexts({})).toEqual([])
+    expect(await namespaces({})).toEqual([])
   })
 })

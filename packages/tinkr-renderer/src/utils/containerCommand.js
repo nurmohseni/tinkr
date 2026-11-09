@@ -94,9 +94,69 @@ export const appPlatform = () => {
 }
 
 /**
+ * A value as one word of a shell, quoted whatever it holds.
+ *
+ * For a command rather than a name: a command handed to `sh -c` is one word of
+ * the shell that reads the line, and an unquoted one is several. (the same rule
+ * as tinkr-core's shell.shellQuote)
+ *
+ * @param {String} value
+ * @param {String} platform the shell that will read the line
+ * @return {String}
+ */
+const whole = (value, platform) => (platform === 'win32'
+  ? cmdQuote(String(value))
+  : `'${String(value).replace(/'/g, "'\\''")}'`)
+
+/**
+ * What each of a kubectl connection's fields is a flag of the command.
+ *
+ * The fields are kept on the connection under names that say what they are, and
+ * kubectl takes them by letter or by a long option: what differs between the two
+ * is the flag, not the value. (the same table as tinkr-core's)
+ *
+ * @type {Object<String, String>}
+ */
+const KUBE_FLAGS = {
+  kube_config: '--kubeconfig',
+  kube_context: '--context',
+  kube_namespace: '-n',
+  kube_container: '-c',
+}
+
+/**
+ * The flags that name which cluster, namespace and container a kubectl command is
+ * about, as words of the shell that reads it.
+ *
+ * `--kubeconfig` and `--context` come before the verb, `-n` and `-c` after it,
+ * and a field left empty is a flag left out: a connection that names none builds
+ * exactly the line it built before the fields existed.
+ *
+ * @param {Record<String, any>} connection
+ * @param {String} shell the shell that will read the line
+ * @return {{cluster: String, namespace: String, container: String}}
+ */
+const kubeSelection = (connection, shell) => {
+  const flag = field => {
+    const text = String((connection || {})[field] || '').trim()
+
+    return text ? ` ${KUBE_FLAGS[field]} ${word(text, shell)}` : ''
+  }
+
+  const cluster = flag('kube_config') + flag('kube_context')
+
+  return {
+    cluster,
+    namespace: flag('kube_namespace'),
+    container: flag('kube_container'),
+  }
+}
+
+/**
  * @param {Record<String, any>} connection with `container_engine`,
  *   `container_name`, `container_command`, and `is_over_ssh` when the project is
- *   on another machine
+ *   on another machine; a kubectl one may also name `kube_config`,
+ *   `kube_context`, `kube_namespace` and `kube_container`
  * @param {String} [platform] the shell that will read the command, which is this
  *   machine's unless the project is reached over ssh
  * @return {String} the command, or '' when it names no container
@@ -108,6 +168,10 @@ export const containerCommand = ({
   path,
   container_path: inContainer,
   is_over_ssh: ssh,
+  kube_config: kubeconfig,
+  kube_context: context,
+  kube_namespace: namespace,
+  kube_container: podContainer,
 } = {}, platform = appPlatform()) => {
   // the line is typed into this machine's shell but read by the far login shell
   // when the connection is over ssh, and that one is a posix shell on every host
@@ -127,15 +191,26 @@ export const containerCommand = ({
   // which is the same thing for a project mounted in at its host path
   const dir = String((inContainer || path) || '').trim()
   const where = dir ? ` -w ${word(dir, shell)}` : ''
+  const kube = kubeSelection({kube_config: kubeconfig, kube_context: context, kube_namespace: namespace, kube_container: podContainer}, shell)
 
   switch (engine) {
     case 'sail':
       // laravel's wrapper around docker compose: the container is the service,
       // and the compose file already says where the project is mounted
       return `./vendor/bin/sail ${named} ${inside}`
-    case 'kubectl':
-      // kubectl has no working-directory flag: the container's own default
-      return `kubectl exec -it ${named} -- ${inside}`
+    case 'kubectl': {
+      // kubectl has no working-directory flag, so where the command runs is a
+      // `cd` inside the pod, handed to a shell there as one word (see
+      // tinkr-core's containerRead for the same shape). That payload's own words
+      // are posix, because every image this app reaches has a posix `sh`; the
+      // word the shell is given is quoted for the shell that reads this line.
+      // The machine's `path` is not the pod's — its filesystem is its image's —
+      // so only `container_path` is a directory there
+      const run = String(inContainer || '').trim()
+
+      return `kubectl${kube.cluster} exec -it${kube.namespace}${kube.container} ${named} -- ${
+        run ? `sh -c ${whole(`cd ${word(run, 'posix')} && ${inside}`, shell)}` : inside}`
+    }
     default:
       return `${engine} exec -it${where} ${named} ${inside}`
   }
