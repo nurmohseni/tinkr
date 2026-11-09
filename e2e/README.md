@@ -86,6 +86,7 @@ stays untouched.
 | `22-ai-autocomplete` | an inline completion request, its ghost text, and taking it |
 | `23-mcp-server` | the MCP server over JSON-RPC: handshake, tools, run, guard, snippets |
 | `24-laravel-cloud` | a token checked, saved and forgotten; a connection built from an application and its environment; a run through the API and what it printed; a missing permission; a stop |
+| `31-laravel-vapor` | a token checked, saved and forgotten; a connection built from a team, a project and its environment; a run through the API and what it printed; a request that broke after it may have started a command; a stop |
 
 ## The Laravel Cloud fake
 
@@ -109,6 +110,30 @@ The fixture serves two applications, one per page, so the picker's `links.next`
 is followed. `fail` forces a status for the calls whose path it matches, which
 is how a token that is valid and not permitted is driven. `requests` holds every
 call the app made, and `commands` what the fake started.
+
+## The Laravel Vapor fake
+
+`31-laravel-vapor` does the same for a Vapor connection, with
+[`support/fakeVapor.js`](./support/fakeVapor.js) and `TINKR_LARAVEL_VAPOR_URL`.
+The transport is real fetch, the body is real plain JSON, and the command the app
+posts is run the way an environment runs it — `php <project>/artisan <command>
+--no-interaction 2>&1`, in the fixture project.
+
+```js
+const vapor = await startFakeVapor({teams, fail: {status: 500, path: /\/commands$/}})
+const {page, close} = await launchTinkr(
+  {secrets: {'@laravel-vapor': 'fixture-vapor-token'}},
+  {env: {TINKR_LARAVEL_VAPOR_URL: vapor.url}},
+)
+```
+
+The fixture serves two teams, and two projects with their environments under the
+first, so each of the dialog's three pickers has something to choose between. An
+environment is named rather than numbered in the command's path, so the second
+one is a branch with a slash in it and the test reads the path back encoded as
+one segment. A command's answer carries its output as base64 of a JSON string,
+the way Vapor keeps it, and the log-shaped lines Vapor's runner drops are left
+out. `fail` and `requests` work as they do for Cloud.
 
 ## Environment-dependent flows
 

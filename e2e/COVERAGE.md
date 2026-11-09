@@ -34,6 +34,7 @@ exercise the surface through its UI, not through a stub of it.
 | List, current row, counts, quick/new buttons | `01-app-shell`, `02-connections` |
 | The four kinds and the fields each shows | `02-connections` |
 | The fifth kind, Laravel Cloud: the token notice, picking an application and an environment, the saved route | `24-laravel-cloud` |
+| The sixth kind, Laravel Vapor: picking a team, a project and an environment, the saved route | `31-laravel-vapor` |
 | Draft closed without being stored | `02-connections` |
 | Connect creates and switches the window | `02-connections` |
 | Save writes an edit, closing discards it, tags, production label | `02-connections` |
@@ -47,6 +48,7 @@ exercise the surface through its UI, not through a stub of it.
 | `closeConnection` (delete the last/current connection) | Not E2E; the window would quit |
 | SSH + container together | Not E2E; container and ssh are proven separately |
 | Cloud connection opens with the environment's status line and PHP version | `24-laravel-cloud` |
+| Vapor connection opens with its project and environment line, and no PHP version because Vapor reports none | `31-laravel-vapor` |
 
 ## Editor and documents
 
@@ -116,6 +118,7 @@ exercise the surface through its UI, not through a stub of it.
 | AI provider, endpoint, token, model, delay, check | `12-ai` |
 | MCP connection, entry, tools, client configure, copy | `16-mcp` |
 | Laravel Cloud token: a refused token, a saved one, forgetting it | `24-laravel-cloud` |
+| Laravel Vapor token: a refused token, a saved one, forgetting it | `31-laravel-vapor` |
 | Recording the AI/new-connection shortcuts | Not E2E; their default bindings are tested |
 | Every locale | Not E2E; one non-English locale is tested |
 | Light-theme palette beyond the `data-theme` attribute | Not E2E |
@@ -145,6 +148,20 @@ exercise the surface through its UI, not through a stub of it.
 | Command size limit, the API's error mapping, pagination without a next link | Unit (`tinkr-core` cloud tests) |
 | Cloud logs, live reflection and closure-valued snippet fields | Not available by design (see `laravel-cloud-plan.md`); a run says so rather than pretending |
 
+## Laravel Vapor
+
+| Surface | Proof |
+| --- | --- |
+| A snippet runs as one environment command, and its printed output and value come back | `31-laravel-vapor` |
+| The command's path names the environment as one segment, so a branch with a slash in it is encoded whole | `31-laravel-vapor` |
+| A request that failed without an answer says the command may have been started, and to check before running it again | `31-laravel-vapor` |
+| Stopping a run says Laravel Vapor keeps the command running | `31-laravel-vapor` |
+| The teams, projects and environments the picker draws come from three nested listings | `31-laravel-vapor` |
+| The token is checked, kept and forgotten, and a refused one is not kept | `31-laravel-vapor` |
+| The Vapor CLI login read from `~/.laravel-vapor/config.json` | Unit (`tinkr-core` vapor tests); the settings row that offers to import it is not driven |
+| Base64-of-JSON output, the done statuses, the command size limit, the API's error mapping | Unit (`tinkr-core` vapor tests) |
+| Vapor logs, and a command cancelled on the platform | Not available: the API offers neither, and a stop says the command keeps running |
+
 ## Updates and MCP
 
 | Surface | Proof |
@@ -173,6 +190,7 @@ All of these are exercised through the bridge, not called from a test:
 | Connections | `allConnections`, `getConnection`, `createConnection`, `updateConnection`, `deleteConnection`, `forgetPassword`, `connectConnection`, `reconnectConnection`, `quickConnect`, `listContainers`, `listProjectDirs` | `01`, `02`, `03`, `18`, `15` |
 | Session | `runConnection`, `inputConnection`, `stopConnection` | `04`, `19`, `24` |
 | Laravel Cloud | `cloudStatus`, `setCloudToken`, `forgetCloudToken`, `listCloudApplications` | `24` |
+| Laravel Vapor | `vaporStatus`, `setVaporToken`, `forgetVaporToken`, `listVaporProjects` | `31` |
 | Snippets and history | `allSnippets`, `createSnippet`, `updateSnippet`, `deleteSnippet`, `allHistory`, `clearHistory` | `06`, `07` |
 | Logs | `logFiles`, `logRead` | `13`, `15` |
 | AI and form | `aiProviders`, `aiAsk`, `aiComplete`, `aiCheck`, `aiFiles`, `parsePhpForm`, `stringifyPhpForm`, `phpCompletions` | `12`, `17`, `20`, `22` |
@@ -207,6 +225,8 @@ covered:
 - `24-laravel-cloud` runs against a fake API on loopback
   ([`support/fakeCloud.js`](./support/fakeCloud.js)); the commands it starts are
   real php processes in the fixture project, so no test reaches the network.
+  `31-laravel-vapor` does the same through
+  [`support/fakeVapor.js`](./support/fakeVapor.js).
 - A handful of edge branches are left to unit tests: update progress/failure,
   AI provider errors and non-OpenAI wire styles, query/result limits, Monolog's
   JSON entries, and the MCP tools that read the app's history.

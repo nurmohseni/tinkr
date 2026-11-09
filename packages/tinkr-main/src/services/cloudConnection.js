@@ -85,8 +85,12 @@ const connectCloud = async (connection, win) => {
     say(described(connection, environment))
 
     // the event the phpVersion service sends, in the shape it sends it, so the
-    // status bar reads a cloud connection exactly as it reads a local one
-    win.webContents.send('phpVersion', {version: environment.phpVersion || null})
+    // status bar reads a cloud connection exactly as it reads a local one. An
+    // environment that names no php did not say, which is not having none:
+    // `unknown` keeps the window from warning about a missing php
+    win.webContents.send('phpVersion', environment.phpVersion
+      ? {version: environment.phpVersion}
+      : {version: null, unknown: true})
   } catch (error) {
     say(`Laravel Cloud: ${error.message}`)
   }

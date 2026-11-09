@@ -66,7 +66,7 @@ describe('connecting to Laravel Vapor', () => {
     )
     // Vapor reports no php version for an environment, and the status bar is
     // told that rather than left showing the previous connection's
-    expect(win.webContents.send).toHaveBeenCalledWith('phpVersion', {version: null})
+    expect(win.webContents.send).toHaveBeenCalledWith('phpVersion', {version: null, unknown: true})
   })
 
   // the bug this waits against: the window had switched to another connection by

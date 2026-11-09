@@ -97,11 +97,11 @@ const connectVapor = async (connection, win) => {
 
     say(described(connection, environment))
 
-    // the event the phpVersion service sends, in the shape it sends it, so the
-    // status bar reads a Vapor connection exactly as it reads a local one. Vapor
-    // reports no php version for an environment, and null is the status bar's
-    // way of being told there is none rather than of showing a stale one
-    win.webContents.send('phpVersion', {version: null})
+    // the event the phpVersion service sends, in the shape it sends it. Vapor
+    // reports no php version for an environment, which is not the same as a
+    // connection with no php: `unknown` says so, so the window neither warns nor
+    // keeps the previous connection's version on show
+    win.webContents.send('phpVersion', {version: null, unknown: true})
   } catch (error) {
     say(`Laravel Vapor: ${error.message}`)
   }
