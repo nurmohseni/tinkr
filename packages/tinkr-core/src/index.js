@@ -22,6 +22,7 @@ module.exports = Object.assign(
   require('./unguardable'),
   require('./remoteCommand'),
   require('./cloud'),
+  require('./vapor'),
   require('./remote'),
   require('./explain'),
   // a namespace rather than flat names: `files` and `read` are what a log
