@@ -58,6 +58,40 @@ describe('a run as markdown', () => {
     expect(markdown).not.toContain('**Returned**')
   })
 
+  test('writes a value without what the run knew about it', () => {
+    const markdown = runMarkdown(run({
+      result: {
+        value: {id: 1, name: 'Ada', __tinkrClass: 'App\\Models\\User', __tinkrKey: 1, __tinkrRelations: ['posts']},
+        error: null,
+        output: '',
+        queries: [],
+        queriesTotal: 0,
+      },
+    }))
+
+    // a note about the value is not a field of it: the fence holds the data
+    expect(markdown).toContain('"id": 1')
+    expect(markdown).toContain('"name": "Ada"')
+    expect(markdown).not.toContain('__tinkrClass')
+    expect(markdown).not.toContain('__tinkrKey')
+    expect(markdown).not.toContain('__tinkrRelations')
+  })
+
+  test('writes a rendered value as the markup it is', () => {
+    const markdown = runMarkdown(run({
+      result: {
+        value: {__tinkrClass: 'Illuminate\\Support\\HtmlString', __tinkrHtml: '<b>x</b>'},
+        error: null,
+        output: '',
+        queries: [],
+        queriesTotal: 0,
+      },
+    }))
+
+    expect(markdown).toContain('**Returned**')
+    expect(markdown).toContain('<b>x</b>')
+    expect(markdown).not.toContain('__tinkrHtml')
+  })
   test('a print that carries a fence is held by a longer fence of its own', () => {
     const markdown = runMarkdown(run({
       result: {value: null, error: null, output: '```php\ninside a fence\n```', queries: []},

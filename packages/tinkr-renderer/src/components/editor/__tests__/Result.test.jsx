@@ -257,6 +257,106 @@ describe('the result panel', () => {
   })
 })
 
+describe('what a value was', () => {
+  test('names the class of an object on its own row', () => {
+    const markup = render({value: {a: 1, __tinkrClass: 'class@anonymous'}, error: null, output: '', imported: {}})
+
+    // the class is what the row says the value was, and it is not a field of it
+    expect(markup).toContain('class@anonymous')
+    expect(markup).toContain('tree__row')
+    expect(markup).not.toContain('__tinkrClass')
+  })
+
+  test('says what a view rendered, and where it came from', () => {
+    const value = {
+      __tinkrClass: 'Illuminate\\View\\View',
+      __tinkrHtml: '<!doctype html><html><body>hi</body></html>',
+      __tinkrView: 'welcome',
+      __tinkrData: ['nama'],
+    }
+    const markup = render({value, error: null, output: '', imported: {}})
+
+    expect(markup).toContain('Illuminate\\View\\View')
+    expect(markup).toContain('characters')
+    expect(markup).toContain('welcome')
+    expect(markup).not.toContain('__tinkrView')
+    expect(markup).not.toContain('__tinkrHtml')
+  })
+
+  test('offers a rendered value as the document it is, and runs nothing in it', () => {
+    const value = {__tinkrClass: 'Illuminate\\Support\\HtmlString', __tinkrHtml: '<b>x</b>'}
+    const result = {value, error: null, output: '', imported: {}}
+
+    // `<b>x</b>` alone is not markup by its own characters: the run said it was
+    expect(offers(render(result, 'organized'), 'html')).toBe(true)
+
+    const html = render(result, 'html')
+
+    expect(html).toContain('html-view__frame')
+    expect(html).toContain('sandbox=""')
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;')
+  })
+
+  test('reads a closure by its signature, and an enum by its case', () => {
+    const closure = render({
+      value: {__tinkrClass: 'Closure', __tinkrClosure: {params: ['int $n = 2'], uses: ['outside']}},
+      error: null,
+      output: '',
+      imported: {},
+    })
+    const variant = render({
+      value: {__tinkrClass: 'Suit', __tinkrEnum: 'H', __tinkrBacked: 'h'},
+      error: null,
+      output: '',
+      imported: {},
+    })
+
+    expect(closure).toContain('Closure(int $n = 2) use ($outside)')
+    expect(closure).not.toContain('__tinkrClosure')
+    expect(variant).toContain('Suit::H')
+    expect(variant).toContain('&quot;h&quot;')
+  })
+
+  test('names a model\'s key and the relations it already had', () => {
+    const markup = render({
+      value: {id: 1, name: 'Ada', __tinkrClass: 'App\\Models\\User', __tinkrKey: 1, __tinkrRelations: ['posts']},
+      error: null,
+      output: '',
+      imported: {},
+    })
+
+    expect(markup).toContain('App\\Models\\User')
+    expect(markup).toContain('#1')
+    expect(markup).toContain('posts')
+    expect(markup).not.toContain('__tinkrRelations')
+  })
+
+  test('gives a table no column for what the run knew', () => {
+    const value = [
+      {id: 1, name: 'Ada', __tinkrClass: 'App\\Models\\User', __tinkrKey: 1},
+      {id: 2, name: 'Bob', __tinkrClass: 'App\\Models\\User', __tinkrKey: 2},
+    ]
+    const table = render({value, error: null, output: '', imported: {}}, 'table')
+
+    expect(table).toContain('scope="col"')
+    expect(table).toContain('Ada')
+    expect(table).not.toContain('__tinkrClass')
+    expect(table).not.toContain('__tinkrKey')
+  })
+
+  test('reads the raw text of a value without what the run knew', () => {
+    const raw = render({
+      value: {id: 1, __tinkrClass: 'App\\Models\\User'},
+      error: null,
+      output: '',
+      imported: {},
+    }, 'raw')
+
+    expect(raw).toContain('&quot;id&quot;')
+    expect(raw).not.toContain('__tinkrClass')
+  })
+})
+
 describe('where an error was thrown', () => {
   const threw = error => ({
     value: null,

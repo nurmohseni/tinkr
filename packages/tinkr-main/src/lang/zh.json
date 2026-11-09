@@ -445,6 +445,8 @@
     "table": "表格",
     "graph": "图形",
     "html": "HTML",
+    "html_size": "{count, plural, other {# 个字符}}",
+    "html_cut": "已截断",
     "show_all": "显示全部 {count, plural, other {# 个字符}}",
     "csv": "CSV",
     "copy_csv": "复制 CSV",

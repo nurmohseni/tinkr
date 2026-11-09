@@ -1,7 +1,12 @@
 import {
   cellOf,
+  classOf,
+  entriesOf,
   htmlDocument,
+  htmlOf,
+  isList,
   looksLikeHtml,
+  plainValue,
   readingOf,
   readingsOf,
   scalarClass,
@@ -77,6 +82,72 @@ describe('test toCsv', () => {
     const many = Array.from({length: 502}, (_, index) => ({n: index}))
 
     expect(toCsv(['n'], many).split('\r\n')).toHaveLength(504)
+  })
+})
+
+describe('what the envelope says about a value', () => {
+  // a value as a run answers it: a model's fields, then what the run knew
+  const model = {
+    id: 1,
+    name: 'Ada',
+    __tinkrClass: 'App\\Models\\User',
+    __tinkrKey: 1,
+    __tinkrRelations: ['posts'],
+  }
+
+  test('should read the fields of a value, and never a note about it', () => {
+    expect(entriesOf(model)).toEqual([['id', 1], ['name', 'Ada']])
+    expect(classOf(model)).toBe('App\\Models\\User')
+    expect(isList(model)).toBe(false)
+  })
+
+  test('should read the value a record carries under the map, in the order it ran', () => {
+    const map = {__tinkrMap: {b: 2, a: 1}, __tinkrKeys: ['a', 'b'], __tinkrClass: 'Some\\Map'}
+
+    expect(entriesOf(map)).toEqual([['a', 1], ['b', 2]])
+
+    const list = {__tinkrClass: 'Illuminate\\Support\\Collection', __tinkrMap: [{id: 1}, {id: 2}]}
+
+    expect(isList(list)).toBe(true)
+    expect(entriesOf(list)).toHaveLength(2)
+  })
+
+  test('should give a table its columns from the fields, and no column for a note', () => {
+    const table = tableOf([model, {id: 2, name: 'Bob', __tinkrClass: 'App\\Models\\User'}])
+
+    expect(table.columns).toEqual(['id', 'name'])
+    expect(toCsv(table.columns, table.rows)).toBe('id,name\r\n1,Ada\r\n2,Bob\r\n')
+  })
+
+  test('should offer the table of a list a value carries', () => {
+    const rows = {__tinkrClass: 'Illuminate\\Support\\Collection', __tinkrMap: [{id: 1}, {id: 2}]}
+
+    expect(tableOf(rows)).toMatchObject({columns: ['id'], more: 0})
+  })
+
+  test('should offer markup a value rendered, without looking for tags in it', () => {
+    const html = {__tinkrClass: 'Illuminate\\Support\\HtmlString', __tinkrHtml: '<b>x</b>'}
+
+    // `<b>` alone is not markup by its first characters: the envelope said it
+    expect(looksLikeHtml('<b>x</b>')).toBe(false)
+    expect(htmlOf(html)).toBe('<b>x</b>')
+    expect(readingsOf([html])).toEqual(['organized', 'html', 'raw'])
+    expect(readingOf('html', html)).toBe('html')
+  })
+
+  test('should write the value a copy is made of, with none of the notes in it', () => {
+    expect(plainValue(model)).toEqual({id: 1, name: 'Ada'})
+    expect(plainValue({__tinkrClass: 'X', __tinkrHtml: '<p>a</p>'})).toBe('<p>a</p>')
+    expect(plainValue({__tinkrClass: 'Y', __tinkrMap: 'cast'})).toBe('cast')
+    expect(plainValue({
+      __tinkrClass: 'Suit',
+      __tinkrEnum: 'H',
+      __tinkrBacked: 'h',
+    })).toBe('h')
+    expect(plainValue({
+      __tinkrClass: 'Closure',
+      __tinkrClosure: {params: ['int $n = 2'], uses: ['outside']},
+    })).toBe('Closure(int $n = 2) use ($outside)')
   })
 })
 

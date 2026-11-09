@@ -445,6 +445,8 @@
     "table": "table",
     "graph": "graph",
     "html": "html",
+    "html_size": "{count, plural, one {# character} other {# characters}}",
+    "html_cut": "cut",
     "show_all": "Show all {count, plural, one {# character} other {# characters}}",
     "csv": "CSV",
     "copy_csv": "Copy CSV",

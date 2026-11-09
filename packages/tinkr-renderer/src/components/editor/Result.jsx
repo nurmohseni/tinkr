@@ -16,6 +16,8 @@ import {endingSentence, memoryLabel, statsLine} from '../../utils/runFacts'
 import {
   entriesOf,
   isComposite,
+  isList,
+  plainValue,
   READINGS,
   readingOf,
   readingsOf,
@@ -26,12 +28,13 @@ import {
 /**
  * The result of the last run, as the design's value tree.
  *
- * The value comes from the session as json, so the app knows the shape of what
- * came back but not the class behind it: a node is drawn as `array`/`object`
- * with its size, and the leaves carry the design's colour-coded types. An
- * exception is the one thing the envelope describes in full — its class, the
- * line of the throw, and the frames it came through — while the class behind a
- * value is still not among what a run answers.
+ * The value comes from the session as json, with what the envelope says about it
+ * under reserved `__tinkr` keys: the class an object was, the case an enum is,
+ * the signature a closure has, the markup a view rendered. The tree says that on
+ * the value's own row, and a copy of the value leaves it out, because a reader
+ * pasting it wants what the run answered and not the notes about it. An
+ * exception is described in full — its class, the line of the throw, and the
+ * frames it came through.
  *
  * A value is read in one of several ways, and the run's own strip carries the
  * one that is on: the tree, the table of a list of records, the graph of
@@ -51,7 +54,7 @@ import {
 // keeping the glyph that is already there. A value is named by its type and its
 // size, which keeps the key cheap; the tree under it is the reading that counts.
 const answerKey = (kind, value) => (value !== null && typeof value === 'object'
-  ? `${kind}:${Array.isArray(value) ? 'array' : 'object'}:${entriesOf(value).length}`
+  ? `${kind}:${isList(value) ? 'array' : 'object'}:${entriesOf(value).length}`
   : `${kind}:${String(value)}`)
 
 const failureKey = error => `threw:${error.class}:${error.message}`
@@ -67,12 +70,16 @@ const failureKey = error => `threw:${error.class}:${error.message}`
  * @return {String|null}
  */
 const describe = (intl, value) => {
-  if (Array.isArray(value)) {
-    return intl.formatMessage({id: 'result.items'}, {count: value.length})
-  }
-
   if (isComposite(value)) {
-    return intl.formatMessage({id: 'result.keys'}, {count: Object.keys(value).length})
+    const entries = entriesOf(value)
+
+    // a value whose content is not a set of fields — a rendered view, a closure,
+    // an enum case — is named by its own row, and a count is no fact about it
+    if (entries.length === 0) {
+      return null
+    }
+
+    return intl.formatMessage({id: isList(value) ? 'result.items' : 'result.keys'}, {count: entries.length})
   }
 
   const id = {
@@ -84,7 +91,9 @@ const describe = (intl, value) => {
   return id ? intl.formatMessage({id}) : null
 }
 
-const json = value => JSON.stringify(value, null, 2)
+// the copy of a value: what the run answered with, without what the envelope
+// says about it, because a reader pasting it wants the value and not the notes
+const json = value => JSON.stringify(plainValue(value), null, 2)
 
 /** The reading the switch shows as on: a view this run does not have is its tree. */
 const onReading = (views, view) => (views.includes(view) ? view : 'organized')
@@ -189,7 +198,7 @@ const ReadingActions = ({value, view, children = null}) => {
         className='btn btn--ghost btn--sm'
         type='button'
         title={intl.formatMessage({id: 'result.copy_json'})}
-        onClick={() => copy(value)}
+        onClick={() => copy(plainValue(value))}
       >
         {intl.formatMessage({id: 'result.copy_short'})}
       </button>

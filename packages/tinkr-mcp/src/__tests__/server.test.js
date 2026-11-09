@@ -84,6 +84,42 @@ describe('the tools', () => {
     expect(render({blocks: [], value: null, error: null, output: ''})).toBe('no value returned')
   })
 
+  test('answers what a value was, in the text a model reads and the value a client gets', async () => {
+    const value = {
+      id: 1,
+      name: 'Ada',
+      __tinkrClass: 'App\\Models\\User',
+      __tinkrKey: 1,
+      __tinkrRelations: ['posts'],
+    }
+    const {server} = opened({
+      at: project,
+      run: async () => envelope({value, blocks: [{line: 1, value, error: null}]}),
+    })
+
+    const answer = await server.call('tinkr_run_php', {code: '$user;'})
+
+    // the same keys in both forms: the text and the structured value are one run
+    expect(answer.content[0].text).toContain('"__tinkrClass": "App\\\\Models\\\\User"')
+    expect(answer.content[0].text).toContain('"__tinkrKey": 1')
+    expect(answer.structuredContent.value.__tinkrClass).toBe('App\\Models\\User')
+    expect(answer.structuredContent.value.__tinkrRelations).toEqual(['posts'])
+    expect(answer.structuredContent.blocks[0].value.__tinkrKey).toBe(1)
+  })
+
+  test('hides a field of a value, and never what the value says about itself', async () => {
+    const value = {name: 'Ada', password: 'hunter2', __tinkrClass: 'App\\Models\\User', __tinkrKey: 1}
+    const {server} = opened({
+      at: project,
+      run: async () => envelope({value, blocks: [{line: 1, value, error: null}]}),
+    })
+
+    const answer = await server.call('tinkr_run_php', {code: '$user;'})
+
+    expect(answer.structuredContent.value.password).toBe('[hidden]')
+    expect(answer.structuredContent.value.__tinkrClass).toBe('App\\Models\\User')
+  })
+
   test('cuts what a run printed rather than handing a model a megabyte of it', () => {
     const text = render({blocks: [], value: null, error: null, output: 'x'.repeat(200000)})
 

@@ -11,9 +11,129 @@
 /** The tree's own test, repeated here because a reading is decided without it. */
 export const isComposite = value => value !== null && typeof value === 'object'
 
-export const entriesOf = value => (Array.isArray(value)
-  ? value.map((item, index) => [index, item])
-  : Object.entries(value))
+/**
+ * Everything the envelope says about a value is written under `__tinkr`, beside
+ * the value rather than in it: the class it had, the markup it rendered to, the
+ * case an enum is, the names a closure closed over, a model's key and loaded
+ * relations. Those keys are not fields of the value, so no tree draws one and no
+ * table has a column for one.
+ */
+const META = /^__tinkr/
+
+/** Whether a name is what the envelope says about a value rather than a field. */
+const isMetaKey = name => typeof name === 'string' && META.test(name)
+
+/** A record is an object that carries fields; a list is not one. */
+export const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+/**
+ * The value a record carries, which for a record of fields is the record
+ * itself: a value that is not a set of fields — a serialized list, an enum case,
+ * a stringable wrapper — is written under `__tinkrMap`.
+ */
+export const contentOf = value => (isRecord(value) && '__tinkrMap' in value ? value.__tinkrMap : value)
+
+/** Whether the value is a list, which is the shape a table has. */
+export const isList = value => Array.isArray(contentOf(value))
+
+/** The class the value had, when the envelope said what it was. */
+export const classOf = value => (isRecord(value) && typeof value.__tinkrClass === 'string'
+  ? value.__tinkrClass
+  : null)
+
+/** The markup a value rendered to, if it rendered any. */
+export const markupOf = value => (isRecord(value) && typeof value.__tinkrHtml === 'string'
+  ? value.__tinkrHtml
+  : null)
+
+/** The fields of a value, in the order the envelope said they ran in. */
+const namesOfRecord = (value, content) => {
+  const keys = Array.isArray(value.__tinkrKeys)
+    ? value.__tinkrKeys.filter(name => Object.prototype.hasOwnProperty.call(content, name) && !isMetaKey(name))
+    : null
+
+  return keys || Object.keys(content).filter(name => !isMetaKey(name))
+}
+
+export const entriesOf = value => {
+  const content = contentOf(value)
+
+  if (Array.isArray(content)) {
+    return content.map((item, index) => [index, item])
+  }
+
+  if (content === null || typeof content !== 'object') {
+    return []
+  }
+
+  return namesOfRecord(value, content).map(name => [name, content[name]])
+}
+
+/**
+ * The value without what the envelope says about it: the copy a reader pastes
+ * somewhere, where a metadata key would read as a field the run never had, and
+ * a rendered value reads as the markup it is.
+ *
+ * @param {any} value
+ * @return {any}
+ */
+export const plainValue = value => {
+  if (Array.isArray(value)) {
+    return value.map(plainValue)
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  if (typeof value.__tinkrHtml === 'string') {
+    return value.__tinkrHtml
+  }
+
+  if (typeof value.__tinkrEnum === 'string') {
+    return '__tinkrBacked' in value
+      ? plainValue(value.__tinkrBacked)
+      : `${value.__tinkrClass || ''}::${value.__tinkrEnum}`
+  }
+
+  if (isRecord(value.__tinkrClosure)) {
+    return closureText(value.__tinkrClosure)
+  }
+
+  if ('__tinkrMap' in value) {
+    return plainValue(value.__tinkrMap)
+  }
+
+  return Object.fromEntries(Object.entries(value)
+    .filter(([name]) => !isMetaKey(name))
+    .map(([name, item]) => [name, plainValue(item)]))
+}
+
+/**
+ * A closure as php writes its signature: what it takes, and the names it closed
+ * over — never what any of them is worth.
+ *
+ * @param {{params: Array<String>, uses: Array<String>}} closure
+ * @return {String}
+ */
+export const closureText = closure => {
+  const params = Array.isArray(closure.params) ? closure.params : []
+  const uses = Array.isArray(closure.uses) ? closure.uses : []
+  const bound = uses.length ? ` use (${uses.map(name => `$${name}`).join(', ')})` : ''
+
+  return `Closure(${params.join(', ')})${bound}`
+}
+
+/**
+ * An enum case, as php writes it: the case, and the value behind it when it is
+ * backed. The class is part of the name, so this is the whole of it.
+ *
+ * @param {Object} value the record
+ * @return {{name: String, backed: Boolean}}
+ */
+export const enumOf = value => (isRecord(value) && typeof value.__tinkrEnum === 'string'
+  ? {name: `${value.__tinkrClass || ''}::${value.__tinkrEnum}`, backed: '__tinkrBacked' in value}
+  : null)
 
 // a table is read a window at a time: the pane is short, and the rows past this
 // one are still exported whole, they are just not in the dom
@@ -59,9 +179,7 @@ export const scalarClass = value => ({
 /** How a leaf is written: a string is quoted the way the session printed it. */
 export const scalarText = value => (typeof value === 'string' ? JSON.stringify(value) : String(value))
 
-const namesOf = row => (Array.isArray(row)
-  ? row.map((item, index) => String(index))
-  : Object.keys(row))
+const namesOf = row => entriesOf(row).map(([name]) => String(name))
 
 /**
  * The table reading of a value: a list whose every item is a row of keyed
@@ -69,17 +187,20 @@ const namesOf = row => (Array.isArray(row)
  *
  * A list of scalars is not a table — its rows would be one column of the same
  * values the tree already draws one under the other — and neither is anything
- * that is not a list.
+ * that is not a list. What the envelope says about a row — its class, a model's
+ * key — is not a column of it: a table is the data, not the metadata.
  *
  * @param {any} value
  * @return {{rows: Array, columns: Array<String>, shown: Array, more: Number}|null}
  */
 export const tableOf = value => {
-  if (!Array.isArray(value) || value.length === 0) {
+  const content = contentOf(value)
+
+  if (!Array.isArray(content) || content.length === 0) {
     return null
   }
 
-  if (!value.every(isComposite)) {
+  if (!content.every(isComposite)) {
     return null
   }
 
@@ -87,7 +208,7 @@ export const tableOf = value => {
   // them, so a row that carries a key the others do not still gets a column
   const columns = []
 
-  for (const row of value) {
+  for (const row of content) {
     for (const name of namesOf(row)) {
       if (!columns.includes(name)) {
         columns.push(name)
@@ -96,10 +217,10 @@ export const tableOf = value => {
   }
 
   return {
-    rows: value,
+    rows: content,
     columns,
-    shown: value.slice(0, ROWS_READ),
-    more: value.length - Math.min(value.length, ROWS_READ),
+    shown: content.slice(0, ROWS_READ),
+    more: content.length - Math.min(content.length, ROWS_READ),
   }
 }
 
@@ -161,10 +282,10 @@ export const cellOf = (value, {plain = false} = {}) => {
  * @return {String}
  */
 export const compositeText = (intl, value) => {
-  const isList = Array.isArray(value)
+  const list = isList(value)
   const size = entriesOf(value).length
 
-  return `${intl.formatMessage({id: isList ? 'result.array' : 'result.object'})} · ${size}`
+  return `${intl.formatMessage({id: list ? 'result.array' : 'result.object'})} · ${size}`
 }
 
 // a text cell a spreadsheet would read as a formula: Excel, LibreOffice and
@@ -182,7 +303,7 @@ const csvCell = value => {
   }
 
   if (isComposite(value)) {
-    return neutral(JSON.stringify(value))
+    return neutral(JSON.stringify(plainValue(value)))
   }
 
   return typeof value === 'string' ? neutral(value) : String(value)
@@ -286,6 +407,24 @@ export const htmlDocument = value => {
   return `${SHELL}${value}</body></html>`
 }
 
+/**
+ * What a value renders to, when it is markup: a string the run returned, or a
+ * value the envelope rendered — a view, a mailable, an `Htmlable` component.
+ * Null for anything that is not markup, which is what the reading is offered on.
+ *
+ * @param {any} value
+ * @return {String|null}
+ */
+export const htmlOf = value => {
+  const rendered = markupOf(value)
+
+  if (rendered !== null) {
+    return rendered
+  }
+
+  return looksLikeHtml(value) ? value : null
+}
+
 /** Every reading there is, in the order the switch offers them. */
 export const READINGS = ['organized', 'table', 'graph', 'html', 'raw']
 
@@ -304,7 +443,7 @@ export const readingsOf = values => {
       case 'graph':
         return list.some(value => graphOf(value))
       case 'html':
-        return list.some(value => looksLikeHtml(value))
+        return list.some(value => htmlOf(value) !== null)
       default:
         return true
     }
@@ -328,7 +467,7 @@ export const readingOf = (view, value) => {
     case 'graph':
       return graphOf(value) ? 'graph' : 'organized'
     case 'html':
-      return looksLikeHtml(value) ? 'html' : 'organized'
+      return htmlOf(value) !== null ? 'html' : 'organized'
     default:
       return 'organized'
   }

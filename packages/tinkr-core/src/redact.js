@@ -114,6 +114,17 @@ const redactValue = (value, fields) => {
 }
 
 /**
+ * What the envelope says about a value rather than a field of it. Those keys are
+ * never hidden, whatever the setting names: hiding them would lose the class a
+ * value had, the key a model is known by, the markup a view rendered, and the
+ * `[hidden]` in their place would read as a field the run never had.
+ *
+ * @param {String} key
+ * @return {Boolean}
+ */
+const isMetaKey = key => key.startsWith('__tinkr')
+
+/**
  * @param {any} value
  * @param {function(String): Boolean} hidden
  * @return {any}
@@ -130,7 +141,15 @@ const walk = (value, hidden) => {
   const copy = {}
 
   for (const key of Object.keys(value)) {
-    copy[key] = hidden(key) ? HIDDEN : walk(value[key], hidden)
+    if (!isMetaKey(key)) {
+      copy[key] = hidden(key) ? HIDDEN : walk(value[key], hidden)
+
+      continue
+    }
+
+    // `__tinkrMap` is the value itself, so its fields are hidden like any other;
+    // every other note is about the value and is kept as it was
+    copy[key] = key === '__tinkrMap' ? walk(value[key], hidden) : value[key]
   }
 
   return copy

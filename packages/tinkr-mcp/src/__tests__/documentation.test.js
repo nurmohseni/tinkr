@@ -67,4 +67,17 @@ describe('the documentation', () => {
       expect(answer.text).toContain(topic.name)
     }
   })
+
+  test('names what a value carries about itself, so a reader can read the keys', () => {
+    const text = documentation('reading').text
+
+    // every note the encoder writes is described where the values are
+    for (const key of [
+      '__tinkrClass', '__tinkrMap', '__tinkrKeys', '__tinkrHtml', '__tinkrHtmlCut',
+      '__tinkrView', '__tinkrData', '__tinkrKey', '__tinkrRelations', '__tinkrClosure',
+      '__tinkrEnum', '__tinkrBacked', '__tinkrVersion', '__tinkrEnvironment', '__tinkrBasePath',
+    ]) {
+      expect(text).toContain(key)
+    }
+  })
 })

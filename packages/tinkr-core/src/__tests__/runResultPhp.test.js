@@ -54,7 +54,9 @@ const into = dir => `chdir('${dir}');`
  */
 const runPhp = (source, after = '', before = '') => {
   const run = wrapRun(source)
-  const out = execFileSync('php', [], {encoding: 'utf8', input: `<?php ${before} ${run.code}${after}`})
+  // a run that renders a page answers with more than a command line holds by
+  // default, and a buffer that cuts it would read as a run that printed nothing
+  const out = execFileSync('php', [], {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, input: `<?php ${before} ${run.code}${after}`})
   const at = out.indexOf(`${run.marker}@`)
 
   if (at < 0) {
@@ -86,7 +88,7 @@ const runPhpFatal = source => {
   let out = ''
 
   try {
-    out = execFileSync('php', [], {encoding: 'utf8', input: `<?php ${run.code}`})
+    out = execFileSync('php', [], {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, input: `<?php ${run.code}`})
   } catch (failure) {
     out = failure.stdout || ''
   }
@@ -421,9 +423,10 @@ describe('the values a run answers with', () => {
       nan: 'NAN',
       big: '9007199254740993',
       bytes: '0xb131',
-      emptyObject: {},
+      emptyObject: {__tinkrClass: 'stdClass'},
       emptyList: [],
-      child: {value: 'nested'},
+      child: {value: 'nested', __tinkrClass: 'stdClass'},
+      __tinkrClass: 'stdClass',
     })
     // an object that had no fields is `{}` and a list that had none is `[]`:
     // they must not collapse into one another
@@ -447,7 +450,7 @@ describe('the values a run answers with', () => {
       'new TinkrVisible();',
     )
 
-    expect(payload.value).toEqual({shown: 'yes'})
+    expect(payload.value).toEqual({shown: 'yes', __tinkrClass: 'TinkrVisible'})
   })
 
   test('bounds an object that refers back to itself', () => {
@@ -459,7 +462,7 @@ describe('the values a run answers with', () => {
     )
 
     expect(payload.error).toBe(null)
-    expect(payload.value).toEqual({self: '[recursion]', name: 'cycle'})
+    expect(payload.value).toEqual({self: '[recursion]', name: 'cycle', __tinkrClass: 'stdClass'})
   })
 
   test('bounds a value nested deeper than the walk goes', () => {
@@ -485,6 +488,7 @@ describe('values php has its own json shape for', () => {
       date: '2026-10-27 10:00:00.000000',
       timezone_type: 2,
       timezone: 'Z',
+      __tinkrClass: 'DateTime',
     })
   })
 
@@ -496,8 +500,9 @@ describe('values php has its own json shape for', () => {
       date: '2026-10-27 10:00:00.000000',
       timezone_type: 3,
       timezone: 'UTC',
+      __tinkrClass: 'DateTime',
     })
-    expect(zone.payload.value).toEqual({timezone_type: 3, timezone: 'Europe/Paris'})
+    expect(zone.payload.value).toEqual({timezone_type: 3, timezone: 'Europe/Paris', __tinkrClass: 'DateTimeZone'})
   })
 
   test('walks the values an ArrayObject holds, in the object json wrote for it', () => {
@@ -506,7 +511,7 @@ describe('values php has its own json shape for', () => {
     // the storage is walked, so the unsafe scalars inside it are described
     // rather than handed to json_encode as 0 or dropped
     expect(payload.error).toBe(null)
-    expect(payload.value).toEqual({nested: ['INF'], bad: '0xb1'})
+    expect(payload.value).toEqual({nested: ['INF'], bad: '0xb1', __tinkrClass: 'ArrayObject'})
   })
 
   test('writes an ArrayObject with a list for storage as an object, as json did', () => {
@@ -515,14 +520,16 @@ describe('values php has its own json shape for', () => {
     // json_encode wrote `{"0":…,"1":…}` for an ArrayObject whatever its keys
     // were, so the list does not become a list here
     expect(Array.isArray(payload.value)).toBe(false)
-    expect(payload.value).toEqual({0: 'INF', 1: '-INF'})
+    expect(payload.value).toEqual({0: 'INF', 1: '-INF', __tinkrClass: 'ArrayObject'})
   })
 
   test('walks the elements of a SplFixedArray, as a list', () => {
     const {payload} = runPhp('SplFixedArray::fromArray([INF, 3]);')
 
+    // the elements are a list, and the class rides beside it: a json array has
+    // nowhere to write what it was
     expect(payload.error).toBe(null)
-    expect(payload.value).toEqual(['INF', 3])
+    expect(payload.value).toEqual({__tinkrClass: 'SplFixedArray', __tinkrMap: ['INF', 3]})
   })
 })
 
@@ -540,8 +547,8 @@ describe('a value that serializes itself', () => {
     // one snapshot, taken after the snippet ended: the block and the run's
     // final value are the same one, so the serializer ran once and not once for
     // the block and once again for the value
-    expect(payload.blocks[1].value).toEqual({calls: 1})
-    expect(payload.value).toEqual({calls: 1})
+    expect(payload.blocks[1].value).toEqual({calls: 1, __tinkrClass: 'TinkrQuietCount'})
+    expect(payload.value).toEqual({calls: 1, __tinkrClass: 'TinkrQuietCount'})
     expect(tail).toContain('|COUNTER=1')
   })
 
@@ -560,7 +567,7 @@ describe('a value that serializes itself', () => {
     // serializer, so the counter the `if` read had already been changed
     expect(printed).toBe('GOOD')
     expect(payload.error).toBe(null)
-    expect(payload.blocks[1].value).toBe(1)
+    expect(payload.blocks[1].value).toEqual({__tinkrClass: 'class@anonymous', __tinkrMap: 1})
   })
 
   test('describes one object once however many blocks hold it', () => {
@@ -576,9 +583,9 @@ describe('a value that serializes itself', () => {
     // the same object in three statement values is one answer: a serializer that
     // prints would otherwise print once for each block that held it
     expect(printed).toBe('serialized')
-    expect(payload.blocks[1].value).toEqual({ok: true})
-    expect(payload.blocks[2].value).toEqual({ok: true})
-    expect(payload.value).toEqual({ok: true})
+    expect(payload.blocks[1].value).toEqual({ok: true, __tinkrClass: 'TinkrLoudOnce'})
+    expect(payload.blocks[2].value).toEqual({ok: true, __tinkrClass: 'TinkrLoudOnce'})
+    expect(payload.value).toEqual({ok: true, __tinkrClass: 'TinkrLoudOnce'})
   })
 
   test('keeps what the serializer printed outside the envelope', () => {
@@ -594,7 +601,7 @@ describe('a value that serializes itself', () => {
     // parses
     expect(printed).toBe('serializer-printed')
     expect(payload.error).toBe(null)
-    expect(payload.value).toEqual({ok: true})
+    expect(payload.value).toEqual({ok: true, __tinkrClass: 'TinkrLoud'})
   })
 
   test('describes a serializer that throws', () => {
@@ -620,8 +627,144 @@ describe('a value that serializes itself', () => {
       '$cycle;',
     )
 
+    // the walk met the object it was walking: the value is described as the
+    // recursion it is, and the class still says what it was
     expect(payload.error).toBe(null)
-    expect(payload.value).toBe('[recursion]')
+    expect(payload.value).toEqual({__tinkrClass: 'TinkrSelfSerializer', __tinkrMap: '[recursion]'})
+  })
+})
+
+describe('what a value is', () => {
+  // the framework's interface, so the branch that renders markup is reachable
+  // without a laravel application: a statement of its own, because the wrapper
+  // evals a statement at a time and a `namespace` at the top of a file only
+  // holds for the file it is written in
+  const HTMLABLE = "eval('namespace Illuminate\\\\Contracts\\\\Support; interface Htmlable { public function toHtml(); }');"
+
+  test('names the class of an object, and of an anonymous one without its file', () => {
+    const named = runPhp('class TinkrNamed { public $a = 1; }\nnew TinkrNamed();')
+    const anonymous = runPhp('new class { public $a = 1; }')
+
+    expect(named.payload.value).toEqual({a: 1, __tinkrClass: 'TinkrNamed'})
+    expect(anonymous.payload.value).toEqual({a: 1, __tinkrClass: 'class@anonymous'})
+    // the name php gives an anonymous class carries the file it was written in,
+    // which is nothing the value is
+    expect(JSON.stringify(anonymous.payload.value)).not.toContain('.php')
+  })
+
+  test('keeps a field named like a reserved key under the map', () => {
+    const {payload} = runPhp('$o = new stdClass();\n$o->__tinkrClass = "fake";\n$o->a = 1;\n$o;')
+
+    // a field of the value is never read as what the envelope says about it
+    expect(payload.value).toEqual({
+      __tinkrClass: 'stdClass',
+      __tinkrMap: {__tinkrClass: 'fake', a: 1},
+      __tinkrKeys: ['__tinkrClass', 'a'],
+    })
+  })
+
+  test('describes an enum as its case, with the value behind a backed one', () => {
+    const backed = runPhp("enum TinkrSuit: string { case H = 'h'; }\nTinkrSuit::H;")
+    const pure = runPhp('enum TinkrDir { case Up; }\nTinkrDir::Up;')
+
+    expect(backed.payload.value).toEqual({__tinkrClass: 'TinkrSuit', __tinkrEnum: 'H', __tinkrBacked: 'h'})
+    expect(pure.payload.value).toEqual({__tinkrClass: 'TinkrDir', __tinkrEnum: 'Up'})
+  })
+
+  test('describes a closure by its signature and the names it closed over', () => {
+    const {payload} = runPhp(
+      '$outside = 1;\n' +
+      '(function (int $n = 2, string $s = "x", &$byRef = null, ...$rest) use ($outside) { return $n; });',
+    )
+
+    // the bound name, never the value behind it
+    expect(payload.value).toEqual({
+      __tinkrClass: 'Closure',
+      __tinkrClosure: {
+        params: ['int $n = 2', "string $s = 'x'", '&$byRef = null', '...$rest'],
+        uses: ['outside'],
+      },
+    })
+  })
+
+  test('writes a default as the literal it was, constants included', () => {
+    const {payload} = runPhp('(function ($n = PHP_INT_MAX, $a = [1, "k" => 2], $z = null) { return $n; });')
+
+    expect(payload.value.__tinkrClosure.params).toEqual([
+      '$n = PHP_INT_MAX',
+      "$a = [1, 'k' => 2]",
+      '$z = null',
+    ])
+  })
+
+  test('answers a stringable value as the string it casts to, with its class', () => {
+    const {payload} = runPhp(
+      'class TinkrId {\n' +
+      '  private $value;\n' +
+      '  public function __construct($value) { $this->value = $value; }\n' +
+      '  public function __toString(): string { return $this->value; }\n' +
+      '}\n' +
+      "new TinkrId('a-1');",
+    )
+
+    expect(payload.value).toEqual({__tinkrClass: 'TinkrId', __tinkrMap: 'a-1'})
+  })
+
+  test('keeps the fields of a stringable value that has some', () => {
+    const {payload} = runPhp(
+      'class TinkrBoth {\n' +
+      "  public $name = 'shown';\n" +
+      "  public function __toString(): string { return 'cast'; }\n" +
+      '}\n' +
+      'new TinkrBoth();',
+    )
+
+    // public state is the value: the string it would cast to is one way of
+    // reading it, not what it is
+    expect(payload.value).toEqual({name: 'shown', __tinkrClass: 'TinkrBoth'})
+  })
+
+  test('describes rendered markup as the document it is', () => {
+    const {payload} = runPhp(
+      `${HTMLABLE}\n` +
+      'class TinkrMarkup implements \\Illuminate\\Contracts\\Support\\Htmlable {\n' +
+      "  public function toHtml() { return '<p>a</p><p>b</p>'; }\n" +
+      '}\n' +
+      'new TinkrMarkup();',
+    )
+
+    expect(payload.error).toBe(null)
+    expect(payload.value).toEqual({__tinkrClass: 'TinkrMarkup', __tinkrHtml: '<p>a</p><p>b</p>'})
+  })
+
+  test('bounds rendered markup, and says it was cut', () => {
+    const {payload} = runPhp(
+      `${HTMLABLE}\n` +
+      'class TinkrLong implements \\Illuminate\\Contracts\\Support\\Htmlable {\n' +
+      "  public function toHtml() { return str_repeat('<p>x</p>', 100000); }\n" +
+      '}\n' +
+      'new TinkrLong();',
+    )
+
+    expect(payload.value.__tinkrClass).toBe('TinkrLong')
+    expect(payload.value.__tinkrHtml).toHaveLength(524288)
+    expect(payload.value.__tinkrHtmlCut).toBe(true)
+  })
+
+  test('answers a value that will not render as the object it is', () => {
+    const {payload} = runPhp(
+      `${HTMLABLE}\n` +
+      'class TinkrUnrenderable implements \\Illuminate\\Contracts\\Support\\Htmlable {\n' +
+      "  public $name = 'kept';\n" +
+      "  public function toHtml() { throw new RuntimeException('no markup'); }\n" +
+      '}\n' +
+      'new TinkrUnrenderable();',
+    )
+
+    // a value that refuses to be read is still a value, and the run is not
+    // broken by it
+    expect(payload.error).toBe(null)
+    expect(payload.value).toEqual({name: 'kept', __tinkrClass: 'TinkrUnrenderable'})
   })
 })
 

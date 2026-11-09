@@ -874,6 +874,15 @@ const sandboxFinish = sandbox.finish
  * `SplFixedArray` is its elements written as a list. Their values are walked
  * too, so an unsafe scalar inside one is described rather than turned into a 0,
  * and a private or protected field is never exposed by the cast that reads them.
+ *
+ * Everything an object is written as is an object with a `__tinkr` key, so the
+ * class behind a value is never lost and the app can say what it had: a plain
+ * object carries `__tinkrClass` beside its fields, and one whose content is not
+ * a set of fields — a serialized list, a rendered view, an enum case, a closure
+ * — carries it beside `__tinkrMap`, which is the value itself. Those keys are
+ * reserved: a field named like one is written under the map instead, so nothing
+ * of the value is ever mistaken for what the envelope says about it.
+ *
  * A `JsonSerializable` is asked for its value exactly once, after the snippet
  * has ended, and its answer is walked the same way; handing the object itself
  * to the envelope's `json_encode` would ask it again, and a serializer that
@@ -885,12 +894,67 @@ const sandboxFinish = sandbox.finish
  * object until its answer is written, so the id it is filed under cannot be
  * reused by a later object.
  *
+ * A few values are described as what they are rather than as the fields they
+ * happen to hold, each read inside a `try` so a value that will not answer is
+ * still answered as itself: an enum case, a closure's signature and the names it
+ * closed over, an Eloquent model's attributes with its key and the relations it
+ * already carries, a rendered view or mail with its markup (bounded, and said to
+ * be cut), an `Htmlable`'s markup, and the application's own version,
+ * environment and base path — never the values it was configured with.
+ *
  * @param {any} value
  * @param {Number} [depth] how far in the walk has gone, which bounds it
  * @return {any}
  */
-const SAFE_ENCODE = '$tinkr_cache=[];' +
-  '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe,&$tinkr_cache){' +
+const SAFE_ENCODE = '$tinkr_cache=[];$tinkr_html_max=524288;' +
+  // the class of a value, with an anonymous class named rather than located: its
+  // name carries the path of the file it was written in
+  '$tinkr_class_of=function($tinkr_v){$tinkr_c=get_class($tinkr_v);' +
+  'return strpos($tinkr_c,"@anonymous")!==false?"class@anonymous":$tinkr_c;};' +
+  // text cut to a budget, at a character boundary, saying whether it was cut
+  '$tinkr_cut_of=function($tinkr_text,$tinkr_max){' +
+  '$tinkr_cut=strlen($tinkr_text)>$tinkr_max;' +
+  'if($tinkr_cut){$tinkr_text=substr($tinkr_text,0,$tinkr_max);' +
+  'for($tinkr_i=0;$tinkr_i<3&&!preg_match("//u",$tinkr_text);$tinkr_i++){$tinkr_text=substr($tinkr_text,0,-1);}}' +
+  'return [$tinkr_text,$tinkr_cut];};' +
+  // whether an array is a list, which is the shape json keeps for it
+  '$tinkr_list_of=function($tinkr_array){' +
+  'return !$tinkr_array||array_keys($tinkr_array)===range(0,count($tinkr_array)-1);};' +
+  // a default as php writes it: the literal somebody would have typed, not the
+  // export of the value it evaluates to
+  '$tinkr_literal_of=function($tinkr_value)use(&$tinkr_literal_of){' +
+  'if($tinkr_value===null){return "null";}' +
+  'if(is_bool($tinkr_value)){return $tinkr_value?"true":"false";}' +
+  'if(is_int($tinkr_value)||is_float($tinkr_value)||is_string($tinkr_value)){return var_export($tinkr_value,true);}' +
+  'if(is_array($tinkr_value)){$tinkr_parts=[];$tinkr_at=0;' +
+  'foreach($tinkr_value as $tinkr_k=>$tinkr_item){' +
+  '$tinkr_parts[]=($tinkr_k===$tinkr_at?"":var_export($tinkr_k,true)." => ").$tinkr_literal_of($tinkr_item);' +
+  '$tinkr_at++;}' +
+  'return "[".implode(", ",$tinkr_parts)."]";}' +
+  'return "...";};' +
+  // one answer per object, remembered as it is written
+  '$tinkr_done=function($tinkr_id,$tinkr_answer)use(&$tinkr_cache){' +
+  '$tinkr_cache[$tinkr_id]["v"]=$tinkr_answer;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_answer;};' +
+  // a value that is not a set of fields is written under the map key, with the
+  // class beside it
+  '$tinkr_map_of=function($tinkr_class,$tinkr_value){' +
+  'return (object)["__tinkrClass"=>$tinkr_class,"__tinkrMap"=>$tinkr_value];};' +
+  // markup that was rendered, and whether it was cut
+  '$tinkr_html_of=function($tinkr_class,$tinkr_text)use(&$tinkr_cut_of,&$tinkr_html_max){' +
+  '$tinkr_parts=$tinkr_cut_of($tinkr_text,$tinkr_html_max);' +
+  '$tinkr_out=(object)["__tinkrClass"=>$tinkr_class,"__tinkrHtml"=>$tinkr_parts[0]];' +
+  'if($tinkr_parts[1]){$tinkr_out->__tinkrHtmlCut=true;}return $tinkr_out;};' +
+  // a set of fields, written as the record it is: the class is the last key, so
+  // the fields read in the order they had. A field named like a reserved key
+  // would be read as metadata, so that value keeps its fields under the map
+  '$tinkr_record_of=function($tinkr_class,$tinkr_fields){' +
+  '$tinkr_reserved=false;foreach(array_keys((array)$tinkr_fields) as $tinkr_k){' +
+  'if(strpos((string)$tinkr_k,"__tinkr")===0){$tinkr_reserved=true;break;}}' +
+  'if($tinkr_reserved){return (object)["__tinkrClass"=>$tinkr_class,"__tinkrMap"=>(object)$tinkr_fields,' +
+  '"__tinkrKeys"=>array_map("strval",array_keys((array)$tinkr_fields))];}' +
+  '$tinkr_out=(object)$tinkr_fields;$tinkr_out->__tinkrClass=$tinkr_class;return $tinkr_out;};' +
+  '$tinkr_safe=function($tinkr_v,$tinkr_d=0)use(&$tinkr_safe,&$tinkr_cache,&$tinkr_class_of,&$tinkr_cut_of,' +
+  '&$tinkr_list_of,&$tinkr_literal_of,&$tinkr_done,&$tinkr_map_of,&$tinkr_html_of,&$tinkr_record_of){' +
   'if($tinkr_d>12){return "[deeper than 12 levels]";}' +
   // a float that cannot be written: json_encode writes INF and NAN as 0
   'if(is_float($tinkr_v)){if(is_nan($tinkr_v)){return "NAN";}if(is_infinite($tinkr_v)){return $tinkr_v>0?"INF":"-INF";}return $tinkr_v;}' +
@@ -917,19 +981,114 @@ const SAFE_ENCODE = '$tinkr_cache=[];' +
   '$tinkr_id=spl_object_id($tinkr_v);' +
   'if(isset($tinkr_cache[$tinkr_id])){$tinkr_hit=$tinkr_cache[$tinkr_id];return $tinkr_hit["done"]?$tinkr_hit["v"]:"[recursion]";}' +
   '$tinkr_cache[$tinkr_id]=["o"=>$tinkr_v,"v"=>null,"done"=>false];' +
+  // what the value is, whatever it turns out to answer with
+  '$tinkr_class=$tinkr_class_of($tinkr_v);' +
+  // an enum is a case of its class, not the fields a case may carry: the case is
+  // its name and the backed value is what json writes for it, and neither is a
+  // field of the object
+  'if($tinkr_v instanceof \\UnitEnum){' +
+  '$tinkr_out=(object)["__tinkrClass"=>$tinkr_class,"__tinkrEnum"=>$tinkr_v->name];' +
+  'if($tinkr_v instanceof \\BackedEnum){$tinkr_out->__tinkrBacked=$tinkr_safe($tinkr_v->value,$tinkr_d+1);}' +
+  'return $tinkr_done($tinkr_id,$tinkr_out);}' +
+  // a closure is described by what it takes and what it closed over, never by
+  // what it would do. A default is the expression written on it, and a bound
+  // name is a name: neither is the value behind it
+  'if($tinkr_v instanceof \\Closure){' +
+  '$tinkr_params=[];$tinkr_uses=[];' +
+  'try{$tinkr_function=new \\ReflectionFunction($tinkr_v);' +
+  'foreach($tinkr_function->getParameters() as $tinkr_p){' +
+  '$tinkr_one=$tinkr_p->hasType()?((string)$tinkr_p->getType())." ":"";' +
+  'if($tinkr_p->isPassedByReference()){$tinkr_one.="&";}' +
+  'if($tinkr_p->isVariadic()){$tinkr_one.="...";}' +
+  '$tinkr_one.="$".$tinkr_p->getName();' +
+  'if($tinkr_p->isDefaultValueAvailable()){' +
+  'if(method_exists($tinkr_p,"isDefaultValueConstant")&&$tinkr_p->isDefaultValueConstant()){' +
+  '$tinkr_one.=" = ".$tinkr_p->getDefaultValueConstantName();}' +
+  'else{$tinkr_one.=" = ".$tinkr_literal_of($tinkr_p->getDefaultValue());}}' +
+  '$tinkr_params[]=$tinkr_one;}' +
+  'if(method_exists($tinkr_function,"getClosureUsedVariables")){' +
+  '$tinkr_uses=array_map("strval",array_keys($tinkr_function->getClosureUsedVariables()));}' +
+  '}catch(\\Throwable $tinkr_reflection){}' +
+  '$tinkr_out=(object)["__tinkrClass"=>$tinkr_class,' +
+  '"__tinkrClosure"=>(object)["params"=>$tinkr_params,"uses"=>$tinkr_uses]];' +
+  'return $tinkr_done($tinkr_id,$tinkr_out);}' +
+  // a model is the attributes it shows — its own serialization, so a hidden
+  // column stays hidden — plus the key it is known by and the relations it
+  // already carries. A relation that was never loaded is not asked for, because
+  // asking would run a query the snippet did not
+  'if($tinkr_v instanceof \\Illuminate\\Database\\Eloquent\\Model){' +
+  '$tinkr_fields=[];' +
+  'try{$tinkr_fields=$tinkr_v->toArray();}catch(\\Throwable $tinkr_serialize){}' +
+  'if(!is_array($tinkr_fields)){$tinkr_fields=[];}' +
+  '$tinkr_out=$tinkr_safe($tinkr_fields,$tinkr_d+1);' +
+  'if(!is_array($tinkr_out)){$tinkr_out=[];}' +
+  '$tinkr_out=$tinkr_record_of($tinkr_class,$tinkr_out);' +
+  'try{$tinkr_key=$tinkr_v->getKey();' +
+  'if($tinkr_key!==null){$tinkr_out->__tinkrKey=$tinkr_safe($tinkr_key,$tinkr_d+1);}}' +
+  'catch(\\Throwable $tinkr_keyless){}' +
+  'try{$tinkr_relations=array_keys((array)$tinkr_v->getRelations());' +
+  'if($tinkr_relations){$tinkr_out->__tinkrRelations=array_map("strval",$tinkr_relations);}}' +
+  'catch(\\Throwable $tinkr_relationless){}' +
+  'return $tinkr_done($tinkr_id,$tinkr_out);}' +
+  // a mailable is what it would send: its markup, rendered here once. One that
+  // will not render is the object it is, and never the run failing
+  'if($tinkr_v instanceof \\Illuminate\\Mail\\Mailable){' +
+  '$tinkr_html=null;' +
+  'try{$tinkr_html=$tinkr_v->render();' +
+  'if($tinkr_html instanceof \\Illuminate\\Contracts\\Support\\Htmlable){$tinkr_html=$tinkr_html->render();}' +
+  'if(is_object($tinkr_html)&&method_exists($tinkr_html,"__toString")){$tinkr_html=(string)$tinkr_html;}' +
+  '}catch(\\Throwable $tinkr_mailable){$tinkr_html=null;}' +
+  'if(is_string($tinkr_html)){return $tinkr_done($tinkr_id,$tinkr_html_of($tinkr_class,$tinkr_html));}}' +
+  // a view is its name, the keys of the data it was given, and the markup it
+  // renders to. The data itself is not read: its keys say what the view was
+  // built with, and a value of it is what the markup already carries
+  'if($tinkr_v instanceof \\Illuminate\\Contracts\\View\\View){' +
+  '$tinkr_html=null;' +
+  'try{$tinkr_html=$tinkr_v->render();}catch(\\Throwable $tinkr_view){$tinkr_html=null;}' +
+  'if(is_string($tinkr_html)){' +
+  '$tinkr_out=$tinkr_html_of($tinkr_class,$tinkr_html);' +
+  'try{$tinkr_out->__tinkrView=$tinkr_v->getName();}catch(\\Throwable $tinkr_nameless){}' +
+  'try{$tinkr_out->__tinkrData=array_map("strval",array_keys((array)$tinkr_v->getData()));}' +
+  'catch(\\Throwable $tinkr_dateless){}' +
+  'return $tinkr_done($tinkr_id,$tinkr_out);}}' +
+  // anything else that is markup is drawn as the document it says it is
+  'if($tinkr_v instanceof \\Illuminate\\Contracts\\Support\\Htmlable){' +
+  '$tinkr_html=null;' +
+  'try{$tinkr_html=$tinkr_v->toHtml();}catch(\\Throwable $tinkr_markup){$tinkr_html=null;}' +
+  'if(is_string($tinkr_html)){return $tinkr_done($tinkr_id,$tinkr_html_of($tinkr_class,$tinkr_html));}}' +
+  // the application itself: what it is running, never the values it holds. Its
+  // path is a name of the project, and none of what is configured in it is read
+  'if($tinkr_v instanceof \\Illuminate\\Foundation\\Application){' +
+  '$tinkr_out=(object)["__tinkrClass"=>$tinkr_class];' +
+  'try{$tinkr_out->__tinkrVersion=$tinkr_v->version();}catch(\\Throwable $tinkr_unversioned){}' +
+  'try{$tinkr_out->__tinkrEnvironment=$tinkr_v->environment();}catch(\\Throwable $tinkr_unplaced){}' +
+  'try{$tinkr_out->__tinkrBasePath=$tinkr_v->basePath();}catch(\\Throwable $tinkr_unrooted){}' +
+  'return $tinkr_done($tinkr_id,$tinkr_out);}' +
   // the serializer's answer is what the run had, and it is walked like any
   // other: the object itself is never handed on, so json_encode cannot ask it
   // a second time
   'if($tinkr_v instanceof \\JsonSerializable){' +
   'try{$tinkr_serialized=$tinkr_v->jsonSerialize();}' +
-  'catch(\\Throwable $tinkr_e){$tinkr_answer="[".get_class($tinkr_v)." could not be serialized: ".$tinkr_e->getMessage()."]";$tinkr_cache[$tinkr_id]["v"]=$tinkr_answer;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_answer;}' +
-  '$tinkr_answer=$tinkr_safe($tinkr_serialized,$tinkr_d+1);$tinkr_cache[$tinkr_id]["v"]=$tinkr_answer;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_answer;}' +
-  // an enum is an object, but its fields are not its value: a backed one's json
-  // value is its value, and a pure one has no value json could write (it came
-  // out as a 0), so it is named rather than reported as a value it never had.
-  // A serializer it implements was asked above, because that is the answer the
-  // enum itself chose
-  'if($tinkr_v instanceof \\UnitEnum){$tinkr_answer=$tinkr_v instanceof \\BackedEnum?$tinkr_safe($tinkr_v->value,$tinkr_d+1):$tinkr_v->name;$tinkr_cache[$tinkr_id]["v"]=$tinkr_answer;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_answer;}' +
+  'catch(\\Throwable $tinkr_e){$tinkr_answer="[".$tinkr_class." could not be serialized: ".$tinkr_e->getMessage()."]";' +
+  'return $tinkr_done($tinkr_id,$tinkr_answer);}' +
+  '$tinkr_answer=$tinkr_safe($tinkr_serialized,$tinkr_d+1);' +
+  'if(is_array($tinkr_answer)){' +
+  // a map whose keys json would reorder was written as the map it is, and the
+  // class rides in it
+  'if(!$tinkr_list_of($tinkr_answer)&&array_key_exists("__tinkrMap",$tinkr_answer)){' +
+  '$tinkr_answer=(object)$tinkr_answer;$tinkr_answer->__tinkrClass=$tinkr_class;' +
+  'return $tinkr_done($tinkr_id,$tinkr_answer);}' +
+  // a list is a list whatever object serialized it, and its class is carried
+  // beside it because a json array has nowhere to write one
+  'if($tinkr_list_of($tinkr_answer)){return $tinkr_done($tinkr_id,$tinkr_map_of($tinkr_class,$tinkr_answer));}' +
+  'return $tinkr_done($tinkr_id,$tinkr_record_of($tinkr_class,$tinkr_answer));}' +
+  'return $tinkr_done($tinkr_id,$tinkr_map_of($tinkr_class,$tinkr_answer));}' +
+  // a value whose whole state is the string it casts to is that string, with
+  // the class that made it: an id, a wrapper around one string, a money amount
+  'if(method_exists($tinkr_v,"__toString")&&!get_object_vars($tinkr_v)){' +
+  '$tinkr_text=null;' +
+  'try{$tinkr_text=(string)$tinkr_v;}catch(\\Throwable $tinkr_unprintable){$tinkr_text=null;}' +
+  'if(is_string($tinkr_text)){return $tinkr_done($tinkr_id,$tinkr_map_of($tinkr_class,$tinkr_safe($tinkr_text,$tinkr_d+1)));}}' +
   // a plain object is walked field by field, but an internal one is not plain:
   // php's own json has a shape for several of them, and that shape is kept
   '$tinkr_out=[];' +
@@ -941,22 +1100,21 @@ const SAFE_ENCODE = '$tinkr_cache=[];' +
   'foreach((array)$tinkr_v as $tinkr_k=>$tinkr_item){$tinkr_k=(string)$tinkr_k;' +
   'if($tinkr_k!==""&&$tinkr_k[0]==="\\0"){continue;}' +
   '$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
-  '$tinkr_out=(object)$tinkr_out;}' +
+  'return $tinkr_done($tinkr_id,$tinkr_record_of($tinkr_class,$tinkr_out));}' +
   // an ArrayObject is its storage written as an object, which is what json
   // wrote for it whatever its keys were: the storage's own values are walked,
   // so an unsafe scalar inside it is described and not turned into a 0
-  'elseif($tinkr_v instanceof \\ArrayObject||$tinkr_v instanceof \\ArrayIterator){' +
+  'if($tinkr_v instanceof \\ArrayObject||$tinkr_v instanceof \\ArrayIterator){' +
   'foreach($tinkr_v->getArrayCopy() as $tinkr_k=>$tinkr_item){$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
-  '$tinkr_out=(object)$tinkr_out;}' +
-  // a SplFixedArray is its elements written as a list
-  'elseif($tinkr_v instanceof \\SplFixedArray){' +
-  'foreach($tinkr_v->toArray() as $tinkr_item){$tinkr_out[]=$tinkr_safe($tinkr_item,$tinkr_d+1);}}' +
+  'return $tinkr_done($tinkr_id,$tinkr_record_of($tinkr_class,$tinkr_out));}' +
+  // a SplFixedArray is its elements written as a list, under the class it is
+  'if($tinkr_v instanceof \\SplFixedArray){' +
+  'foreach($tinkr_v->toArray() as $tinkr_item){$tinkr_out[]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
+  'return $tinkr_done($tinkr_id,$tinkr_map_of($tinkr_class,$tinkr_out));}' +
   // anything else is the public fields it has, put back together as an object:
   // `(object)[]` is `{}`, and an array of the fields would have read as a list
-  'else{' +
   'foreach(get_object_vars($tinkr_v) as $tinkr_k=>$tinkr_item){$tinkr_out[$tinkr_k]=$tinkr_safe($tinkr_item,$tinkr_d+1);}' +
-  '$tinkr_out=(object)$tinkr_out;}' +
-  '$tinkr_cache[$tinkr_id]["v"]=$tinkr_out;$tinkr_cache[$tinkr_id]["done"]=true;return $tinkr_out;}' +
+  'return $tinkr_done($tinkr_id,$tinkr_record_of($tinkr_class,$tinkr_out));}' +
   'return $tinkr_v;};'
 
 /**

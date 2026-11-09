@@ -1,4 +1,4 @@
-import {CELL_CHARS, isComposite, scalarText, truncate} from './resultReading'
+import {CELL_CHARS, isComposite, plainValue, scalarText, truncate} from './resultReading'
 
 /**
  * What a guarded run changed, read from the envelope for the pane.
@@ -124,7 +124,9 @@ export const keyText = key => {
  * @return {String}
  */
 export const valueText = value => {
-  const text = isComposite(value) ? JSON.stringify(value) : scalarText(value)
+  // a value a column held is written as the value it was, without what the
+  // envelope says about it: a change report is data, not notes about data
+  const text = isComposite(value) ? JSON.stringify(plainValue(value)) : scalarText(value)
 
   return truncate(text, CELL_CHARS)
 }

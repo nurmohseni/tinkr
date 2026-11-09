@@ -445,6 +445,8 @@
     "table": "tabela",
     "graph": "grafo",
     "html": "HTML",
+    "html_size": "{count, plural, one {# caractere} other {# caracteres}}",
+    "html_cut": "cortado",
     "show_all": "Mostrar {count, plural, one {# caractere} other {# caracteres}}",
     "csv": "CSV",
     "copy_csv": "Copiar CSV",

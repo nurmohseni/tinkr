@@ -483,11 +483,12 @@ the column (an \`insert\`'s column list, \`column = ?\`, \`column in (…)\`). T
 setting is read on every call, so the next answer follows a change made in the
 app.
 
-Two things are not hidden, because they have no field names to go by: what the
-run printed (\`output\`), and a value a snippet wrote into the SQL itself. A
-binding the statement does not pair with a column — \`where ?\`, \`limit ?\`, an
-expression of several placeholders such as \`concat(?, ?)\` — is answered as it
-was.
+Three things are not hidden, because they have no field names to go by: what the
+run printed (\`output\`), the markup a value rendered to (\`__tinkrHtml\`, which is
+the view's own output and not its fields), and a value a snippet wrote into the
+SQL itself. A binding the statement does not pair with a column — \`where ?\`,
+\`limit ?\`, an expression of several placeholders such as \`concat(?, ?)\` — is
+answered as it was.
 
 ## Values that are not plain json
 
@@ -503,16 +504,50 @@ says what they are rather than as a \`null\` they never were:
 - a sentence, for an object that throws from its own \`jsonSerialize\`.
 
 A plain object is written as an object, and one with no public fields is \`{}\`
-rather than \`[]\`. An enum is its backed value, or its name when it has none; a
-date, a timezone, an \`ArrayObject\` or a \`SplFixedArray\` keeps the shape php's
-own json gives it. A serializer is asked exactly once, after the snippet has
-ended, and the value it answers with is what comes back: the object is not read
-again, the same object in several \`blocks\` is one answer, and what the serializer
-prints or reads is its final state rather than the state of the line it was on.
+plus what the run knew about it (see below). A date, a timezone, an
+\`ArrayObject\` or a \`SplFixedArray\` keeps the shape php's own json gives it. A
+serializer is asked exactly once, after the snippet has ended, and the value it
+answers with is what comes back: the object is not read again, the same object
+in several \`blocks\` is one answer, and what the serializer prints or reads is
+its final state rather than the state of the line it was on.
 
 A php array keeps its order: an array with integer-like keys out of order comes
 back as \`{"__tinkrMap": {…}, "__tinkrKeys": ["3","1","2"]}\`, because JSON reads
 integer-like keys back in numeric order whatever they were.
+
+## What a value is
+
+Every object is written as an object carrying what the run knew about it, under
+keys that begin with \`__tinkr\`. Those keys are reserved: an object with a public
+field named like one has its fields under \`__tinkrMap\` instead, so a field is
+never read as a note about the value. They are never hidden by the *Hidden
+fields* setting either, which hides field names and not what is said about a
+value.
+
+- \`__tinkrClass\` — the class the value was. An anonymous class is
+  \`class@anonymous\`, without the file it was written in.
+- \`__tinkrMap\` — the value itself, for a value that is not a set of fields: a
+  list a serializer answered with, an enum case, the string a \`Stringable\`
+  casts to. A record of fields keeps them at the top level instead, with
+  \`__tinkrClass\` last.
+- \`__tinkrHtml\` — the markup a view, a mailable or an \`Htmlable\` rendered to,
+  cut at 524288 bytes, with \`__tinkrHtmlCut\` set when it was cut. Nothing else
+  is read from such a value; one that will not render is answered as its own
+  fields, and never as a failed run.
+- \`__tinkrView\`, \`__tinkrData\` — a view's name and the keys of the data it was
+  given. The data itself is not in the answer.
+- \`__tinkrKey\`, \`__tinkrRelations\` — an Eloquent model's key and the names of
+  the relations already loaded on it. The attributes are the ones the model
+  shows, so a hidden column stays hidden, and a relation that was never loaded
+  is not in the list: filling it would run a query the snippet did not.
+- \`__tinkrClosure\` — \`{params, uses}\`: a closure's parameter list as php writes
+  it — types, defaults, by-reference, variadic — and the names it closed over,
+  never the values behind them.
+- \`__tinkrEnum\`, \`__tinkrBacked\` — an enum's case name and, when it is backed,
+  the value behind it.
+- \`__tinkrVersion\`, \`__tinkrEnvironment\`, \`__tinkrBasePath\` — the application
+  itself: its version, its environment and the root it runs from, never a value
+  it was configured with.
 
 ## Errors
 

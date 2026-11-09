@@ -111,6 +111,53 @@ describe('the fields a run hides', () => {
     })
   })
 
+  test('never hides what the envelope says about a value, and hides its fields as usual', () => {
+    const value = {
+      name: 'Ada',
+      password: 'hunter2',
+      __tinkrClass: 'App\\Models\\User',
+      __tinkrKey: 4,
+      __tinkrRelations: ['tokens'],
+      __tinkrClosure: {params: [], uses: ['password']},
+      __tinkrMap: {password: 'hunter2', name: 'Ada'},
+    }
+
+    // a setting that names every field still keeps the class, the key and the
+    // markup, because those are not fields of the value; the fields inside the
+    // map are hidden like any other
+    expect(redactValue(value, ['*'])).toEqual({
+      name: HIDDEN,
+      password: HIDDEN,
+      __tinkrClass: 'App\\Models\\User',
+      __tinkrKey: 4,
+      __tinkrRelations: ['tokens'],
+      __tinkrClosure: {params: [], uses: ['password']},
+      __tinkrMap: {password: HIDDEN, name: HIDDEN},
+    })
+  })
+
+  test('hands a rendered value through, because markup has no field names', () => {
+    const redacted = redactResult({
+      value: {
+        __tinkrClass: 'App\\Mail\\Welcome',
+        __tinkrHtml: '<p>your password is hunter2</p>',
+        __tinkrView: 'mail.welcome',
+        __tinkrData: ['password', 'name'],
+      },
+      blocks: [],
+      queries: [],
+    }, undefined)
+
+    // markup has no field names to go by, so it is answered as the view wrote
+    // it, and the names of the data it was given are names, not values
+    expect(redacted.value).toEqual({
+      __tinkrClass: 'App\\Mail\\Welcome',
+      __tinkrHtml: '<p>your password is hunter2</p>',
+      __tinkrView: 'mail.welcome',
+      __tinkrData: ['password', 'name'],
+    })
+  })
+
   test('leaves values that are not objects alone', () => {
     expect(redactValue('password', undefined)).toBe('password')
     expect(redactValue(3, undefined)).toBe(3)

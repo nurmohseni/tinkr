@@ -1,11 +1,15 @@
 import PropTypes from 'prop-types'
 import {useIntl} from 'react-intl'
 
-import {htmlDocument} from '../../utils/resultReading'
+import {htmlDocument, htmlOf} from '../../utils/resultReading'
 
 /**
  * The html reading of a value: a string that is markup, drawn as a document is
  * drawn, which is how a dumped view or a mailable is read.
+ *
+ * A value the run rendered is read from what the envelope kept of it — a view's
+ * markup, a mailable's, an `Htmlable` component's — and a string the run
+ * returned is read as the markup it looks like. Both are the same frame.
  *
  * The frame is sandboxed without the app's origin and without the right to run
  * scripts, so the document in it can reach neither the app nor the session; a
@@ -21,6 +25,7 @@ import {htmlDocument} from '../../utils/resultReading'
  */
 const ResultHtml = ({value}) => {
   const intl = useIntl()
+  const markup = htmlOf(value)
 
   return (
     <div className='html-view'>
@@ -28,7 +33,7 @@ const ResultHtml = ({value}) => {
         className='html-view__frame'
         title={intl.formatMessage({id: 'result.html_frame'})}
         sandbox=''
-        srcDoc={htmlDocument(value)}
+        srcDoc={htmlDocument(markup === null ? '' : markup)}
       />
     </div>
   )

@@ -12,7 +12,12 @@
  * language rather than in English: the pane builds them with intl and passes
  * them here. What is the database's own — the sql, its bindings, the plan's
  * columns — is not translated, because it is not the app's words.
+ *
+ * A value is written as the data it is, without what the envelope says about it:
+ * a `__tinkr` key in a fenced block would read as a field the run never had.
  */
+
+import {plainValue} from './resultReading'
 
 // a value of a megabyte is a paste nobody can read in a table cell, and a
 // gist is the right place for one: what a code block holds is capped, and the
@@ -57,7 +62,7 @@ const fenced = (language, text, truncated) => {
   ].filter(line => line !== '').join('\n')
 }
 
-const json = value => JSON.stringify(value, null, 2)
+const json = value => JSON.stringify(plainValue(value), null, 2)
 
 const errorLine = error => `${error.class || 'Error'}: ${error.message || ''}`
 

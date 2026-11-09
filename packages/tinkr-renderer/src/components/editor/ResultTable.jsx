@@ -5,7 +5,7 @@ import {FormattedMessage, useIntl} from 'react-intl'
 import PointerMenu from '../PointerMenu'
 import {copyText} from '../../utils/clipboard'
 import {toPhpArray} from '../../utils/phpArray'
-import {cellOf, compositeText, tableOf, toCsv} from '../../utils/resultReading'
+import {cellOf, compositeText, plainValue, tableOf, toCsv} from '../../utils/resultReading'
 
 /**
  * The table reading of a value: a list of records as its rows and columns,
@@ -93,8 +93,8 @@ const ResultTable = ({value}) => {
           onClose={() => setMenu(null)}
         >
           {[
-            ['result.copy_row_json', () => JSON.stringify(row, null, 2)],
-            ['result.copy_row_php', () => toPhpArray(row)],
+            ['result.copy_row_json', () => JSON.stringify(plainValue(row), null, 2)],
+            ['result.copy_row_php', () => toPhpArray(plainValue(row))],
             ['result.copy_row_csv', () => toCsv(columns, [row])],
           ].map(([id, textOf]) => (
             <button
