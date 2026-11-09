@@ -54,7 +54,10 @@ const ask = async (connection, command) => {
  */
 const containers = async connection => {
   const engine = connection && connection.container_engine
-  const listing = containerList(engine)
+  // the listing is read by the shell of the machine the engine is on: the far
+  // login shell for a connection over ssh, and this machine's — cmd when the app
+  // is on windows — for a local one
+  const listing = containerList(engine, connection && connection.is_over_ssh ? 'posix' : process.platform)
 
   if (!listing) {
     return []
@@ -80,6 +83,8 @@ const containers = async connection => {
  */
 const projectDirs = async connection => {
   const root = containerPath(connection) || '/'
+  // the question is read by the container's own shell, and the engine's line
+  // around it by the machine's: containerRead quotes each for its own side
   const question = projectDirsCommand(root)
   const inside = containerRead(connection, question)
 

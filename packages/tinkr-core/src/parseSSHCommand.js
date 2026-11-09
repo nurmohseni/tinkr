@@ -1,6 +1,7 @@
 const {passwordArgs} = require('./sshAskpass')
 const {inContainer} = require('./containerCommand')
 const {controlOptions, masterOptions} = require('./sshControl')
+const {shellQuote} = require('./shell')
 
 /**
  * A value as one word of the shell the session is typed into.
@@ -11,10 +12,18 @@ const {controlOptions, masterOptions} = require('./sshControl')
  * `127.0.0.1; touch /tmp/x` ran the touch. So each is quoted as the one word it
  * is.
  *
+ * Which shell that is depends on the machine the app is running on, and only on
+ * that: the line is typed into a pty here, and the pty's shell is a posix login
+ * shell or cmd (see shell.shellQuote). Everything the line *reaches* — the
+ * remote `cd` and the remote command — is quoted for the far posix shell first
+ * and then handed over as one word of this one, so the two layers do not depend
+ * on each other.
+ *
  * @param {String} value
+ * @param {String} [platform] this machine's platform, when the caller knows it
  * @return {String}
  */
-const word = value => `'${String(value).replace(/'/g, "'\\''")}'`
+const word = (value, platform = process.platform) => shellQuote(value, platform)
 
 /**
  * Whether a connection's fields are ones ssh can be given at all.
@@ -162,13 +171,18 @@ const sshArgs = (connection, {master = false} = {}) => [
  * @param {String} [command] what to run once the remote shell is up
  * @param {Object} [askpass] what the helper needs to find the password, when the
  *   connection has one (see sshAskpass); empty for a connection without one
+ * @param {String} [platform] the platform of the shell the line is typed into —
+ *   this machine's in the app — and not the machine it reaches: the line is
+ *   written for the pty's shell, whose quoting is the only one an ssh line
+ *   depends on, and it is the same words however far it travels. A parameter so
+ *   the windows half can be checked where there is no windows.
  * @returns {String}
  */
-const parseSSHCommand = (connection, command = null, askpass = null) => {
+const parseSSHCommand = (connection, command = null, askpass = null, platform = process.platform) => {
   const problem = sshProblem(connection)
 
   if (problem) {
-    return `echo ${word(`Tinkr: ${problem}`)}`
+    return `echo ${word(`Tinkr: ${problem}`, platform)}`
   }
 
   const args = ['ssh', '-t']
@@ -176,10 +190,13 @@ const parseSSHCommand = (connection, command = null, askpass = null) => {
   // the multiplexing options first, then the ones that name the machine and how
   // it is logged in to; both lists are the same ones the spawned commands use
   ;[...controlOptions(connection), ...targetArgs(connection)]
-    .forEach(option => args.push(word(option)))
+    .forEach(option => args.push(word(option, platform)))
 
   // what the remote side runs: into the project's directory, then whatever the
-  // session was started with, and otherwise the account's own login shell
+  // session was started with, and otherwise the account's own login shell.
+  // Every part of it is a word of the far shell, which is a posix shell, so it is
+  // quoted as one there whatever quotes this machine's shell needs around the
+  // whole of it
   const remote = []
 
   // a project in a container is not in the machine's directory. `path` is where
@@ -189,23 +206,33 @@ const parseSSHCommand = (connection, command = null, askpass = null) => {
   // a `cd` out here is a directory that need not exist, and the session would
   // fail before the container was ever reached
   if (connection.path && !inContainer(connection)) {
-    remote.push(`cd ${word(connection.path)}`)
+    remote.push(`cd ${word(connection.path, 'posix')}`)
   }
 
   if (command) {
     // the project's directory, and then the command, which only runs when the
-    // directory was reached: a path that is not there is a failure that says so
-    args.push(word(remote.length ? `${remote[0]} && ${command}` : command))
+    // directory was reached: a path that is not there is a failure that says so.
+    // The command itself was built for the far shell by its builder — a
+    // container's words among them — and the whole line is then one word here
+    args.push(word(remote.length ? `${remote[0]} && ${command}` : command, platform))
   } else {
     // no command: a login shell, as ssh would have run it, in the project's
     // directory when one was named
-    args.push(word(remote.length ? `${remote[0]} && exec bash --login -i` : 'exec bash --login -i'))
+    args.push(word(remote.length ? `${remote[0]} && exec bash --login -i` : 'exec bash --login -i', platform))
   }
 
   // the helper's variables go before the command, as assignments the shell reads
   // after its profile has run: `SSH_ASKPASS=… ssh -t …`
-  const assignments = Object.entries(askpass || {})
-    .map(([name, value]) => `${name}=${word(value)}`)
+  //
+  // On windows there are no assignments, because cmd has no `NAME=value command`
+  // form — it reads the whole thing as the name of a program — and there is no
+  // login profile to defeat either: nothing runs before ssh that could replace
+  // what was in its environment. The pty's own environment already carries both
+  // halves there (see Session#start), so the line carries neither.
+  const assignments = platform === 'win32'
+    ? []
+    : Object.entries(askpass || {})
+      .map(([name, value]) => `${name}=${word(value, platform)}`)
 
   return assignments.length ? `${assignments.join(' ')} ${args.join(' ')}` : args.join(' ')
 }

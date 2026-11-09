@@ -209,3 +209,66 @@ describe('a container connection', () => {
     expect(engineNames).toEqual(['docker', 'podman', 'sail', 'kubectl'])
   })
 })
+
+// the same connection on a windows app: the engine's line is read by cmd, and the
+// container's own `sh -c` payload is still read by a posix shell inside the image
+describe('a container connection on a windows machine', () => {
+  test('quotes the engine\'s line for cmd, and the container\'s own words for posix', () => {
+    const connection = {
+      container_engine: 'docker',
+      container_name: 'my app',
+      container_path: '/var/www/html',
+    }
+
+    // the name and the directory are words of cmd here: single quotes would not
+    // quote anything, and the line would be `docker exec -it 'my` and no app
+    expect(containerCommand(connection, 'win32'))
+      .toBe('docker exec -it -w /var/www/html "my app" php artisan tinker')
+
+    // `-w` comes before the name, so the working directory is the engine's flag
+    // and not a word of the command inside
+    expect(containerCommand(Object.assign({}, connection, {container_path: 'C:\\srv\\my app'}), 'win32'))
+      .toBe('docker exec -it -w "C:\\srv\\my app" "my app" php artisan tinker')
+  })
+
+  test('keeps the `cd` inside the container posix, and quotes only the way in', () => {
+    const connection = {
+      container_engine: 'docker',
+      container_name: 'my app',
+      container_path: '/var/www/html',
+    }
+
+    // the payload is read by `sh -c` in the container, so its `cd` is posix
+    // quoted; the payload itself, and the name, are one word of cmd
+    expect(containerRead(connection, 'php -r 1', 'win32'))
+      .toBe('docker exec -i "my app" sh -c "cd /var/www/html && php -r 1"')
+
+    // a quote inside the payload is doubled for cmd, and the container's sh still
+    // reads one quote: the php code that reads a log keeps its own quotes
+    expect(containerRead(connection, 'php -r "echo 1;"', 'win32'))
+      .toBe('docker exec -i "my app" sh -c "cd /var/www/html && php -r ""echo 1;"""')
+  })
+
+  test('is quoted for the far shell when the container is on a server', () => {
+    // an ssh line is typed into this machine's shell but read there, so the
+    // container's words stay posix even in a windows app
+    const connection = {
+      is_over_ssh: true,
+      container_engine: 'docker',
+      container_name: 'my app',
+      path: '/srv/my app',
+    }
+
+    expect(containerCommand(connection, 'win32'))
+      .toBe("docker exec -it -w '/srv/my app' 'my app' php artisan tinker")
+    expect(containerRead(connection, 'php -r 1', 'win32'))
+      .toBe("docker exec -i 'my app' sh -c 'cd '\\''/srv/my app'\\'' && php -r 1'")
+  })
+
+  test('lists what the engine runs in the words of the shell that reads it', () => {
+    expect(containerList('docker')).toBe("docker ps --format '{{.Names}}\t{{.Image}}'")
+    expect(containerList('docker', 'win32')).toBe('docker ps --format "{{.Names}}\t{{.Image}}"')
+    expect(containerList('kubectl', 'win32'))
+      .toBe('kubectl get pods --no-headers -o custom-columns="NAME:.metadata.name,IMAGE:.spec.containers[0].image"')
+  })
+})

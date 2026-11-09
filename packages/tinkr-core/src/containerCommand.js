@@ -1,4 +1,5 @@
 const {phpString} = require('./runResult')
+const {shellQuote, shellWord, connectionShell} = require('./shell')
 
 /**
  * A project that lives in a container, as the command that reaches it.
@@ -87,13 +88,18 @@ const reads = {
  * such. A pod is the unit kubectl reaches, and its first container's image is
  * enough to say what it runs.
  *
- * @type {Object<String, {list: String}>}
+ * The listing runs where the engine runs, and the format string is a word of
+ * the shell that line is typed into: it holds a tab, which both shells read as a
+ * separator unless it is quoted, so it is quoted by the platform's rule like
+ * every other value.
+ *
+ * @type {Object<String, {list: Function}>}
  */
 const lists = {
-  docker: () => `docker ps --format ${word('{{.Names}}\t{{.Image}}')}`,
-  podman: () => `podman ps --format ${word('{{.Names}}\t{{.Image}}')}`,
-  sail: () => `docker ps --format ${word('{{.Names}}\t{{.Image}}')}`,
-  kubectl: () => `kubectl get pods --no-headers -o custom-columns=${word('NAME:.metadata.name,IMAGE:.spec.containers[0].image')}`,
+  docker: platform => `docker ps --format ${word('{{.Names}}\t{{.Image}}', platform)}`,
+  podman: platform => `podman ps --format ${word('{{.Names}}\t{{.Image}}', platform)}`,
+  sail: platform => `docker ps --format ${word('{{.Names}}\t{{.Image}}', platform)}`,
+  kubectl: platform => `kubectl get pods --no-headers -o custom-columns=${word('NAME:.metadata.name,IMAGE:.spec.containers[0].image', platform)}`,
 }
 
 /**
@@ -108,12 +114,15 @@ const engineNames = Object.keys(engines)
  *
  * The command the session types is a shell line, so a container name with a
  * space in it would be two words to the shell that runs it. What is written
- * whole stays whole; what needs quoting is quoted.
+ * whole stays whole; what needs quoting is quoted, by the rule of the shell that
+ * will read it (see shell.shellWord).
  *
  * @param {String} value
+ * @param {String} [platform] the shell that reads the line, which is not this
+ *   machine's when the command travels over ssh or into a container
  * @return {String}
  */
-const word = value => (/^[A-Za-z0-9@%+=:,._/-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`)
+const word = (value, platform = process.platform) => shellWord(value, platform)
 
 /**
  * Whether a connection's project is inside a container.
@@ -145,10 +154,18 @@ const inContainer = connection => Boolean(connection && String(connection.contai
  * same thing there as here. Only the reads that index the project and tail its
  * logs have to change, and they change in the project reader and in logs.
  *
+ * The words of the line are quoted for the shell that will read them, which is
+ * this machine's for a local connection and the far machine's — a posix shell —
+ * for one over ssh (see shell.connectionShell): `app` is one word either way,
+ * but a name with a space in it is `'my app'` there and `"my app"` here.
+ *
  * @param {ContainerConnection} connection
+ * @param {String} [platform] the shell that reads the line, when the caller knows
+ *   it; otherwise the connection decides
  * @return {String}
  */
-const containerCommand = (connection = {}) => {
+const containerCommand = (connection = {}, platform = null) => {
+  const shell = connectionShell(connection, platform)
   const {container_engine: engine, container_name: name, container_command: command} = connection
   const chosen = engines[engine]
   const container = String(name || '').trim()
@@ -165,7 +182,11 @@ const containerCommand = (connection = {}) => {
   // need not hold the project on the machine at all
   const dir = containerPath(connection)
 
-  return chosen.exec({name: word(container), command: inside, dir: dir ? word(dir) : null})
+  return chosen.exec({
+    name: word(container, shell),
+    command: inside,
+    dir: dir ? word(dir, shell) : null,
+  })
 }
 
 /**
@@ -178,11 +199,23 @@ const containerCommand = (connection = {}) => {
  * its logs cannot use the machine's own `php`: they run the same `php -r` inside
  * the container, where the project is.
  *
+ * There are two shells in this one line and they are not the same shell. The
+ * `sh -c` payload is read by the container's own `sh`, which is a posix shell in
+ * every image this app reaches, so it is quoted the posix way whatever runs the
+ * engine. The engine's own line — `docker exec -i <name> …` — is read by the
+ * shell of the machine the engine is on: this machine's, and cmd there, or the
+ * far login shell when the project is reached over ssh. Only that outer layer
+ * changes with the platform (see shell.connectionShell).
+ *
  * @param {Record<String, any>} connection
- * @param {String} command what to run inside it
+ * @param {String} command what to run inside it, already quoted for the
+ *   container's own shell
+ * @param {String} [platform] the shell that reads the engine's line, when the
+ *   caller knows it; otherwise the connection decides
  * @return {String} the command, or '' when the connection names no container
  */
-const containerRead = (connection, command) => {
+const containerRead = (connection, command, platform = null) => {
+  const shell = connectionShell(connection, platform)
   const engine = connection && connection.container_engine
   const container = String((connection && connection.container_name) || '').trim()
   const chosen = reads[engine]
@@ -197,10 +230,10 @@ const containerRead = (connection, command) => {
   // question, and the two are handed to a shell there as one word
   const project = containerPath(connection)
   const inside = project
-    ? `sh -c ${whole(`cd ${word(project)} && ${command}`)}`
+    ? `sh -c ${whole(`cd ${word(project, 'posix')} && ${command}`, shell)}`
     : command
 
-  return chosen({name: word(container), command: inside})
+  return chosen({name: word(container, shell), command: inside})
 }
 
 /**
@@ -211,9 +244,10 @@ const containerRead = (connection, command) => {
  * What is handed over as one argument is quoted as one, whatever it holds.
  *
  * @param {String} value
+ * @param {String} [platform]
  * @return {String}
  */
-const whole = value => `'${String(value).replace(/'/g, "'\\''")}'`
+const whole = (value, platform = process.platform) => shellQuote(value, platform)
 
 /**
  * Where the project is inside its container.
@@ -253,10 +287,16 @@ const projectDepth = 4
  * none), and php is, because a container this connection runs php in has it by
  * definition.
  *
+ * The command is the container's own, so its words are quoted for the posix
+ * shell inside it. The engine's line around it is quoted by containerRead, for
+ * whichever shell reads that.
+ *
  * @param {String} root where to start looking
+ * @param {String} [platform] the shell the php question is read by, which is the
+ *   container's
  * @return {String}
  */
-const projectDirsCommand = (root = '/') => `php -r ${word(
+const projectDirsCommand = (root = '/', platform = 'posix') => `php -r ${word(
   '$tinkr_root = ' + phpString(root) + ';' +
   `$tinkr_depth = ${projectDepth};` +
   '$tinkr_found = [];' +
@@ -288,10 +328,16 @@ const projectDirsCommand = (root = '/') => `php -r ${word(
 /**
  * The command that lists what an engine is running, or '' for one that cannot.
  *
+ * The line runs on the machine the engine is on, and the shell that reads it is
+ * that machine's: this one's for a local connection — cmd when the app is on
+ * windows — and the far login shell's when the connection is over ssh.
+ *
  * @param {String} engine
+ * @param {String} [platform] the shell that reads the line
  * @return {String}
  */
-const containerList = engine => (lists[engine] ? lists[engine]() : '')
+const containerList = (engine, platform = process.platform) =>
+  (lists[engine] ? lists[engine](platform) : '')
 
 /**
  * What a listing answered, as the containers a form offers.
@@ -346,16 +392,22 @@ const projectDirsIn = answer => String(answer || '')
  * session's job is only to be in the right place to run it. A connection that
  * names no container is its own command, as it always was.
  *
+ * The shell that will read the line decides how the container's words are
+ * quoted, and a connection over ssh is read by the far shell rather than this
+ * one (see shell.connectionShell).
+ *
  * @param {Record<String, any>} connection
+ * @param {String} [platform] the shell the session types into, when the caller
+ *   knows it; otherwise the connection decides
  * @return {String}
  */
-const sessionCommand = connection => {
+const sessionCommand = (connection, platform = null) => {
   if (!connection) {
     return ''
   }
 
   if (inContainer(connection)) {
-    return containerCommand(connection) || ''
+    return containerCommand(connection, platform) || ''
   }
 
   return connection.command || ''

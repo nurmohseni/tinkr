@@ -77,7 +77,18 @@ const terminalGivenUp = '\u001b[?2004l'
 const psyshPrompt = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) $/
 
 /**
- * What the shell prints once the command it was given has exited: an OSC 9999
+ * What psysh prints once it has booted, before it prints the first prompt.
+ *
+ * It is only needed on windows. There the shell prints no handover escape (see
+ * `terminalTaken`), so a psysh prompt cannot be told from the shell's own prompt
+ * by itself — `C:\app>` and `> ` are the same shape once a person has set their
+ * prompt to one. The banner is the part no shell prints, and a prompt after it
+ * is psysh reading.
+ */
+const psyshBanner = /Psy Shell v/
+
+/**
+ * What the shell prints once the command it was given has exited: a frame
  * carrying the exit status, which no terminal draws and which no command of a
  * project prints.
  *
@@ -87,11 +98,50 @@ const psyshPrompt = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) $/
  * status is the only thing the shell knows and the command does not, and it
  * arrives with the exit, well before any timeout is spent.
  *
- * `printf` is the shell's own, and `\033` and `\007` are written as octal
+ * There are two frames because the two shells cannot print the same one. A posix
+ * shell has `printf`, an octal escape and `$?`, and it prints an OSC 9999
+ * carrying the digits, ended by a bell; `\033` and `\007` are written as octal
  * because a shell's `printf` is not php's.
+ *
+ * cmd.exe has none of that. It has no `;` to separate the sentinel from the
+ * command — `cmd1 ; cmd2` hands artisan the word `;` — no `printf`, no octal
+ * escape (`echo` prints `\033` as four characters) and no `$?`. What it has is
+ * `&` as the separator, `echo`, and `!ERRORLEVEL!` under delayed expansion, and
+ * the delayed form is the whole of why the session starts cmd with `/V:ON`:
+ * `%ERRORLEVEL%` is expanded when the line is read, before the command on the
+ * left of the `&` has run, so it reports the status from before the command it
+ * is meant to report. `!ERRORLEVEL!` is expanded when the command it belongs to
+ * is executed, which is the one after the `&`.
+ *
+ * The win32 frame is plain text with a symmetric marker rather than an escape
+ * byte: the console's handling of an escape written by `echo` is not something
+ * to depend on, and `::` is a comment only at the start of a cmd command line,
+ * so here it is ordinary text. The closing `::` also ends the digits without
+ * depending on whether the pty hands over `\r\n` or `\n`.
  */
-const bootMarker = '\u001b]9999;'
+const statusFrames = {
+  posix: {marker: '\u001b]9999;', end: '\u0007'},
+  win32: {marker: '::tinkr-exit:', end: '::'},
+}
+
+// the two markers, and the two sentinels that print them
+const bootMarker = statusFrames.posix.marker
 const bootSentinel = String.raw`;printf '\033]9999;%s\007' $?`
+const windowsBootSentinel = ' & echo ::tinkr-exit:!ERRORLEVEL!::'
+
+/**
+ * @param {String} [platform]
+ * @return {{marker: String, end: String}}
+ */
+const statusFrame = platform => (platform === 'win32' ? statusFrames.win32 : statusFrames.posix)
+
+/**
+ * The sentinel a session appends to the line it writes into its shell.
+ *
+ * @param {String} [platform]
+ * @return {String}
+ */
+const statusSentinel = platform => (platform === 'win32' ? windowsBootSentinel : bootSentinel)
 
 /**
  * The longest tail of `text` that could still become the status marker.
@@ -103,13 +153,14 @@ const bootSentinel = String.raw`;printf '\033]9999;%s\007' $?`
  * ordinary output in the same chunk.
  *
  * @param {String} text
+ * @param {String} [marker]
  * @return {String}
  */
-const heldMarker = text => {
-  for (let length = Math.min(bootMarker.length - 1, text.length); length > 0; length--) {
+const heldMarker = (text, marker = bootMarker) => {
+  for (let length = Math.min(marker.length - 1, text.length); length > 0; length--) {
     const suffix = text.slice(-length)
 
-    if (bootMarker.startsWith(suffix)) {
+    if (marker.startsWith(suffix)) {
       return suffix
     }
   }
@@ -287,18 +338,30 @@ class Session {
   /**
    * @param {Record<String, any>} connection
    * @param {{appName?: String, appVersion?: String, log?: Object,
-   *   dataDir?: String}} [options]
+   *   dataDir?: String, platform?: String}} [options]
    *   what the session reports itself as (`TERM_PROGRAM`), where a session
    *   that will not start is reported, and the app's data directory — which is
-   *   where a connection's saved password is answered from. No window and no
-   *   electron is involved.
+   *   where a connection's saved password is answered from. `platform` is the
+   *   machine whose shell is started, and defaults to this one; it is a
+   *   parameter so the windows half of the session can be tested where there is
+   *   no windows. No window and no electron is involved.
    */
-  constructor(connection, {appName = 'Tinkr', appVersion = '', log = console, dataDir = null} = {}) {
+  constructor(connection, {
+    appName = 'Tinkr',
+    appVersion = '',
+    log = console,
+    dataDir = null,
+    platform = process.platform,
+  } = {}) {
     this.connection = connection
     this.appName = appName
     this.appVersion = appVersion
     this.log = log
     this.dataDir = dataDir
+    this.platform = platform
+    // what the shell of this platform prints when the command it was given
+    // exits, and what ends the digits of its status (see statusFrames)
+    this.frame = statusFrame(platform)
     this.pty = null
     // the command the shell was given, and how it ended: what the shell prints
     // when it exits (see bootMarker) is watched for from the first byte, because
@@ -326,13 +389,28 @@ class Session {
     // a connection whose project is in a container runs the container's command,
     // and one over ssh is reached before anything is typed. Asking for "no
     // command" is not asking for a bare shell on a connection that has one
-    command = command || sessionCommand(this.connection) || null
+    command = command || sessionCommand(this.connection, this.platform) || null
 
     const shell = defaultShell
     // A login shell is a posix shell's idea. cmd.exe reads --login as a program
     // to run, fails, and leaves a session that does nothing else: no prompt, no
-    // command, no php. Windows gets no arguments.
-    const args = process.platform === 'win32' ? [] : ['--login']
+    // command, no php.
+    //
+    // cmd gets `/V:ON` instead, and that is not decoration: delayed expansion is
+    // what makes `!ERRORLEVEL!` in the line's sentinel (see statusFrames) read the
+    // status of the command before it rather than the one from before the line
+    // was parsed. Without it every session that failed to boot would report the
+    // wrong status.
+    const win32 = this.platform === 'win32'
+    const args = win32 ? ['/V:ON'] : ['--login']
+
+    // a connection with a saved password is answered by the app's own helper
+    // rather than by the terminal, and what it needs to find that password is
+    // computed once: part of it goes into this environment and the rest onto the
+    // line ssh is given (see parseSSHCommand — a login profile replaces what was
+    // in the environment, and the line is read after it has run). Nothing of the
+    // password itself is in either: the helper reads it from the app's own file
+    const askpass = askpassEnvironment(this.dataDir, this.connection)
 
     const env = Object.assign(
       {},
@@ -344,15 +422,13 @@ class Session {
         TERM_PROGRAM: this.appName,
         TERM_PROGRAM_VERSION: this.appVersion,
       },
+      // the environment half of the helper, on every platform: on posix the line
+      // carries the same variables and it is harmless for both to, but on
+      // windows it is the only half there is — cmd has no `NAME=value command`
+      // form and no login profile to defeat, so the line carries none of them
+      // (see parseSSHCommand) and the pty's environment is what ssh reads
+      askpass ? askpass.env : {},
     )
-
-    // a connection with a saved password is answered by the app's own helper
-    // rather than by the terminal, and what it needs to find that password is
-    // computed once: part of it goes into this environment and the rest onto the
-    // line ssh is given (see parseSSHCommand — a login profile replaces what was
-    // in the environment, and the line is read after it has run). Nothing of the
-    // password itself is in either: the helper reads it from the app's own file
-    const askpass = askpassEnvironment(this.dataDir, this.connection)
 
     const options = {
       // a session starts in the home directory. Windows has no HOME in its
@@ -392,6 +468,10 @@ class Session {
     // only thing that says the session will never answer
     this.watchCommandExit()
 
+    // the line, and the status of the command it runs printed after it: `;` in a
+    // posix shell, `&` in cmd (see statusFrames)
+    const sentinel = statusSentinel(this.platform)
+
     if (this.connection.is_over_ssh) {
       // the command travels inside the ssh line rather than being typed after
       // it: ssh's own prompts — a host key to accept, a password to type — read
@@ -399,13 +479,17 @@ class Session {
       // ssh is what they answered instead. See parseSSHCommand.
       // The far psysh pages too, so its pager is put out of the way the same as
       // here (see withoutPager): a value taller than the terminal — any model —
-      // otherwise sat behind `less`, waiting for a key, until the run timed out
-      this.pty.write(`${parseSSHCommand(this.connection, command && withoutPager(command), askpass && askpass.line)}${bootSentinel}\r`)
+      // otherwise sat behind `less`, waiting for a key, until the run timed out.
+      // The line is typed into *this* machine's shell, so it is quoted for this
+      // platform, and its one remote word stays quoted for the far shell.
+      this.pty.write(`${parseSSHCommand(this.connection, command && withoutPager(command), askpass && askpass.line, this.platform)}${sentinel}\r`)
     } else if (command) {
       // the status of the command, printed by the shell once it is back: the
       // shell's prompt is the same escape as a command's, so this is what says
-      // which of the two the session is looking at (see Session#ready)
-      this.pty.write(`${withoutPager(command)}${bootSentinel}\r`)
+      // which of the two the session is looking at (see Session#ready).
+      // A container's command was built for this machine's shell by
+      // sessionCommand (see connectionShell), so nothing is re-quoted here
+      this.pty.write(`${withoutPager(command)}${sentinel}\r`)
     }
   }
 
@@ -444,9 +528,17 @@ class Session {
    * Read the stream for the status sentinel of the command the shell was given.
    *
    * The sentinel is watched across chunks: a pty hands over what it has when it
-   * has it, and the marker, the digits and the bell can each end one chunk and
-   * begin the next. What may be the start of a marker is held back until the
+   * has it, and the marker, the digits and the terminator can each end one chunk
+   * and begin the next. What may be the start of a marker is held back until the
    * next chunk completes it or rules it out.
+   *
+   * Which marker and which terminator are read is the platform's (see
+   * statusFrames): on posix an OSC 9999 ended by a bell, on windows an
+   * `echo`ed `::tinkr-exit:<status>::`. The windows frame is also what the shell
+   * echoes back when it prints the line it was given, and that echo carries
+   * `!ERRORLEVEL!` where the digits go — which is not a status, so the frame is
+   * discarded and the next one read. That is why the terminator is checked and
+   * not only the marker.
    *
    * @param {String} data
    */
@@ -455,38 +547,37 @@ class Session {
       return
     }
 
+    const {marker, end} = this.frame
     const buffer = `${this.exitBuffer}${data}`
-    const at = buffer.indexOf(bootMarker)
+    const at = buffer.indexOf(marker)
 
     if (at === -1) {
       // the longest tail that could still become the marker is what is held:
       // the chunk's last few characters are not, when the marker follows the
       // command's output in the same chunk
-      this.exitBuffer = heldMarker(buffer)
+      this.exitBuffer = heldMarker(buffer, marker)
 
       return
     }
 
-    const rest = buffer.slice(at + bootMarker.length)
-    const end = rest.search(/\D/)
+    const rest = buffer.slice(at + marker.length)
+    const digits = /^\d*/.exec(rest)[0]
+    const after = rest.slice(digits.length)
 
-    // the status is digits and the bell (see bootSentinel): a chunk that stops
-    // among the digits is the frame continuing, and anything but the bell after
-    // them is not the frame the shell prints at all — the marker never appears
-    // in a project's output (see bootMarker)
-    if (end === -1) {
+    // a chunk that stops among the digits is the frame continuing, and anything
+    // but the terminator after them is not the frame the shell prints at all —
+    // the marker never appears in a project's output (see statusFrames)
+    if (after.length < end.length) {
       this.exitBuffer = buffer.slice(at)
 
       return
     }
 
-    if (rest[end] !== '\u0007') {
+    if (!after.startsWith(end)) {
       this.exitBuffer = ''
 
       return
     }
-
-    const digits = rest.slice(0, end)
 
     this.exitBuffer = ''
     // what came before the sentinel in this chunk, which is output of the
@@ -639,6 +730,10 @@ class Session {
       let handedBack = false
       let shellTook = false
       let printed = false
+      // whether psysh's banner has been seen at all: it is what says a prompt
+      // that looks like one is psysh's rather than the shell's, and it is kept
+      // even after the text it came in has been dropped from `booted`
+      let psyshSeen = false
       let booted = ''
       // what the whole boot printed, and not only what came after the terminal
       // was handed over: ssh's own questions are printed while it is connecting,
@@ -660,6 +755,24 @@ class Session {
         const output = stripSessionNotes(booted).replace(/\r\n/g, '\n').trim()
 
         reject(new SessionError(message || sessionFailureMessage(output, status), {output, status}))
+      }
+
+      // what the command prints is what explains a boot that failed, so it is
+      // kept — and what it printed at all is what tells a command that is up
+      // from one that never started reading. On posix it is kept from the
+      // handover, because before that the terminal is the shell's and what it
+      // prints there is the line it was given, echoed back; cmd prints no
+      // handover (see below), so there the whole boot is kept
+      const keepBoot = data => {
+        booted += data
+
+        if (booted.length > bootOutputLimit * 4) {
+          booted = booted.slice(-bootOutputLimit)
+        }
+
+        if (stripSessionNotes(data).trim() !== '') {
+          printed = true
+        }
       }
 
       listener = pty.onData(data => {
@@ -697,19 +810,29 @@ class Session {
         const taken = data.lastIndexOf(terminalTaken)
         const given = data.lastIndexOf(terminalGivenUp)
 
-        // what the command prints is what explains a boot that failed, so it is
-        // kept from the handover — before that the terminal is the shell's, and
-        // what it prints there is the line it was given, echoed back
+        // cmd.exe prints neither escape: nothing on windows says the terminal
+        // changed hands, so the posix signs below never fire there. What does
+        // say the command is reading is psysh's own prompt — but a shell's prompt
+        // has the same shape, so the prompt is only taken as psysh's after the
+        // banner it prints while booting (see psyshBanner). What came back is
+        // kept from the moment the line is echoed, because on windows the shell's
+        // own prompt and echo precede it and there is no handover to cut at
+        const win32 = this.platform === 'win32'
+
+        if (win32) {
+          keepBoot(data)
+
+          psyshSeen = psyshSeen || psyshBanner.test(booted)
+
+          if (psyshSeen && psyshPrompt.test(stripRendering(booted.slice(-256)))) {
+            settle()
+
+            return
+          }
+        }
+
         if (handedBack) {
-          booted += data
-
-          if (booted.length > bootOutputLimit * 4) {
-            booted = booted.slice(-bootOutputLimit)
-          }
-
-          if (stripSessionNotes(data).trim() !== '') {
-            printed = true
-          }
+          keepBoot(data)
 
           // psysh printed its prompt: libedit has the terminal, and says so no
           // other way. Only the end of what came back is read, which is where a
@@ -977,8 +1100,9 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  * @param {Record<String, any>} connection
  * @param {String} code
  * @param {{timeout?: Number, command?: String, guard?: String, appName?: String,
- *   appVersion?: String, log?: Object, dataDir?: String, token?: String,
- *   signal?: AbortSignal, fetch?: Function, interval?: Number}} [options] `command` is
+ *   appVersion?: String, log?: Object, dataDir?: String, platform?: String,
+ *   token?: String, signal?: AbortSignal, fetch?: Function,
+ *   interval?: Number}} [options] `command` is
  *   what the session is started with when the connection names none, `guard` is
  *   what the run is guarded with: `rollback` for a dry run, `commit` for the
  *   same run kept, `dataDir` is where the app's data is — which is where a
@@ -986,8 +1110,10 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  *   of a connection that runs through an API, which is read from that same data
  *   directory when the caller has none. `signal` stops a run, `fetch` replaces
  *   the one an API run talks to, and `interval` is how often it asks how the
- *   command is going. `timeout` is how long the run may take, and zero is no
- *   limit: the run is still answered when its command exits (see
+ *   command is going. `platform` is the machine the session's shell runs on,
+ *   which is this one's and is a parameter so the windows half can be tested
+ *   where there is no windows. `timeout` is how long the run may take, and zero
+ *   is no limit: the run is still answered when its command exits (see
  *   Session#onCommandExit)
  * @return {Promise<{value: any, blocks: Array, error: Object|null,
  *   queries: Array, queriesTotal: Number, imported?: Object,
@@ -1039,7 +1165,7 @@ const runCode = (connection, code, options = {}) => {
   // the php is on the machine. A run with neither would be written into a bare
   // shell, which answers nothing and ends in a timeout that says nothing about
   // why
-  const command = options.command || sessionCommand(connection) || null
+  const command = options.command || sessionCommand(connection, options.platform) || null
   const session = new Session(connection, options)
   // a session over ssh runs in the remote project, whose composer files are not
   // on this machine to read
@@ -1163,4 +1289,7 @@ module.exports = {
   withoutPager,
   killSteps,
   bootSentinel,
+  windowsBootSentinel,
+  statusFrame,
+  statusSentinel,
 }

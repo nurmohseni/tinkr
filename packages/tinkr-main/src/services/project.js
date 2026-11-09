@@ -1,4 +1,13 @@
-const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead, isApiRun, importsIn} = require('tinkr-core')
+const {
+  classIndex,
+  indexFrom,
+  matchingFilesIn,
+  phpString,
+  containerRead,
+  inContainer,
+  isApiRun,
+  importsIn,
+} = require('tinkr-core')
 
 const {exec, quoted} = require('../remote')
 
@@ -151,7 +160,16 @@ const indexCode = () => 'error_reporting(0);' +
  * @return {Promise<String|null>}
  */
 const ask = async (connection, code) => {
-  const question = `php -r ${quoted(code)}`
+  // the php is read by the shell of whatever machine runs it, and the question is
+  // built before anything knows which one that is: a container's php is read by
+  // the container's own posix `sh`, and one behind ssh by the far login shell,
+  // while a local read is read by this machine's shell — cmd when the app is on
+  // windows. Only the local one is quoted for this platform (see
+  // shell.connectionShell and containerRead, which re-quotes the outer layer)
+  const inner = inContainer(connection) || (connection && connection.is_over_ssh)
+    ? 'posix'
+    : process.platform
+  const question = `php -r ${quoted(code, inner)}`
   // a project in a container has its php in the container: the question is asked
   // there, in the project's own directory, because the machine may hold none of
   // the files at all (see containerRead)

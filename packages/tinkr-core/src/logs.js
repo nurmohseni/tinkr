@@ -137,7 +137,16 @@ const wantedOf = bytes => Math.min(Math.max(Number(bytes) || defaultBytes, 1024)
  * @return {Promise<String|null>}
  */
 const ask = async (connection, code, dataDir = null) => {
-  const question = `php -r ${quoted(code)}`
+  // the php is read by the shell of whatever machine runs it, and the question is
+  // built before anything knows which one that is: a container's php is read by
+  // the container's own posix `sh`, and one behind ssh by the far login shell,
+  // while a local read is read by this machine's shell — cmd when the app is on
+  // windows. Only the local one is quoted for this platform (see
+  // shell.connectionShell and containerRead, which re-quotes the outer layer)
+  const inner = inContainer(connection) || (connection && connection.is_over_ssh)
+    ? 'posix'
+    : process.platform
+  const question = `php -r ${quoted(code, inner)}`
   // a project in a container keeps its logs in the container, and its php with
   // them: the question is asked in there, from the directory the logs are in
   const inside = containerRead(connection, question)

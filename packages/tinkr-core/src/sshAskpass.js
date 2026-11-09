@@ -1,6 +1,8 @@
 const fs = require('fs')
 const path = require('path')
 
+const {posixQuote} = require('./shell')
+
 /**
  * A connection that logs in with a password, without the password travelling
  * anywhere that can be read.
@@ -167,10 +169,16 @@ const passwordArgs = connection => (usesPassword(connection)
 /**
  * A value as one word of a shell reads it.
  *
+ * The only place this module writes a shell word is the `sh` shim below, which
+ * is written on posix and read by the `sh` ssh spawns there: the windows half
+ * hands ssh the app's own binary and a `NODE_OPTIONS` preload instead, and a
+ * preload is not a shell line at all. So the quoting here is the posix one,
+ * named rather than inferred from this machine (see shell.posixQuote).
+ *
  * @param {String} value
  * @return {String}
  */
-const word = value => `'${String(value).replace(/'/g, "'\\''")}'`
+const word = value => posixQuote(value)
 
 /**
  * Write a file only its owner can read.

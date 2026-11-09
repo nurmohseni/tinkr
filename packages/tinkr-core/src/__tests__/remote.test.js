@@ -327,6 +327,73 @@ describe('running a command on the machine a connection runs on', () => {
 
   test('writes a value as one word of a shell', () => {
     expect(quoted("/var/www/it's here")).toBe("'/var/www/it'\\''s here'")
+    // the platform is a parameter, because the shell that reads the value is not
+    // always this machine's: a windows one gets cmd's word
+    expect(quoted('C:\\srv\\my app', 'win32')).toBe('"C:\\srv\\my app"')
+    expect(quoted('100%', 'win32')).toBe('"100^%"')
+  })
+})
+
+// a local read on a windows app: there is no /bin/sh there, which is why every
+// index, log and container listing came back empty and said nothing about it
+describe('running a local command on a windows machine', () => {
+  beforeEach(() => {
+    spawn.mockImplementation(() => answering(''))
+    closeMasters()
+    spawn.mockReset()
+  })
+
+  test('runs it in cmd, as one quoted argument after /c', async () => {
+    spawn.mockImplementation(() => answering('PHP 8.4.0'))
+
+    const answer = await exec(
+      {path: 'C:\\srv\\my app'},
+      'php -r "echo 1;"',
+      {platform: 'win32'},
+    )
+
+    // `/s` is what makes cmd strip the quotes it was handed and use the rest as
+    // it is, and `windowsVerbatimArguments` keeps node from quoting the line a
+    // second time; the working directory is the connection's, as it is on posix
+    expect(spawn).toHaveBeenCalledWith(
+      process.env.ComSpec || 'cmd.exe',
+      ['/d', '/s', '/c', '"php -r "echo 1;""'],
+      {cwd: 'C:\\srv\\my app', windowsVerbatimArguments: true},
+    )
+    expect(answer).toEqual({stdout: 'PHP 8.4.0', stderr: '', code: 0})
+  })
+
+  test('is not made a process group, because windows has nothing to signal', async () => {
+    spawn.mockImplementation(() => answering(''))
+
+    await exec({path: 'C:\\srv'}, 'php -v', {platform: 'win32'})
+
+    // a posix read is spawned detached so a stop reaches what it left running;
+    // cmd has no such group, and the option is left out rather than passed false
+    expect(spawn.mock.calls[0][2]).not.toHaveProperty('detached')
+  })
+
+  test('still quotes the far side of an ssh command as posix, whatever this machine is', async () => {
+    spawn.mockImplementation(() => answering(''))
+    socketIsFree()
+
+    const connection = {
+      is_over_ssh: true,
+      ssh_server: '192.168.1.1',
+      ssh_user: 'root',
+      path: "/srv/it's here",
+    }
+
+    await exec(connection, 'php -v', {platform: 'win32'})
+
+    // the line is handed to ssh as one argument, and the far login shell is a
+    // posix shell: its `cd` is quoted for that shell, not for cmd
+    expect(spawn).toHaveBeenLastCalledWith('ssh', [
+      ...controlOptions(connection),
+      '--',
+      'root@192.168.1.1',
+      "cd '/srv/it'\\''s here' && php -v",
+    ])
   })
 })
 

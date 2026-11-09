@@ -18,6 +18,7 @@ const {sshArgs} = require('./parseSSHCommand')
 const {controlPath, clearStaleSocket} = require('./sshControl')
 const {askpassEnvironment} = require('./sshAskpass')
 const {inContainer} = require('./containerCommand')
+const {shellQuote} = require('./shell')
 
 // how long a connection is given to answer before it is taken as one that
 // cannot: a machine that is there answers in a moment, one that is not never
@@ -36,10 +37,18 @@ const escalationTimeout = 1000
  * already: the path of a connection, and the php a question is put in, are
  * quoted as units rather than written into a line a shell could break apart.
  *
+ * Which shell is the caller's to say, and it is not always the far one: the same
+ * `quoted` builds the `php -r …` of a read that runs on this machine, which on
+ * windows is read by cmd rather than by a posix shell (see shell.shellQuote).
+ * A read that travels — over ssh, or into a container — is quoted posix, because
+ * that is the shell it is read by.
+ *
  * @param {String} value
+ * @param {String} [platform] the shell that reads it, and otherwise this
+ *   machine's
  * @return {String}
  */
-const quoted = value => `'${String(value).replace(/'/g, "'\\''")}'`
+const quoted = (value, platform = process.platform) => shellQuote(value, platform)
 
 /**
  * The connections whose master this process has started, by socket.
@@ -247,6 +256,9 @@ const closeMasters = () => {
  * @param {Number} [options.maxBuffer] how much of an answer to keep
  * @param {String} [options.dataDir] where the app's data is, which is where a
  *   connection's saved password is
+ * @param {String} [options.platform] the machine the local shell runs on, which
+ *   is this one's and is a parameter so the windows shell can be tested where
+ *   there is no windows
  * @return {Promise<{stdout: String, stderr: String, code: Number|null}>}
  */
 const exec = (connection, command, options = {}) => {
@@ -259,7 +271,12 @@ const exec = (connection, command, options = {}) => {
   return ensureMaster(connection, {dataDir: options.dataDir}).then(() => run(connection, command, options))
 }
 
-const run = (connection, command, {timeout = defaultTimeout, maxBuffer, dataDir = null} = {}) => new Promise(resolve => {
+const run = (connection, command, {
+  timeout = defaultTimeout,
+  maxBuffer,
+  dataDir = null,
+  platform = process.platform,
+} = {}) => new Promise(resolve => {
   const project = (connection && connection.path) || ''
   // the command is one word of the shell there, and so is the directory it is
   // run in: nothing else of the connection goes into the line.
@@ -268,10 +285,13 @@ const run = (connection, command, {timeout = defaultTimeout, maxBuffer, dataDir 
   // the machine keeps it, and the container sees it somewhere of its own — or
   // nowhere, when the image holds it. So a container's command carries its own
   // `cd`, inside the container (see containerRead), and one put outside it would
-  // be a directory that need not exist here and means nothing there
+  // be a directory that need not exist here and means nothing there.
+  //
+  // The far shell is a posix shell on every host this app reaches, whatever this
+  // machine's own shell is, so the `cd` is quoted for that one
   const remote = !project || inContainer(connection)
     ? command
-    : `cd ${quoted(project)} && ${command}`
+    : `cd ${quoted(project, 'posix')} && ${command}`
 
   // a connection with a saved password is answered by the app's own helper,
   // which is what makes a one-off question as logged-in as a session is. One
@@ -285,17 +305,44 @@ const run = (connection, command, {timeout = defaultTimeout, maxBuffer, dataDir 
   // stopping it stops what the command left running behind it. Windows has no
   // process group to signal, and a login over ssh is a client on this machine
   // whose server is somewhere else: those are stopped as the one child they
-  // are.
+  // are — which on windows means the cmd.exe and not what it started, so a
+  // command that times out there is a php that may outlive the read it was
+  // asked for. It is the one thing this platform does not have an equivalent
+  // of; killing the tree would be taskkill /T, which is a different command
+  // than the one this file exists to run.
   const overSsh = Boolean(connection && connection.is_over_ssh)
-  const grouped = !overSsh && process.platform !== 'win32'
+  const windows = platform === 'win32'
+  const grouped = !overSsh && !windows
 
+  // the local shell is the platform's own. A posix login shell is spawned with
+  // `-lc`, because it is a profile that puts the php on the PATH of a window the
+  // app's own environment knows nothing about.
+  //
+  // Windows has neither `/bin/sh` nor a login shell: `spawn('/bin/sh', …)` there
+  // is an ENOENT, which is why every read of a project, its logs and its
+  // containers came back empty and said nothing about it. cmd is what runs the
+  // line, and the line was built by cmd's own rules (see shell.shellQuote), so
+  // the whole of what cmd is given is one quoted argument after `/c`: `/s` is
+  // what makes cmd strip the quotes it is given and use the rest as it is,
+  // instead of applying its "if the first character is a quote" rule to a
+  // command that starts with one. `windowsVerbatimArguments` is what keeps node
+  // from quoting the line a second time on its way out.
+  //
+  // The command is not itself quoted again here: a builder that knows what it is
+  // running quotes what it puts in the line, and quoting the line whole would
+  // make `php -r "…"` one argument to a program called `php -r`.
   const child = overSsh
     ? spawn('ssh', [...sshArgs(connection), remote], ...(askpass
       ? [{env: Object.assign({}, process.env, askpass.env)}]
       : []))
-    : spawn('/bin/sh', ['-lc', command], grouped
-      ? {cwd: connection && connection.path, detached: true}
-      : {cwd: connection && connection.path})
+    : windows
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${command}"`], {
+        cwd: connection && connection.path,
+        windowsVerbatimArguments: true,
+      })
+      : spawn('/bin/sh', ['-lc', command], grouped
+        ? {cwd: connection && connection.path, detached: true}
+        : {cwd: connection && connection.path})
 
   const cap = maxBuffer === undefined ? Infinity : maxBuffer
 
