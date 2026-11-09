@@ -301,15 +301,14 @@ const run = (connection, command, {
     ? askpassEnvironment(dataDir, connection)
     : null
 
-  // a local shell is made the leader of a process group of its own, so
-  // stopping it stops what the command left running behind it. Windows has no
-  // process group to signal, and a login over ssh is a client on this machine
-  // whose server is somewhere else: those are stopped as the one child they
-  // are — which on windows means the cmd.exe and not what it started, so a
-  // command that times out there is a php that may outlive the read it was
-  // asked for. It is the one thing this platform does not have an equivalent
-  // of; killing the tree would be taskkill /T, which is a different command
-  // than the one this file exists to run.
+  // a local posix shell is made the leader of a process group of its own, so
+  // stopping it stops what the command left running behind it: the signal reaches
+  // the group, not one process. Windows has no group to signal, so there the tree
+  // is ended by the id of its root instead (see killTree), which is also what
+  // reaches an askpass helper left under an ssh client. A login over ssh is a
+  // client on this machine whose server is somewhere else: it is the client that
+  // is stopped, on either platform, because the far side is not this machine's to
+  // end.
   const overSsh = Boolean(connection && connection.is_over_ssh)
   const windows = platform === 'win32'
   const grouped = !overSsh && !windows
@@ -406,16 +405,66 @@ const run = (connection, command, {
     }
   }
 
+  /**
+   * Stop the child and everything it started, which on windows is never one
+   * process.
+   *
+   * The child here is the program this file started — cmd.exe, which was given
+   * the line with `/c` and starts the php under it, or an ssh client, which can
+   * leave an askpass helper under it — so what the command left running is a
+   * grandchild of this process. `child.kill` reaches that child and nothing else,
+   * so a read that ran out of time left the php it asked for running — holding
+   * its connection, its lock, and the log file it was reading — until it finished
+   * on its own, on a machine whose answer nobody was waiting for any more.
+   * `taskkill /T` is what ends a tree by the id of its root, and `/F` because
+   * there is no polite request to make to a process that is not this one's child.
+   *
+   * It is asked for by id and not by name: a `taskkill /IM php.exe /F` would end
+   * every php on the machine, including the ones a person is running in their
+   * own terminals.
+   */
+  const killTree = () => {
+    if (!child.pid) {
+      signalChild('SIGKILL')
+
+      return
+    }
+
+    let taskkill = null
+
+    try {
+      taskkill = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {stdio: 'ignore'})
+    } catch (e) {
+      // no taskkill to run: the one process this process knows how to signal is
+      // still better than leaving nothing signalled
+      signalChild('SIGKILL')
+
+      return
+    }
+
+    if (taskkill && typeof taskkill.on === 'function') {
+      taskkill.on('error', () => signalChild('SIGKILL'))
+    }
+  }
+
   // stop the command and what it started. A TERM first, so a shell that was
   // about to write still writes; a command that ignores it is killed once the
   // grace is over, which is what keeps a trapped TERM from leaving a descendant
-  // running. The signal reaches the group the shell leads, and only that.
+  // running. The signal reaches the group the shell leads, and only that. On
+  // windows there is no group and no signal to grade: the tree is ended once, as
+  // a tree, because half of it ending is what the timeout was there to prevent
   const cancel = () => {
     if (cancelled) {
       return
     }
 
     cancelled = true
+
+    if (windows) {
+      killTree()
+
+      return
+    }
 
     if (!signalGroup('SIGTERM')) {
       signalChild('SIGTERM')

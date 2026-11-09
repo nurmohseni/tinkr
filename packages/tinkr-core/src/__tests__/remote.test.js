@@ -363,6 +363,67 @@ describe('running a local command on a windows machine', () => {
     expect(answer).toEqual({stdout: 'PHP 8.4.0', stderr: '', code: 0})
   })
 
+  // the bug this waits against: the child on windows is cmd.exe, and the php it
+  // was given is a grandchild. Killing the child left the php running — holding
+  // the connection and the file it was reading — long after the read was
+  // abandoned, which is the one thing a timeout is for
+  test('ends the whole tree when the read runs out of time', async () => {
+    const running = quiet('partial')
+    const killer = new EventEmitter()
+
+    running.pid = 4242
+    killer.kill = jest.fn()
+
+    spawn.mockImplementationOnce(() => running)
+    spawn.mockImplementationOnce(() => killer)
+
+    const answer = await exec({path: 'C:\\srv\\app'}, 'php -r sleep;', {platform: 'win32', timeout: 20})
+
+    expect(answer).toEqual({stdout: 'partial', stderr: '', code: null})
+
+    // by id and as a tree: `/IM php.exe` would end every php on the machine,
+    // including the ones a person is running in their own terminals
+    expect(spawn).toHaveBeenLastCalledWith('taskkill', ['/pid', '4242', '/T', '/F'], {stdio: 'ignore'})
+    // and not the child as well: taskkill has just ended it, and a second signal
+    // to a pid that is already gone is a chance to signal one that is not
+    expect(running.kill).not.toHaveBeenCalled()
+  })
+
+  test('ends the tree when the answer is over its cap too', async () => {
+    const running = overflowing(['12345', '67890'])
+    const killer = new EventEmitter()
+
+    running.pid = 7
+    killer.kill = jest.fn()
+
+    spawn.mockImplementationOnce(() => running)
+    spawn.mockImplementationOnce(() => killer)
+
+    const answer = await exec({path: 'C:\\srv'}, 'php -r echo;', {platform: 'win32', maxBuffer: 6})
+
+    // what was kept is the answer, and what came after the cap is not in it
+    expect(answer).toEqual({stdout: '12345', stderr: '', code: null})
+    expect(spawn).toHaveBeenLastCalledWith('taskkill', ['/pid', '7', '/T', '/F'], {stdio: 'ignore'})
+  })
+
+  test('signals the one process it can when there is no taskkill to run', async () => {
+    const running = quiet('partial')
+
+    running.pid = 11
+
+    spawn.mockImplementationOnce(() => running)
+    spawn.mockImplementationOnce(() => {
+      throw new Error('spawn taskkill ENOENT')
+    })
+
+    const answer = await exec({path: 'C:\\srv'}, 'php -r sleep;', {platform: 'win32', timeout: 20})
+
+    expect(answer).toEqual({stdout: 'partial', stderr: '', code: null})
+    // the root of the tree is still ended, even when the tool that would have
+    // ended all of it is not there
+    expect(running.kill).toHaveBeenCalled()
+  })
+
   test('is not made a process group, because windows has nothing to signal', async () => {
     spawn.mockImplementation(() => answering(''))
 

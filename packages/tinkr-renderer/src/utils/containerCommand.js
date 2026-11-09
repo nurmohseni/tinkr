@@ -4,11 +4,21 @@
  * A container connection is a local one — the files are on this machine, mounted
  * in, and the php that runs the code is inside — whose command is the
  * container's own. The form's three fields are what the connection stores; this
- * is what turns them into the command a session starts with.
+ * is what turns them into the command a session starts with, and the command is
+ * stored with the connection: what is built here is what the main process later
+ * types into a shell.
  *
  * The same function is in tinkr-core for the main process, and the two are the
- * same on purpose: a test asserts they agree, because a form that builds one
+ * same on purpose: a test asserts they agree for every engine, for both
+ * platforms, and for names that need quoting, because a form that builds one
  * command and a run that reads another is a connection that does nothing.
+ *
+ * The renderer cannot import core's copy: the bundle has no node and no
+ * `process`, and core's module graph reaches `node-pty`. So the one rule that
+ * differs by platform — how a word is quoted — is mirrored here, and the test
+ * that compares the two is what keeps them from drifting. `platform` is read
+ * from the bridge the preload installs (`api.platform`); everything else about
+ * the line is the same on every machine.
  *
  * `-it` is what a tinker session needs: a terminal, and stdin held open, or
  * psysh reads end-of-file on its first prompt and closes before the run is
@@ -17,15 +27,92 @@
 
 const ENGINES = ['docker', 'podman', 'sail', 'kubectl']
 
-// a name as one word of the shell the session types into
-const word = value => (/^[A-Za-z0-9@%+=:,._/-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`)
+// what cmd reads as more than part of a word, and what a word may hold without
+// being quoted: the caret is the escape character, `&` `|` `<` `>` `(` `)`
+// separate and redirect and group, `"` is the only quote cmd has, `%` and `!`
+// are expanded before the word is looked at, and a space is the separator
+// everything else is measured against. `,` `;` and `=` are delimiters of cmd's
+// own. (the same set as tinkr-core's shell.js)
+const CMD_SAFE_WORD = /^[A-Za-z0-9@._/:-]+$/
+
+// a posix shell does not interpret anything inside single quotes, and the one
+// character they cannot hold is the quote itself, which is written as a close,
+// an escaped quote and a reopen. (the same rule as tinkr-core's shell.js)
+const POSIX_SAFE_WORD = /^[A-Za-z0-9@%+=:,._/-]+$/
+
+/**
+ * A value as one word of cmd.exe.
+ *
+ * The word is wrapped in double quotes, which is what makes the separators and
+ * the caret ordinary characters; a quote inside it is doubled, so the receiving
+ * program's own command-line parser reads it back as one and the number of
+ * quotes cmd sees stays even; a run of backslashes at the end is doubled, or the
+ * parser would read one as escaping the closing quote. `%` and `!` are escaped
+ * last because cmd expands them before it looks at quotes.
+ *
+ * @param {String} value
+ * @return {String}
+ */
+const cmdQuote = value => {
+  const doubled = value.replace(/"/g, '""')
+  const tail = /\\+$/.test(doubled) ? '\\' : ''
+
+  return `"${`${doubled}${tail}`.replace(/[%!]/g, '^$&')}"`
+}
+
+/**
+ * A value as one word of a shell, quoted only when it has to be.
+ *
+ * @param {String} value
+ * @param {String} platform the shell that will read the line
+ * @return {String}
+ */
+const word = (value, platform) => {
+  const text = String(value)
+
+  if (platform === 'win32') {
+    return CMD_SAFE_WORD.test(text) ? text : cmdQuote(text)
+  }
+
+  return POSIX_SAFE_WORD.test(text) ? text : `'${text.replace(/'/g, "'\\''")}'`
+}
+
+/**
+ * The platform whose shell reads the command this form builds.
+ *
+ * The preload exposes the machine's platform, because the renderer has no
+ * `process` of its own. Anything else — a page opened outside the app, a test
+ * with no bridge — is read as a posix machine, which is what every host this
+ * app reached before there was a windows one.
+ *
+ * @return {String}
+ */
+export const appPlatform = () => {
+  const platform = typeof window !== 'undefined' && window.api && window.api.platform
+
+  return typeof platform === 'string' && platform !== '' ? platform : 'posix'
+}
 
 /**
  * @param {Record<String, any>} connection with `container_engine`,
- *   `container_name` and `container_command`
+ *   `container_name`, `container_command`, and `is_over_ssh` when the project is
+ *   on another machine
+ * @param {String} [platform] the shell that will read the command, which is this
+ *   machine's unless the project is reached over ssh
  * @return {String} the command, or '' when it names no container
  */
-export const containerCommand = ({container_engine: engine, container_name: name, container_command: command, path, container_path: inContainer} = {}) => {
+export const containerCommand = ({
+  container_engine: engine,
+  container_name: name,
+  container_command: command,
+  path,
+  container_path: inContainer,
+  is_over_ssh: ssh,
+} = {}, platform = appPlatform()) => {
+  // the line is typed into this machine's shell but read by the far login shell
+  // when the connection is over ssh, and that one is a posix shell on every host
+  // this app reaches: its words are quoted there, whatever this machine is
+  const shell = ssh ? 'posix' : platform
   const container = String(name || '').trim()
 
   if (!ENGINES.includes(engine) || !container) {
@@ -33,13 +120,13 @@ export const containerCommand = ({container_engine: engine, container_name: name
   }
 
   const inside = String(command || '').trim() || 'php artisan tinker'
-  const named = word(container)
+  const named = word(container, shell)
 
   // where the command runs inside the container. `container_path` is the
   // container's own idea of where the project is, and `path` the machine's,
   // which is the same thing for a project mounted in at its host path
   const dir = String((inContainer || path) || '').trim()
-  const where = dir ? ` -w ${word(dir)}` : ''
+  const where = dir ? ` -w ${word(dir, shell)}` : ''
 
   switch (engine) {
     case 'sail':

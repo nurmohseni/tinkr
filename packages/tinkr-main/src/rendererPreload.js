@@ -44,6 +44,13 @@ const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args).catch(
 })
 
 contextBridge.exposeInMainWorld('api', {
+  // the machine this window is on. The renderer has no `process` of its own, and
+  // it needs this one thing from it: the command a container connection is saved
+  // with is quoted for the shell that will read it, and cmd quotes a word
+  // differently from a posix shell (see utils/containerCommand). It is a value
+  // that never changes, so it is handed over with the bridge rather than asked
+  // for over the wire
+  platform: process.platform,
   selectDirectory: defaultPath => ipcRenderer.sendSync('selectDirectory', defaultPath),
   selectFile: defaultPath => ipcRenderer.sendSync('selectFile', defaultPath),
   saveFile: (defaultPath, contents) => ipcRenderer.sendSync('saveFile', defaultPath, contents),
