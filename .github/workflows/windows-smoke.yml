@@ -24,6 +24,9 @@ jobs:
         working-directory: node_modules/node-pty
       - run: node -e "require('node-pty'); console.log('node-pty ok')"
       - run: composer create-project laravel/laravel "${{ runner.temp }}\app" --prefer-dist --no-interaction
+      - run: node ci-smoke/probe.js
+        env:
+          APP: ${{ runner.temp }}\app
       - run: node ci-smoke/windows.js
         env:
           APP: ${{ runner.temp }}\app
