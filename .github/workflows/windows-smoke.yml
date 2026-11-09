@@ -1,0 +1,27 @@
+name: Windows smoke
+
+on:
+  push:
+    branches: [ci-windows-smoke]
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer
+      - run: yarn install --frozen-lockfile --ignore-scripts
+      - run: node scripts/prebuild.js
+        working-directory: node_modules/node-pty
+      - run: node -e "require('node-pty'); console.log('node-pty ok')"
+      - run: composer create-project laravel/laravel "${{ runner.temp }}\app" --prefer-dist --no-interaction
+      - run: node ci-smoke/windows.js
+        env:
+          APP: ${{ runner.temp }}\app
