@@ -362,7 +362,7 @@ describe('the run payload', () => {
 
     // the run says where it starts, so the pane never reads the session booting
     expect(run.code).toContain('echo $tinkr_start;')
-    expect(run.code.indexOf('echo $tinkr_start;')).toBeLessThan(run.code.indexOf('eval('))
+    expect(run.code.indexOf('echo $tinkr_start;')).toBeLessThan(run.code.indexOf('eval($tinkr_uses'))
     // built from two pieces like the value's, so the shell echoing the wrapped
     // command back does not print it
     expect(run.code).toContain(`$tinkr_start='${run.start.slice(0, 4)}'.'${run.start.slice(4)}';`)
@@ -386,7 +386,7 @@ describe('the run payload', () => {
     // the error: the keys are added to, so this reads from the encode instead of
     // pinning what sits next to what
     expect(run.code.slice(run.code.indexOf('json_encode(['))).toContain("'imported'=>(object)$tinkr_imported")
-    expect(run.code.indexOf('$tinkr_imported=[];')).toBeLessThan(run.code.indexOf('eval('))
+    expect(run.code.indexOf('$tinkr_imported=[];')).toBeLessThan(run.code.indexOf('eval($tinkr_uses'))
     expect(run.code.indexOf('base64_decode(')).toBeLessThan(run.code.indexOf('$tinkr_imported=[];'))
   })
 

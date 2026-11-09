@@ -218,6 +218,49 @@ const renderSandbox = sandbox => {
 }
 
 /**
+ * What an error says about where it was thrown, as the lines of the answer.
+ *
+ * A throw in the snippet is named by its own line; anything else by the file and
+ * line of the code it came from. The frames follow, the snippet's own ones
+ * marked as such, so a caller reading the text has the same list the structured
+ * answer carries. An error that says nothing of either has no lines here.
+ *
+ * @param {Object} error
+ * @param {Number} [statement] the line the statement answered on, which the
+ * text already says: a throw on that same line is not named twice
+ * @return {Array<String>}
+ */
+const errorSite = (error, statement = null) => {
+  const lines = []
+  const line = Number(error.line)
+
+  if (Number.isInteger(line) && line > 0) {
+    if (Number(statement) !== line) {
+      lines.push(`  on line ${line} of the snippet`)
+    }
+  } else if (typeof error.file === 'string' && error.file !== '') {
+    lines.push(Number.isInteger(Number(error.fileLine)) ? `  at ${error.file}:${error.fileLine}` : `  at ${error.file}`)
+  }
+
+  const frames = Array.isArray(error.trace) ? error.trace.filter(Boolean) : []
+
+  if (frames.length > 0) {
+    lines.push('  trace:')
+
+    frames.forEach((frame, index) => {
+      const where = frame.snippet
+        ? `snippet line ${Number(frame.line) || 0}`
+        : `${frame.file}:${frame.line}`
+      const call = frame.class ? `${frame.class}->${frame.function}` : frame.function
+
+      lines.push(`    #${index} ${where} ${call}`)
+    })
+  }
+
+  return lines
+}
+
+/**
  * What the run answers with, as text: every statement that answered something,
  * then what the run printed.
  *
@@ -236,6 +279,7 @@ const render = (result, guard = null) => {
   for (const block of blocks) {
     if (block.error) {
       lines.push(`Line ${block.line}: threw ${block.error.class}: ${block.error.message}`)
+      lines.push(...errorSite(block.error, block.line))
 
       continue
     }
@@ -251,6 +295,7 @@ const render = (result, guard = null) => {
   // session that went away — says why on no line of its own
   if (result.error && !blocks.some(block => block.error)) {
     lines.push(`threw ${result.error.class}: ${result.error.message}`)
+    lines.push(...errorSite(result.error))
   }
 
   if (lines.length === 0) {
@@ -931,10 +976,42 @@ const logAfterInput = {
     'read the page after it.',
 }
 
+const frameOutput = {
+  type: 'object',
+  description: 'One call the error came through. Its arguments are never carried: a value ' +
+    'the run held can be a secret.',
+  properties: {
+    file: {
+      type: ['string', 'null'],
+      description: 'The file the call was made from, as a path from the project root when it is ' +
+        'inside it. Null for a frame of the snippet itself.',
+    },
+    line: {type: ['integer', 'null'], description: 'The line of that file. A snippet frame\'s line is the snippet\'s own.'},
+    class: {type: ['string', 'null'], description: 'The class the function was called on, when it was a method.'},
+    function: {type: 'string', description: 'The function or method that was called.'},
+    snippet: {type: 'boolean', description: 'Whether the frame is a line of the snippet rather than a file.'},
+  },
+}
+
 const errorOutput = {
   type: ['object', 'null'],
   description: 'The exception that stopped the run, when one did.',
-  properties: {class: {type: 'string'}, message: {type: 'string'}},
+  properties: {
+    class: {type: 'string'},
+    message: {type: 'string'},
+    line: {
+      type: ['integer', 'null'],
+      description: 'The line of the snippet the error was thrown on, when it was thrown in the snippet.',
+    },
+    file: {
+      type: ['string', 'null'],
+      description: 'The file it was thrown in, as a path from the project root when it is inside it. ' +
+        'Null when the snippet itself threw it.',
+    },
+    fileLine: {type: ['integer', 'null'], description: 'The line of that file.'},
+    trace: {type: 'array', items: frameOutput, description: 'Up to thirty frames it came through, innermost first.'},
+    previous: {type: ['object', 'null'], description: 'The exception it was thrown from, in the same shape.'},
+  },
 }
 
 const logEntryOutput = {

@@ -12,8 +12,35 @@
  * directory.
  */
 const {execFileSync} = require('child_process')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 
 const {wrapRun} = require('../runResult')
+
+/**
+ * A php file that is not the snippet's — what a framework's file is to a run —
+ * and the run started in the directory it sits in, so its path is the project's
+ * and the snippet's frames are the only eval'd ones. It lives under the temp
+ * directory the suite is given, which is where the php it runs can see.
+ */
+const framework = fs.mkdtempSync(path.join(os.tmpdir(), 'tinkr-frames-'))
+
+fs.writeFileSync(path.join(framework, 'vendor.php'),
+  '<?php\n' +
+  'function tinkrOuter($fn) { $fn(); }\n' +
+  "function tinkrBoom() { throw new LogicException('boom'); }\n")
+
+afterAll(() => fs.rmSync(framework, {recursive: true, force: true}))
+
+/**
+ * The php that puts the run in the fixture's directory, which is what makes the
+ * fixture the project the run's paths are written from.
+ *
+ * @param {String} dir
+ * @return {String}
+ */
+const into = dir => `chdir('${dir}');`
 
 /**
  * Run a snippet through the real wrapper and read the envelope it printed.
@@ -21,11 +48,13 @@ const {wrapRun} = require('../runResult')
  * @param {String} source
  * @param {String} [after] php run after the wrapper, which is how a run's own
  * counter is read once the envelope is out
+ * @param {String} [before] php run before the wrapper, which is how a snippet is
+ * given a function that is not its own
  * @return {{payload: Object, printed: String, tail: String}}
  */
-const runPhp = (source, after = '') => {
+const runPhp = (source, after = '', before = '') => {
   const run = wrapRun(source)
-  const out = execFileSync('php', [], {encoding: 'utf8', input: `<?php ${run.code}${after}`})
+  const out = execFileSync('php', [], {encoding: 'utf8', input: `<?php ${before} ${run.code}${after}`})
   const at = out.indexOf(`${run.marker}@`)
 
   if (at < 0) {
@@ -44,6 +73,38 @@ const runPhp = (source, after = '') => {
   }
 }
 
+/**
+ * The same, for a run that dies: the php process ends with a fatal, so the
+ * child's own end is caught and the envelope it printed on the way out is read
+ * from what it wrote.
+ *
+ * @param {String} source
+ * @return {{payload: Object, printed: String}}
+ */
+const runPhpFatal = source => {
+  const run = wrapRun(source)
+  let out = ''
+
+  try {
+    out = execFileSync('php', [], {encoding: 'utf8', input: `<?php ${run.code}`})
+  } catch (failure) {
+    out = failure.stdout || ''
+  }
+
+  const at = out.indexOf(`${run.marker}@`)
+
+  if (at < 0) {
+    throw new Error(`the fatal run printed no envelope: ${JSON.stringify(out)}`)
+  }
+
+  const rest = out.slice(at + run.marker.length + 1)
+
+  return {
+    payload: JSON.parse(Buffer.from(rest.slice(0, rest.indexOf('@')), 'base64').toString('utf8')),
+    printed: out.slice(0, at).split(run.start).join(''),
+  }
+}
+
 describe('running a snippet', () => {
   test('runs a statement that throws while it runs once', () => {
     const {payload, printed} = runPhp(
@@ -55,7 +116,7 @@ describe('running a snippet', () => {
     // a ParseError thrown by the snippet is the run's error and not a cue to run
     // it again as a statement: the echo would otherwise be printed twice
     expect(printed).toBe('risky-output')
-    expect(payload.error).toEqual({class: 'ParseError', message: 'risky-broke'})
+    expect(payload.error).toMatchObject({class: 'ParseError', message: 'risky-broke'})
     expect(payload.value).toBe(null)
     expect(payload.blocks.at(-1).error.class).toBe('ParseError')
   })
@@ -561,5 +622,120 @@ describe('a value that serializes itself', () => {
 
     expect(payload.error).toBe(null)
     expect(payload.value).toBe('[recursion]')
+  })
+})
+
+describe('where an error was thrown', () => {
+  test('says the snippet line of a throw, on the statement it was written in', () => {
+    const {payload} = runPhp("$a = 1;\n\nthrow new RuntimeException('boom');")
+
+    // the second statement starts on line 2 — the whitespace the first one ended
+    // with — and the throw is on line 3 of the snippet, which is what the error
+    // says: the eval's own line 2 is not a line anybody wrote
+    expect(payload.error).toEqual({
+      line: 3,
+      file: null,
+      fileLine: null,
+      class: 'RuntimeException',
+      message: 'boom',
+      trace: [],
+    })
+    expect(payload.blocks.at(-1).error.line).toBe(3)
+  })
+
+  test('keeps the frames a throw came through, the snippet one marked as itself', () => {
+    const {payload} = runPhp(
+      'tinkrOuter(function () {\n' +
+      "  throw new RuntimeException('boom');\n" +
+      '});',
+      '',
+      // a function of a file that is not the snippet's, the way a framework's is,
+      // and the run started where that file is: its path is the project's
+      `${into(framework)}require '${framework}/vendor.php';`,
+    )
+
+    // the throw is on the snippet's second line, and the frame above it is the
+    // call the snippet's closure was made from: a file of its own, not the snippet
+    expect(payload.error.line).toBe(2)
+    expect(payload.error.file).toBe(null)
+    expect(payload.error.trace).toEqual([
+      {file: 'vendor.php', line: 2, class: null, function: '{closure}', snippet: false},
+      {file: null, line: 1, class: null, function: 'tinkrOuter', snippet: true},
+    ])
+  })
+
+  test('names a file outside the snippet from the project root, with the line in it', () => {
+    const {payload} = runPhp(
+      'tinkrBoom();',
+      '',
+      `${into(framework)}require '${framework}/vendor.php';`,
+    )
+
+    // the file the throw came from is written from the root the run was started
+    // in, and the frame under it is the snippet's own line
+    expect(payload.error).toMatchObject({line: null, file: 'vendor.php', fileLine: 3, class: 'LogicException'})
+    expect(payload.error.trace[0]).toEqual({file: null, line: 1, class: null, function: 'tinkrBoom', snippet: true})
+  })
+
+  test('stops a trace at thirty frames', () => {
+    const {payload} = runPhp(
+      "function tinkrDown($n) { if ($n === 0) { throw new RuntimeException('bottom'); } tinkrDown($n - 1); }\n" +
+      'tinkrDown(40);',
+    )
+
+    expect(payload.error.trace).toHaveLength(30)
+    expect(payload.error.trace.every(frame => frame.snippet === true)).toBe(true)
+  })
+
+  test('carries no arguments of a frame, whatever the run was working with', () => {
+    const {payload} = runPhp(
+      "function tinkrKeep($secret) { throw new RuntimeException('boom'); }\n" +
+      "tinkrKeep('hunter2');",
+    )
+
+    // an argument is a value the run had, and a value can be a password: the
+    // frame says which function and which line, and nothing of what it was given
+    expect(JSON.stringify(payload)).not.toContain('hunter2')
+    expect(payload.error.trace).toEqual([{file: null, line: 2, class: null, function: 'tinkrKeep', snippet: true}])
+  })
+
+  test('reports a fatal error on the line of the snippet, with no eval chain in its words', () => {
+    const {payload} = runPhpFatal("$a = 1;\ntrigger_error('boom', E_USER_ERROR);")
+
+    expect(payload.error).toMatchObject({class: 'FatalError', message: 'boom', line: 2})
+    expect(payload.error.file).toBe(null)
+    expect(payload.error.message).not.toContain("eval()'d code")
+    expect(payload.error.trace).toEqual([])
+  })
+
+  test('drops the eval chain psysh writes into the message of a warning it wraps', () => {
+    const {payload} = runPhp(
+      "trigger_error('boom', E_USER_WARNING);",
+      '',
+      // psysh's error handler answers a warning with an exception whose words
+      // are the warning and the eval chain php named the file with
+      'set_error_handler(function($level, $message, $file, $line) {' +
+      " throw new \\ErrorException('PHP Error:  '.$message.' in '.$file.' on line '.$line, 0, $level, $file, $line); });",
+    )
+
+    expect(payload.error.class).toBe('ErrorException')
+    expect(payload.error.message).toBe('PHP Error:  boom')
+    expect(payload.error.line).toBe(1)
+  })
+
+  test('keeps the exception an error was thrown from, with the same shape', () => {
+    const {payload} = runPhp(
+      "try { throw new RuntimeException('inner'); } catch (RuntimeException $e) {" +
+      " throw new LogicException('outer', 0, $e); }",
+    )
+
+    expect(payload.error.previous).toMatchObject({
+      line: 1,
+      file: null,
+      fileLine: null,
+      class: 'RuntimeException',
+      message: 'inner',
+    })
+    expect(payload.error.previous.trace).toEqual([])
   })
 })

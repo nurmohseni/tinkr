@@ -97,7 +97,7 @@ const importBlock = entries => {
  */
 const SPLIT_BLOCKS = [
   "$tinkr_tokens=token_get_all('<?php '.$tinkr_code);$tinkr_total=count($tinkr_tokens);",
-  '$tinkr_stmts=[];$tinkr_stmt=\'\';$tinkr_line=0;$tinkr_l=1;$tinkr_stack=[];$tinkr_prev=null;$tinkr_do=false;',
+  '$tinkr_stmts=[];$tinkr_stmt=\'\';$tinkr_line=0;$tinkr_from=0;$tinkr_l=1;$tinkr_stack=[];$tinkr_prev=null;$tinkr_do=false;',
   // the blocks written with php's alternative syntax that are open: inside one,
   // a `;` ends a line of the block and not the statement, which is the whole of
   // `foreach (…): … endforeach;`. `$tinkr_ctl` is the keyword whose header is
@@ -151,7 +151,13 @@ const SPLIT_BLOCKS = [
   'if($tinkr_id===T_OPEN_TAG){$tinkr_l=$tinkr_token[2]+substr_count($tinkr_text,"\\n");continue;}',
   'if($tinkr_id!==null){$tinkr_l=$tinkr_token[2];}',
   'if(!$tinkr_stack&&$tinkr_line===0&&$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT){$tinkr_line=(int)$tinkr_l;}',
-  '$tinkr_l+=substr_count($tinkr_text,"\\n");',
+  // where the statement's own text begins: the first token that is accumulated
+  // into an empty statement, which can be the whitespace a line ends with. The
+  // line a frame of it is on is counted from here, and it is not the line of the
+  // statement's first real token — a statement that opens with a newline starts
+  // its code a line above it
+  'if($tinkr_stmt===\'\'){$tinkr_from=$tinkr_l;}' +
+  '$tinkr_l+=substr_count($tinkr_text,"\\n");' +
   '$tinkr_stmt.=$tinkr_text;',
   '$tinkr_word=($tinkr_id===null)?trim($tinkr_text):null;',
   '$tinkr_significant=$tinkr_id!==T_WHITESPACE&&$tinkr_id!==T_COMMENT&&$tinkr_id!==T_DOC_COMMENT;',
@@ -213,7 +219,7 @@ const SPLIT_BLOCKS = [
   // the `}` that closes a name belongs to the statement, and one that closes a
   // block only ends it when nothing can follow it and php parses what was read
   "if($tinkr_word==='}'&&(!$tinkr_stack)&&$tinkr_alt===0&&$tinkr_closed==='{'&&!$tinkr_next($tinkr_tokens,$tinkr_i,$tinkr_total)&&$tinkr_parses($tinkr_stmt)){" +
-  "$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt,'head'=>$tinkr_head];$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;$tinkr_head=null;$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;}}" +
+  "$tinkr_stmts[]=['line'=>$tinkr_line,'from'=>$tinkr_from,'code'=>$tinkr_stmt,'head'=>$tinkr_head];$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;$tinkr_head=null;$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;}}" +
   // a `;` on its own is no statement: evaluated, it would answer null over the
   // value of the one before it. And a `;` that a continuation follows is not the
   // end of the statement either: an unbraced `if (…) echo 1; else echo 2;` is
@@ -221,11 +227,11 @@ const SPLIT_BLOCKS = [
   "if(!$tinkr_stack&&$tinkr_alt===0&&$tinkr_word===';'){" +
   '$tinkr_following=$tinkr_follow($tinkr_tokens,$tinkr_i,$tinkr_total);' +
   'if($tinkr_following===T_ELSE||$tinkr_following===T_ELSEIF||$tinkr_following===T_CATCH||$tinkr_following===T_FINALLY||($tinkr_do&&$tinkr_following===T_WHILE)){continue;}' +
-  "if(trim($tinkr_stmt)!==';'){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt,'head'=>$tinkr_head];}$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;$tinkr_head=null;$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;}" +
+  "if(trim($tinkr_stmt)!==';'){$tinkr_stmts[]=['line'=>$tinkr_line,'from'=>$tinkr_from,'code'=>$tinkr_stmt,'head'=>$tinkr_head];}$tinkr_stmt='';$tinkr_line=0;$tinkr_do=false;$tinkr_head=null;$tinkr_fn_open=false;$tinkr_fn_named=false;$tinkr_fn_slot=false;$tinkr_class_expr=false;$tinkr_new_pending=false;}" +
   // the token before a `{` is what says which kind of brace it is
   'if($tinkr_significant){$tinkr_prev=$tinkr_id===null?$tinkr_text:$tinkr_id;}',
   '}',
-  "if(trim($tinkr_stmt)!==''){$tinkr_stmts[]=['line'=>$tinkr_line,'code'=>$tinkr_stmt,'head'=>$tinkr_head];}",
+  "if(trim($tinkr_stmt)!==''){$tinkr_stmts[]=['line'=>$tinkr_line,'from'=>$tinkr_from,'code'=>$tinkr_stmt,'head'=>$tinkr_head];}",
 ]
 
 /**
@@ -249,8 +255,9 @@ const VALIDATE_BLOCK = "try{token_get_all('<?php '.$tinkr_code,TOKEN_PARSE);}" +
   'catch(\\Throwable $tinkr_parse_failure){' +
   "try{token_get_all('<?php '.$tinkr_code.\"\\n;\",TOKEN_PARSE);}" +
   'catch(\\Throwable $tinkr_parse_error){' +
-  "$tinkr_error=['class'=>get_class($tinkr_parse_error),'message'=>$tinkr_parse_error->getMessage()];" +
-  "if($tinkr_parse_error->getPrevious()!==null){$tinkr_error['previous']=['class'=>get_class($tinkr_parse_error->getPrevious()),'message'=>$tinkr_parse_error->getPrevious()->getMessage()];}" +
+  // a parse error has no line of the snippet to point at: the tokenizer reports
+  // the file it was asked from, and the error builder answers no line for that
+  '$tinkr_error=$tinkr_error_of($tinkr_parse_error);' +
   '}}'
 
 /**
@@ -317,8 +324,9 @@ const EVAL_BLOCKS = [
   "if($tinkr_one['head']===T_USE){if(substr($tinkr_source,-1)!==';'){$tinkr_source.=';';}$tinkr_uses.=$tinkr_source;continue;}",
   "if($tinkr_one['head']!==T_FUNCTION){continue;}",
   'try{eval($tinkr_uses.$tinkr_source);$tinkr_hoisted[$tinkr_i]=true;}' +
-    "catch(\\Throwable $tinkr_hoist_failure){$tinkr_error=['class'=>get_class($tinkr_hoist_failure),'message'=>$tinkr_hoist_failure->getMessage()];" +
-    "if($tinkr_hoist_failure->getPrevious()!==null){$tinkr_error['previous']=['class'=>get_class($tinkr_hoist_failure->getPrevious()),'message'=>$tinkr_hoist_failure->getPrevious()->getMessage()];}break;}",
+    // a declaration that threw is on the line the snippet wrote it on, and its
+    // frames are read from there
+    "catch(\\Throwable $tinkr_hoist_failure){$tinkr_error=$tinkr_error_of($tinkr_hoist_failure,$tinkr_one['from'],$tinkr_uses);break;}",
   '}',
   // a declaration that could not be made stopped the run before it began, as a
   // file that cannot be compiled would
@@ -351,10 +359,10 @@ const EVAL_BLOCKS = [
     "eval($tinkr_uses.$tinkr_source.\"\\n\".'$tinkr_completed=true;');",
   '}catch(\\Throwable $tinkr_failure){',
   '$tinkr_value=null;$tinkr_completed=false;' +
-  // the exception's own words, and the one it was thrown from: a `previous`
-  // is where the real cause usually is
-  "$tinkr_block_error=['class'=>get_class($tinkr_failure),'message'=>$tinkr_failure->getMessage()];" +
-    "if($tinkr_failure->getPrevious()!==null){$tinkr_block_error['previous']=['class'=>get_class($tinkr_failure->getPrevious()),'message'=>$tinkr_failure->getPrevious()->getMessage()];}",
+  // where the statement threw, from the statement itself: the line its code
+  // starts on, and the imports the eval was written in front of it (see
+  // ERROR_BLOCK)
+  "$tinkr_block_error=$tinkr_error_of($tinkr_failure,$tinkr_one['from'],$tinkr_uses);",
   '}',
   // the raw value stays raw until the snippet has ended: a serializer asked
   // here would run between two of the snippet's own statements
@@ -471,8 +479,10 @@ const guardArm = mode => `$tinkr_tx=null;$tinkr_tx_armed=false;$tinkr_tx_error=n
   '}}catch(\\Throwable $tinkr_tx_watch){}}}' +
   'catch(\\Throwable $tinkr_tx_failure){' +
   "$tinkr_tx_error='the connection refused to begin a transaction: '.$tinkr_tx_failure->getMessage();}" +
+  // the guard's own failure was thrown by the wrapper and not by the snippet, so
+  // it has no line and no frames to point at — only the words it was refused with
   'if(!$tinkr_tx_armed){$tinkr_stmts=[];' +
-  "$tinkr_error=['class'=>'RuntimeException','message'=>'the transaction guard could not be armed: '.$tinkr_tx_error];}"
+  '$tinkr_error=[\'class\'=>\'RuntimeException\',\'message\'=>\'the transaction guard could not be armed: \'.$tinkr_tx_error,\'line\'=>null,\'file\'=>null,\'fileLine\'=>null,\'trace\'=>[]];}'
 
 /**
  * The php that records what a guarded run changed, row by row, before the
@@ -796,6 +806,106 @@ const SAFE_ENCODE = '$tinkr_cache=[];' +
   'return $tinkr_v;};'
 
 /**
+ * The php that says where an error was thrown.
+ *
+ * An exception knows the file and the line it came from, and for code that was
+ * eval'd that file is the name php made up for it: `ExecutionLoopClosure.php(55)
+ * : eval()'d code(4) : eval()'d code(1) : eval()'d code`. That name is a chain of
+ * every eval above the throw, and the line counts inside the last of them, so
+ * neither is the snippet's own. The count of those names says the depth, this
+ * file says the depth of the wrapper, and the snippet's code — every statement
+ * of it, eval'd on its own — is one deeper than this file.
+ *
+ * A snippet line is not the eval's line either: the eval a statement runs in is
+ * the imports it inherited and the statement itself, so the statement's first
+ * line sits at the eval's line after the imports, and the line a frame reports
+ * is counted from there. `$tinkr_at_line` walks it back, which is what makes a
+ * frame from the snippet say `line 3` rather than `line 1` of an eval.
+ *
+ * The trace is kept for the pane and for a client on the other end of the MCP
+ * server: up to thirty frames, each the file and line the call was made from,
+ * the class and the function, and never the arguments — an argument is a value
+ * the run was working with, and a value can hold a secret. The wrapper's own
+ * frames and psysh's execution loop are not the snippet's and are dropped: the
+ * eval the wrapper calls is where a trace stops being about the run.
+ *
+ * A message is cleaned for the same reason: php writes where an uncaught error
+ * was thrown into the message it leaves, and psysh's own error handler wraps a
+ * warning in the same sentence. Both say the eval chain rather than the
+ * snippet, and the envelope says the snippet's line, so the chain goes.
+ *
+ * Paths are reported from the project root when they are inside it, and cut to
+ * keep the answer bounded; a path past the cap keeps its file name rather than
+ * the directories above it.
+ *
+ * @type {String}
+ */
+const ERROR_BLOCK =
+  // where the run was started from, and how deep eval nests this wrapper
+  '$tinkr_root=getcwd();$tinkr_depth=substr_count(__FILE__,"eval()\'d code");' +
+  '$tinkr_path=function($tinkr_file)use(&$tinkr_root){' +
+  'if($tinkr_root!==false&&strpos($tinkr_file,$tinkr_root.DIRECTORY_SEPARATOR)===0){$tinkr_file=substr($tinkr_file,strlen($tinkr_root)+1);}' +
+  'if(strlen($tinkr_file)>300){$tinkr_file="…".substr($tinkr_file,-300);' +
+  'for($tinkr_i=0;$tinkr_i<3&&!preg_match("//u",$tinkr_file);$tinkr_i++){$tinkr_file=substr($tinkr_file,1);}}' +
+  'return $tinkr_file;};' +
+  // whether a file is the code the snippet wrote: each statement is eval'd, so
+  // its frames are named one eval deeper than this wrapper's own file
+  '$tinkr_in_snippet=function($tinkr_file)use(&$tinkr_depth){return substr_count($tinkr_file,"eval()\'d code")===$tinkr_depth+1;};' +
+  // a line of an eval'd statement, walked back to the snippet's own line
+  '$tinkr_at_line=function($tinkr_raw,$tinkr_at,$tinkr_prefix){return max(1,$tinkr_at+(int)$tinkr_raw-substr_count($tinkr_prefix,"\n")-1);};' +
+  // the three keys an error carries about where it was thrown: a snippet line,
+  // or a file and a line. A file this wrapper wrote is neither, and neither is
+  // the name the tokenizer gives a parse error — it has no file at all — nor a
+  // code the snippet eval'd itself, whose lines are its own and not the snippet's
+  '$tinkr_place=function($tinkr_where,$tinkr_raw,$tinkr_at,$tinkr_prefix)use(&$tinkr_in_snippet,&$tinkr_at_line,&$tinkr_path,&$tinkr_depth){' +
+  'if($tinkr_in_snippet($tinkr_where)){return ["line"=>(int)$tinkr_at_line($tinkr_raw,$tinkr_at,$tinkr_prefix),"file"=>null,"fileLine"=>null];}' +
+  'if($tinkr_where===""||$tinkr_where===__FILE__||substr_count($tinkr_where,"eval()\'d code")>$tinkr_depth+1){return ["line"=>null,"file"=>null,"fileLine"=>null];}' +
+  'return ["line"=>null,"file"=>$tinkr_path($tinkr_where),"fileLine"=>(int)$tinkr_raw];};' +
+  // the words of a message, without the eval chain php or psysh wrote into it
+  '$tinkr_clean=function($tinkr_message){' +
+  'if(strpos($tinkr_message,"eval()\'d code")!==false){' +
+  '$tinkr_cut=strpos($tinkr_message,"\nStack trace:");' +
+  'if($tinkr_cut!==false){$tinkr_message=substr($tinkr_message,0,$tinkr_cut);}' +
+  '$tinkr_message=preg_replace("/ in [^\\n]*eval\\(\\)\'d code[^\\n]* on line \\d+/","",$tinkr_message);' +
+  '$tinkr_message=preg_replace("/ in [^\\n]*eval\\(\\)\'d code[^\\n]*:\\d+/","",$tinkr_message);' +
+  '}' +
+  'return $tinkr_message;};' +
+  // one frame: the snippet's own line, or the file and line it was called from.
+  // `null` drops the frame; `stop` ends the trace, because what is below psysh's
+  // own eval is the shell and not the run
+  '$tinkr_frame_of=function($tinkr_frame,$tinkr_at,$tinkr_prefix)use(&$tinkr_in_snippet,&$tinkr_at_line,&$tinkr_path,&$tinkr_depth){' +
+  '$tinkr_file=isset($tinkr_frame["file"])?$tinkr_frame["file"]:null;' +
+  '$tinkr_call=isset($tinkr_frame["function"])?$tinkr_frame["function"]:"";' +
+  'if($tinkr_file===null||$tinkr_file===__FILE__){return null;}' +
+  // a closure's name carries the file it was written in on php 8.3 and older,
+  // which is a path the envelope has no need of
+  'if(strpos($tinkr_call,"{closure")===0){$tinkr_call="{closure}";}' +
+  'if($tinkr_in_snippet($tinkr_file)){return ["file"=>null,"line"=>(int)$tinkr_at_line(isset($tinkr_frame["line"])?$tinkr_frame["line"]:1,$tinkr_at,$tinkr_prefix),"class"=>isset($tinkr_frame["class"])?$tinkr_frame["class"]:null,"function"=>$tinkr_call,"snippet"=>true];}' +
+  // an eval deeper than the snippet is the snippet's own eval, and the frame it
+  // would report is the snippet frame above it
+  'if(substr_count($tinkr_file,"eval()\'d code")>$tinkr_depth+1){return null;}' +
+  // the eval that ran this wrapper is the last frame the run owns: below it the
+  // frames are psysh's own loop and the shell's, and none of them is the snippet
+  'if($tinkr_call==="eval"&&substr_count($tinkr_file,"eval()\'d code")<$tinkr_depth){return "stop";}' +
+  '$tinkr_class=isset($tinkr_frame["class"])?$tinkr_frame["class"]:null;' +
+  'if($tinkr_class!==null&&strpos($tinkr_class,"class@anonymous")===0){$tinkr_class="class@anonymous";}' +
+  'return ["file"=>$tinkr_path($tinkr_file),"line"=>isset($tinkr_frame["line"])?(int)$tinkr_frame["line"]:null,"class"=>$tinkr_class,"function"=>$tinkr_call,"snippet"=>false];};' +
+  // an exception, in the shape every error of the envelope is written in. The
+  // one it was thrown from is not a frame of its own: php's trace starts at the
+  // caller. A previous is kept one deep, which is where the cause usually is
+  '$tinkr_error_of=function($tinkr_e,$tinkr_at=0,$tinkr_prefix="",$tinkr_nest=0)use(&$tinkr_error_of,&$tinkr_place,&$tinkr_frame_of,&$tinkr_clean){' +
+  '$tinkr_out=$tinkr_place($tinkr_e->getFile(),$tinkr_e->getLine(),$tinkr_at,$tinkr_prefix);' +
+  '$tinkr_out["class"]=get_class($tinkr_e);$tinkr_out["message"]=$tinkr_clean($tinkr_e->getMessage());$tinkr_out["trace"]=[];' +
+  'foreach($tinkr_e->getTrace() as $tinkr_step){' +
+  'if(count($tinkr_out["trace"])>=30){break;}' +
+  '$tinkr_frame=$tinkr_frame_of($tinkr_step,$tinkr_at,$tinkr_prefix);' +
+  'if($tinkr_frame==="stop"){break;}' +
+  'if($tinkr_frame!==null){$tinkr_out["trace"][]=$tinkr_frame;}' +
+  '}' +
+  'if($tinkr_nest<1&&$tinkr_e->getPrevious()!==null){$tinkr_out["previous"]=$tinkr_error_of($tinkr_e->getPrevious(),$tinkr_at,$tinkr_prefix,1);}' +
+  'return $tinkr_out;};'
+
+/**
  * The php that closes the transaction, and the envelope key that reports it.
  *
  * It runs after the last statement, on the way out of a run that threw as much
@@ -893,9 +1003,16 @@ const printer = (keys, close = '') => {
   const ended = '$tinkr_last=error_get_last();' +
     'if($tinkr_error===null&&$tinkr_last!==null&&in_array($tinkr_last["type"],' +
     '[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR,E_USER_ERROR,E_RECOVERABLE_ERROR],true)){' +
-    '$tinkr_error=["class"=>"FatalError","message"=>$tinkr_last["message"]];}' +
+    // a fatal leaves no exception to read a trace from: the file and the line it
+    // names are read as the exception path reads them, and the message loses the
+    // eval chain php wrote into it
+    '$tinkr_error=$tinkr_place($tinkr_last["file"],$tinkr_last["line"],' +
+    'isset($tinkr_one["from"])?$tinkr_one["from"]:0,isset($tinkr_uses)?$tinkr_uses:"")+' +
+    '["class"=>"FatalError","message"=>$tinkr_clean($tinkr_last["message"]),"trace"=>[]];}' +
     'elseif($tinkr_error===null){' +
-    '$tinkr_error=["class"=>"Exit","message"=>"exit(), die() or dd() stopped the run before it answered"];}'
+    // the run ended on purpose, so there is no throw to point at
+    '$tinkr_error=["class"=>"Exit","message"=>"exit(), die() or dd() stopped the run before it answered",' +
+    '"line"=>null,"file"=>null,"fileLine"=>null,"trace"=>[]];}'
 
   return {
     /**
@@ -913,7 +1030,11 @@ const printer = (keys, close = '') => {
      * spent it.
      */
     shutdown: 'register_shutdown_function(function()use(&$tinkr_sent,&$tinkr_results,&$tinkr_value,&$tinkr_error,' +
-      '&$tinkr_queries,&$tinkr_query_total,&$tinkr_query_line,&$tinkr_imported,&$tinkr_transaction,&$tinkr_safe,$tinkr' +
+      '&$tinkr_queries,&$tinkr_query_total,&$tinkr_query_line,&$tinkr_imported,&$tinkr_transaction,&$tinkr_safe,$tinkr,' +
+      // a fatal is read where it happened, so the statement that was being
+      // evaluated and the imports its eval was written with come along: they are
+      // what turns the eval's line into the snippet's own
+      '&$tinkr_place,&$tinkr_clean,&$tinkr_one,&$tinkr_uses' +
       (close
         ? ',&$tinkr_db,&$tinkr_tx,&$tinkr_tx_armed,&$tinkr_tx_error,&$tinkr_tx_mode,&$tinkr_tx_level,' +
         '&$tinkr_query_connections,&$tinkr_tx_diff'
@@ -1054,6 +1175,9 @@ const wrapRun = (source, imports = {}, guard = null, timeout = null) => {
       // the values that cannot be written as themselves are written as what
       // they are, so nothing comes back as a null it never was
       SAFE_ENCODE,
+      // where an error was thrown, read from the exception itself (see
+      // ERROR_BLOCK): a snippet line, a file and line, and the frames between
+      ERROR_BLOCK,
       // what the envelope reads, present even when the snippet is rejected
       // before it runs: the run's error, and the empty answers it then has
       '$tinkr_error=null;$tinkr_sent=false;$tinkr_imported=[];$tinkr_results=[];$tinkr_value=null;' +

@@ -6,6 +6,8 @@ const labels = {
   returned: 'Returned',
   printed: 'Printed',
   error: 'Error',
+  trace: 'Trace',
+  line: line => `Line ${line}`,
   queries: 'Queries',
   dryRun: 'Dry run',
   sandbox: 'Sandbox',
@@ -89,6 +91,47 @@ describe('a run as markdown', () => {
 
     expect(markdown).toContain('**Error**')
     expect(markdown).toContain('RuntimeException: the order was not found')
+  })
+
+  test('carries where an error was thrown, and the frames it came through', () => {
+    const error = {
+      class: 'QueryException',
+      message: 'nope',
+      line: null,
+      file: 'app/Models/User.php',
+      fileLine: 42,
+      trace: [
+        {file: 'vendor/framework/src/Connection.php', line: 760, class: null, function: 'runQueryCallback', snippet: false},
+        {file: null, line: 3, class: 'App\\Models\\User', function: 'get', snippet: true},
+      ],
+    }
+    const markdown = runMarkdown(run({
+      result: {value: null, error, output: '', blocks: [], queries: []},
+    }))
+
+    // the section is the one the export already writes for an error, and these
+    // are its two facts under it: where, then the frames in the list the guard
+    // report already uses
+    expect(markdown).toContain('**Error**\n\nQueryException: nope\n\napp/Models/User.php:42')
+    expect(markdown).toContain('**Trace**')
+    expect(markdown).toContain('- 0. vendor/framework/src/Connection.php:760 runQueryCallback')
+    expect(markdown).toContain('- 1. Line 3 App\\Models\\User->get')
+  })
+
+  test('a throw in the snippet is named by the line of the snippet', () => {
+    const markdown = runMarkdown(run({
+      result: {
+        value: null,
+        error: {class: 'RuntimeException', message: 'boom', line: 3, file: null, fileLine: null, trace: []},
+        output: '',
+        blocks: [],
+        queries: [],
+      },
+    }))
+
+    // no frames to list, so there is no list: the line is what the export knows
+    expect(markdown).toContain('RuntimeException: boom\n\nLine 3')
+    expect(markdown).not.toContain('**Trace**')
   })
 
   test('a run of several statements writes each value, on the line that answered it', () => {

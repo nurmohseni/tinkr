@@ -481,7 +481,14 @@ integer-like keys back in numeric order whatever they were.
 
 ## Errors
 
-\`error\` is \`{class, message}\`, with \`previous\` when the exception had one. Two
+\`error\` is \`{class, message}\`, with \`previous\` when the exception had one, and
+\`line\`, \`file\`, \`fileLine\` and \`trace\` saying where it was thrown. \`line\` is the
+line of the snippet, and is set only when the snippet's own code threw; otherwise
+\`file\` and \`fileLine\` name the file and the line in it, written from the project
+root when the file is inside it. \`trace\` is up to thirty frames of
+\`{file, line, class, function, snippet}\`, innermost first: a frame of the snippet
+has \`snippet: true\` and its own line of the snippet, and the rest have the file
+and line the call was made from. A frame never carries its arguments. Two
 classes you may see that are not exceptions in the code:
 
 - \`Exit\` — the run ended in \`exit()\`, \`die()\` or \`dd()\`. What the run printed

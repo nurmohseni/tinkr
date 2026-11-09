@@ -69,6 +69,8 @@ const MarkdownAction = ({result, code = '', connection = ''}) => {
         returned: intl.formatMessage({id: 'result.markdown_returned'}),
         printed: intl.formatMessage({id: 'result.markdown_printed'}),
         error: intl.formatMessage({id: 'result.markdown_error'}),
+        trace: intl.formatMessage({id: 'result.markdown_trace'}),
+        line: line => intl.formatMessage({id: 'result.line'}, {line}),
         queries: intl.formatMessage({id: 'result.markdown_queries'}),
         dryRun: intl.formatMessage({id: 'result.markdown_dry_run'}),
         sandbox: intl.formatMessage({id: 'result.markdown_sandbox'}),

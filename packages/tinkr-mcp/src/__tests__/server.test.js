@@ -176,6 +176,40 @@ describe('the tools', () => {
     expect(answer.structuredContent.error).toEqual({class: 'RuntimeException', message: 'boom'})
   })
 
+  test('says where an error was thrown, in the text and the structured answer', async () => {
+    const error = {
+      class: 'QueryException',
+      message: 'SQLSTATE[HY000]: syntax error',
+      line: null,
+      file: 'app/Models/User.php',
+      fileLine: 42,
+      trace: [
+        {file: 'vendor/laravel/framework/src/Illuminate/Database/Connection.php', line: 760, class: null, function: 'runQueryCallback', snippet: false},
+        {file: null, line: 3, class: 'Illuminate\\Database\\Query\\Builder', function: 'get', snippet: true},
+      ],
+    }
+    const block = {line: 3, value: null, error: error}
+    const {server} = opened({
+      at: project,
+      run: async () => envelope({value: null, error: error, blocks: [block]}),
+    })
+
+    const answer = await server.call('tinkr_run_php', {code: 'User::query()->whereRaw(\'nope(\')->get();'})
+
+    // the statement's line first, then the file the throw came from and the
+    // frames, with the snippet's own frame named as a line of the snippet
+    expect(answer.content[0].text).toBe([
+      'Line 3: threw QueryException: SQLSTATE[HY000]: syntax error',
+      '  at app/Models/User.php:42',
+      '  trace:',
+      '    #0 vendor/laravel/framework/src/Illuminate/Database/Connection.php:760 runQueryCallback',
+      '    #1 snippet line 3 Illuminate\\Database\\Query\\Builder->get',
+    ].join('\n'))
+    // the same facts, as data: nothing of them is text a caller has to parse
+    expect(answer.structuredContent.error).toEqual(error)
+    expect(answer.structuredContent.blocks[0].error.trace).toHaveLength(2)
+  })
+
   test('a run that never came back is a tool that failed', async () => {
     const {server} = opened({
       at: project,

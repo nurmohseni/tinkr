@@ -61,6 +61,58 @@ const json = value => JSON.stringify(value, null, 2)
 
 const errorLine = error => `${error.class || 'Error'}: ${error.message || ''}`
 
+/**
+ * Where an error was thrown: the line of the snippet it was on, or the file and
+ * line of the code outside it. The one is the reader's own code and is named by
+ * its number; the other is a path, which is not the app's words to translate.
+ *
+ * @param {Object} error
+ * @param {Object} labels
+ * @param {Number} [statement] the line the statement started on, which the
+ * block's own heading already says: a line equal to it is not written again
+ * @return {String} empty when the envelope did not know
+ */
+const errorWhere = (error, labels, statement = null) => {
+  const line = Number(error.line)
+
+  if (Number.isInteger(line) && line > 0) {
+    return Number(statement) === line ? '' : labels.line(line)
+  }
+
+  if (typeof error.file === 'string' && error.file !== '') {
+    return Number.isInteger(Number(error.fileLine)) ? `${error.file}:${error.fileLine}` : error.file
+  }
+
+  return ''
+}
+
+const frameCall = frame => (frame.class ? `${frame.class}->${frame.function}` : frame.function)
+
+/**
+ * The frames an exception came through, as the list the block already writes
+ * for a guarded run: one line each, with the snippet's own frames saying their
+ * line and the rest saying their file and line.
+ *
+ * @param {Object} error
+ * @param {Object} labels
+ * @return {String} empty when the error carried no frames
+ */
+const errorTrace = (error, labels) => {
+  const frames = Array.isArray(error.trace) ? error.trace.filter(Boolean) : []
+
+  if (frames.length === 0) {
+    return ''
+  }
+
+  const rows = frames.map((frame, index) => {
+    const where = frame.snippet ? labels.line(Number(frame.line) || 0) : `${frame.file}:${frame.line}`
+
+    return `- ${index}. ${where} ${frameCall(frame)}`
+  })
+
+  return `**${labels.trace}**\n\n${rows.join('\n')}`
+}
+
 const queriesTable = (queries, labels) => {
   if (!Array.isArray(queries) || queries.length === 0) {
     return ''
@@ -128,7 +180,11 @@ export const runMarkdown = ({code = '', result = {}, connection = '', when = '',
       const label = `**${labels.statement(Number(block.line) || 0)}**`
 
       if (block.error) {
-        sections.push(`${label}\n\n${labels.error}: ${errorLine(block.error)}`)
+        sections.push([
+          `${label}\n\n${labels.error}: ${errorLine(block.error)}`,
+          errorWhere(block.error, labels, block.line),
+          errorTrace(block.error, labels),
+        ].filter(Boolean).join('\n\n'))
       } else if (block.value !== null && block.value !== undefined) {
         sections.push(`${label}\n\n${fenced('json', json(block.value), labels.truncated)}`)
       }
@@ -137,7 +193,11 @@ export const runMarkdown = ({code = '', result = {}, connection = '', when = '',
     // a failure that ended the run outside its statements has no block of its
     // own, and is still the reason the run stopped
     if (result.error && !blocks.some(block => block && block.error)) {
-      sections.push(`**${labels.error}**\n\n${errorLine(result.error)}`)
+      sections.push([
+        `**${labels.error}**\n\n${errorLine(result.error)}`,
+        errorWhere(result.error, labels),
+        errorTrace(result.error, labels),
+      ].filter(Boolean).join('\n\n'))
     }
   } else {
     if (result.value !== null && result.value !== undefined) {
@@ -145,7 +205,11 @@ export const runMarkdown = ({code = '', result = {}, connection = '', when = '',
     }
 
     if (result.error) {
-      sections.push(`**${labels.error}**\n\n${errorLine(result.error)}`)
+      sections.push([
+        `**${labels.error}**\n\n${errorLine(result.error)}`,
+        errorWhere(result.error, labels),
+        errorTrace(result.error, labels),
+      ].filter(Boolean).join('\n\n'))
     }
   }
 

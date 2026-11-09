@@ -257,6 +257,59 @@ describe('the result panel', () => {
   })
 })
 
+describe('where an error was thrown', () => {
+  const threw = error => ({
+    value: null,
+    error,
+    output: '',
+    imported: {},
+    blocks: [],
+  })
+
+  test('says the line of the snippet a throw was on', () => {
+    const markup = render(threw({class: 'RuntimeException', message: 'boom', line: 3, file: null, fileLine: null, trace: []}))
+
+    // the throw's own line, which is the snippet's: a statement that spans
+    // several lines threw on one of them
+    expect(markup).toContain('Line 3')
+    expect(markup).toContain('RuntimeException')
+    expect(markup).not.toContain('trace__group')
+  })
+
+  test('says the file and line of a throw that was not the snippet\'s', () => {
+    const markup = render(threw({class: 'QueryException', message: 'nope', line: null, file: 'app/Models/User.php', fileLine: 42, trace: []}))
+
+    expect(markup).toContain('app/Models/User.php:42')
+  })
+
+  test('keeps the frames behind a disclosure, the snippet one named as its line', () => {
+    const markup = render(threw({
+      class: 'QueryException',
+      message: 'nope',
+      line: null,
+      file: 'app/Models/User.php',
+      fileLine: 42,
+      trace: [
+        {file: 'vendor/laravel/framework/src/Illuminate/Database/Connection.php', line: 760, class: null, function: 'runQueryCallback', snippet: false},
+        {file: null, line: 3, class: 'Illuminate\\Database\\Query\\Builder', function: 'get', snippet: true},
+      ],
+    }))
+
+    // folded away until someone asks: the class and the words are what is read
+    // first, and the list of calls is what is opened when they are not enough
+    expect(markup).toContain('<details class="trace trace__group">')
+    expect(markup).not.toContain('<details class="trace trace__group" open')
+    expect(markup).toContain('>Trace<')
+    expect(markup).toContain('vendor/laravel/framework/src/Illuminate/Database/Connection.php:760')
+    expect(markup).toContain('runQueryCallback')
+    // the snippet's own frame is a line of the snippet, and is tinted as the
+    // run's own code rather than as a file
+    expect(markup).toContain('trace__snippet')
+    expect(markup).toContain('snippet, line 3')
+    expect(markup).toContain('Illuminate\\Database\\Query\\Builder-&gt;get')
+  })
+})
+
 // a run of statements, one of which threw: the runs the map and the filter are
 // for are the ones whose statements are not read at a glance. A statement's line
 // is not its place in the run — one that spans two lines moves the next one down

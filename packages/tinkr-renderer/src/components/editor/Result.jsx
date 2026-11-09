@@ -27,9 +27,10 @@ import {
  *
  * The value comes from the session as json, so the app knows the shape of what
  * came back but not the class behind it: a node is drawn as `array`/`object`
- * with its size, and the leaves carry the design's colour-coded types. What the
- * design shows beyond that — the class name, the line of the throw, the frame
- * list, the query log — is not in the run result.
+ * with its size, and the leaves carry the design's colour-coded types. An
+ * exception is the one thing the envelope describes in full — its class, the
+ * line of the throw, and the frames it came through — while the class behind a
+ * value is still not among what a run answers.
  *
  * A value is read in one of several ways, and the run's own strip carries the
  * one that is on: the tree, the table of a list of records, the graph of
@@ -235,9 +236,104 @@ Duration.propTypes = {
   duration: PropTypes.number,
 }
 
+/**
+ * Where an error was thrown, in a line: the snippet's own line when it was the
+ * snippet that threw, and the file and line of the code when it was not.
+ *
+ * The two are not the same fact, so they are not written the same way: a line of
+ * the snippet is the person's own code and is named by its number, while a file
+ * outside it is named by its path, which is not the app's language to translate.
+ *
+ * @param {IntlShape} intl
+ * @param {Object} error
+ * @return {String} empty when the envelope did not know
+ */
+const threwAt = (intl, error) => {
+  const line = Number(error.line)
+
+  if (Number.isInteger(line) && line > 0) {
+    return intl.formatMessage({id: 'result.line'}, {line})
+  }
+
+  if (typeof error.file === 'string' && error.file !== '') {
+    return Number.isInteger(Number(error.fileLine)) ? `${error.file}:${error.fileLine}` : error.file
+  }
+
+  return ''
+}
+
+/**
+ * What a frame called: the function, under the class it was called on when there
+ * was one. A closure is written as php writes it, because that is where it is.
+ *
+ * @param {Object} frame
+ * @return {String}
+ */
+const callee = frame => (frame.class ? `${frame.class}->${frame.function}` : frame.function)
+
+/**
+ * The frames an exception came through, folded away behind their own disclosure:
+ * the class and the words are what a person reads first, and the list of calls
+ * is what they open when those are not enough. A run that answered fine never
+ * shows one.
+ *
+ * A frame of the snippet says the line of the snippet it is on and is tinted as
+ * the run's own code; every other frame says the file it was called from and the
+ * line inside that file.
+ *
+ * @param {Object} error
+ */
+const Trace = ({error}) => {
+  const intl = useIntl()
+  const frames = Array.isArray(error.trace) ? error.trace.filter(Boolean) : []
+
+  if (frames.length === 0) {
+    return null
+  }
+
+  return (
+    <details className='trace trace__group'>
+      <summary>
+        <span className='tree__caret'/>
+        <span className='trace__title'>{intl.formatMessage({id: 'result.trace'})}</span>
+      </summary>
+
+      <ol className='trace__frames'>
+        {frames.map((frame, index) => (
+          <li
+            key={index}
+            className={`trace__row${frame.snippet ? ' trace__snippet' : ''}`}
+          >
+            <span className='trace__idx' aria-hidden='true'>{index}</span>
+            <span className='trace__file'>
+              {frame.snippet
+                ? intl.formatMessage({id: 'result.trace_snippet'}, {line: Number(frame.line) || 0})
+                : `${frame.file}:${frame.line}`}
+            </span>
+            <span className='trace__fn'>{callee(frame)}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
+Trace.propTypes = {
+  error: PropTypes.shape({
+    trace: PropTypes.arrayOf(PropTypes.shape({
+      file: PropTypes.string,
+      line: PropTypes.number,
+      class: PropTypes.string,
+      function: PropTypes.string,
+      snippet: PropTypes.bool,
+    })),
+  }).isRequired,
+}
+
 /** The run's exception: the class over its message, as the design's surface. */
 const Failure = ({error, duration = null, markdown = null}) => {
   const intl = useIntl()
+  const where = threwAt(intl, error)
 
   return (
   <>
@@ -263,7 +359,10 @@ const Failure = ({error, duration = null, markdown = null}) => {
     <div className='error-surface' role='alert'>
       <div className='error-surface__class mono'>{error.class}</div>
       <p className='error-surface__message mono'>{error.message}</p>
+      {where && <p className='error-surface__message mono'>{where}</p>}
     </div>
+
+    <Trace error={error}/>
   </>
   )
 }
@@ -274,6 +373,10 @@ Failure.propTypes = {
   error: PropTypes.shape({
     class: PropTypes.string,
     message: PropTypes.string,
+    line: PropTypes.number,
+    file: PropTypes.string,
+    fileLine: PropTypes.number,
+    trace: PropTypes.array,
   }).isRequired,
 }
 
@@ -300,6 +403,10 @@ const Block = ({block, view, id, ordinal}) => {
   const intl = useIntl()
   const failed = Boolean(block.error)
   const reading = readingOf(view, block.value)
+  // the head already says the line the statement starts on, which is the throw's
+  // own line for a statement of one line. The surface repeats it only when it is
+  // another line, or when the throw was in a file rather than the snippet
+  const where = failed && Number(block.error.line) !== Number(block.line) ? threwAt(intl, block.error) : ''
 
   // the statement is a section so its head pins over its own value and is
   // pushed out by the statement under it, rather than every head of the run
@@ -353,10 +460,18 @@ const Block = ({block, view, id, ordinal}) => {
       </div>
 
       {failed && (
-        <div className='error-surface' role='alert'>
-          <div className='error-surface__class mono'>{block.error.class}</div>
-          <p className='error-surface__message mono'>{block.error.message}</p>
-        </div>
+        <>
+          <div className='error-surface' role='alert'>
+            <div className='error-surface__class mono'>{block.error.class}</div>
+            <p className='error-surface__message mono'>{block.error.message}</p>
+            {/* the statement's own line is in its head; this is the line of the
+                snippet the throw itself was on, which is another line when the
+                statement spans several */}
+            {where && <p className='error-surface__message mono'>{where}</p>}
+          </div>
+
+          <Trace error={block.error}/>
+        </>
       )}
 
       {!failed && block.value !== null && (
@@ -373,6 +488,10 @@ Block.propTypes = {
     error: PropTypes.shape({
       class: PropTypes.string,
       message: PropTypes.string,
+      line: PropTypes.number,
+      file: PropTypes.string,
+      fileLine: PropTypes.number,
+      trace: PropTypes.array,
     }),
   }).isRequired,
   view: PropTypes.oneOf(READINGS).isRequired,
@@ -931,6 +1050,10 @@ Result.propTypes = {
     error: PropTypes.shape({
       class: PropTypes.string,
       message: PropTypes.string,
+      line: PropTypes.number,
+      file: PropTypes.string,
+      fileLine: PropTypes.number,
+      trace: PropTypes.array,
     }),
     output: PropTypes.string,
     imported: PropTypes.object,
