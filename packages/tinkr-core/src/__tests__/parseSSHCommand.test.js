@@ -156,6 +156,12 @@ describe('the session command', () => {
     expect(parseSSHCommand(conn({ssh_user: '-oProxyCommand=id'}))).toContain('cannot start with')
     expect(parseSSHCommand(conn({ssh_server: 'example.com; touch /tmp/x'}))).toContain('spaces or slashes')
     expect(parseSSHCommand(conn({ssh_port: '22; id'}))).toContain('has to be a number')
+    // a port outside 1..65535 is not one ssh can use, and `Bad port` inside the
+    // terminal is not the form's answer to a field it could have refused
+    expect(parseSSHCommand(conn({ssh_port: '0'}))).toContain('between 1 and 65535')
+    expect(parseSSHCommand(conn({ssh_port: '65536'}))).toContain('between 1 and 65535')
+    expect(parseSSHCommand(conn({ssh_port: '99999'}))).toContain('between 1 and 65535')
+    expect(parseSSHCommand(conn({ssh_server: ''}))).toContain('needs a user and a server')
     expect(parseSSHCommand(conn({ssh_user: ''}))).toContain('needs a user and a server')
 
     // the refusal is a line the session can print, not one it runs
@@ -179,6 +185,11 @@ describe('the arguments a command is run with', () => {
   test('report what is wrong with a connection rather than guessing', () => {
     expect(sshProblem(conn())).toBe(null)
     expect(sshProblem(conn({ssh_server: 'example.com'}))).toBe(null)
+    // the ends of the range are ports, and nothing outside it is
+    expect(sshProblem(conn({ssh_port: '1'}))).toBe(null)
+    expect(sshProblem(conn({ssh_port: '65535'}))).toBe(null)
+    expect(sshProblem(conn({ssh_port: '65536'}))).toMatch(/between 1 and 65535/)
+    expect(sshProblem(conn({ssh_port: '0'}))).toMatch(/between 1 and 65535/)
     expect(sshProblem(conn({ssh_user: '-oProxyCommand=id'}))).toMatch(/cannot start with/)
   })
 })

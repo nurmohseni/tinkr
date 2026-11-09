@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
@@ -31,6 +32,58 @@ const path = require('path')
  * when it is told one — so a connection there is not multiplexed at all and is
  * reached exactly as it was.
  */
+
+/**
+ * Where a connection's socket is, in the shape a master leaves behind: a unix
+ * socket file that answers `-O check` while a master is listening on it.
+ *
+ * @param {String} socket
+ * @return {Boolean}
+ */
+const isSocket = socket => {
+  try {
+    return fs.lstatSync(socket).isSocket()
+  } catch (e) {
+    return false
+  }
+}
+
+/**
+ * Remove a socket a master left behind when it ended without cleaning up.
+ *
+ * A socket file outlives the login that made it when that login was killed — by
+ * the app closing, by the machine going down, by a master that ended while its
+ * process could not unlink the path. ssh reacts to a socket it cannot use by
+ * saying `Control socket … already exists, disabling multiplexing` and
+ * connecting anyway: every command after that pays a full handshake, silently,
+ * until the app restarts. So when the app finds the file and `-O check` says no
+ * master answers on it, the file is removed before a new master is started.
+ *
+ * Only the path this app computed is ever removed (see controlPath), and only
+ * when it is the socket a master leaves there: a directory, a regular file or
+ * anything else at that path is not this app's to delete.
+ *
+ * @param {Object} connection
+ * @return {Boolean} whether a stale socket was removed
+ */
+const clearStaleSocket = connection => {
+  const socket = controlPath(connection)
+
+  if (!socket || !isSocket(socket)) {
+    return false
+  }
+
+  try {
+    fs.unlinkSync(socket)
+
+    return true
+  } catch (e) {
+    // a socket another process removed first, or one this account may not
+    // unlink: the master still ends up on a path ssh can use, or connects
+    // without multiplexing as it did before
+    return false
+  }
+}
 
 /**
  * How long a master waits for the next command before it ends itself, in
@@ -168,5 +221,6 @@ module.exports = {
   controlPath,
   controlOptions,
   masterOptions,
+  clearStaleSocket,
   persist,
 }

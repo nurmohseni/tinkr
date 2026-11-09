@@ -1,11 +1,14 @@
 const os = require('os')
 const path = require('path')
+const fs = require('fs')
+const net = require('net')
 
 const {
   controlName,
   controlPath,
   controlOptions,
   masterOptions,
+  clearStaleSocket,
   persist,
 } = require('../sshControl')
 
@@ -137,5 +140,50 @@ describe('the connection two commands share', () => {
     const held = Number(master.find(option => option.startsWith('ControlPersist=')).split('=')[1])
 
     expect(held).toBeGreaterThan(persist)
+  })
+})
+
+const describeOnPosix = unix ? describe : describe.skip
+
+// a unix socket is what a master listens on, and it is what windows does not
+// have: the whole of this is about the file a master leaves behind
+describeOnPosix('a socket whose master is gone', () => {
+  // a master killed by the app, the machine or a crash leaves its socket file
+  // behind, and ssh reads a socket it cannot use as a reason to stop
+  // multiplexing for the rest of the process's life
+  test('is removed before a new master listens on the path', async () => {
+    const socket = controlPath(conn())
+    const master = net.createServer()
+
+    await new Promise(resolve => master.listen(socket, resolve))
+
+    expect(fs.lstatSync(socket).isSocket()).toBe(true)
+    expect(clearStaleSocket(conn())).toBe(true)
+    expect(fs.existsSync(socket)).toBe(false)
+
+    await new Promise(resolve => master.close(resolve))
+  })
+
+  test('leaves anything at the path that is not the app\'s socket alone', () => {
+    // the path is derived from the process and the target, and nothing else is
+    // this app's to delete: a file that is not a socket is not a master's
+    const socket = controlPath(conn({ssh_port: '2022'}))
+
+    fs.writeFileSync(socket, 'not a socket')
+
+    try {
+      expect(clearStaleSocket(conn({ssh_port: '2022'}))).toBe(false)
+      expect(fs.readFileSync(socket, 'utf8')).toBe('not a socket')
+    } finally {
+      fs.rmSync(socket, {force: true})
+    }
+  })
+
+  test('is nothing when there is no file at the path', () => {
+    const socket = controlPath(conn({ssh_port: '2023'}))
+
+    fs.rmSync(socket, {force: true})
+
+    expect(clearStaleSocket(conn({ssh_port: '2023'}))).toBe(false)
   })
 })

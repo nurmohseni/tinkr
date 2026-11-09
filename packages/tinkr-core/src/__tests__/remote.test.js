@@ -3,6 +3,7 @@ jest.mock('child_process', () => ({spawn: jest.fn()}))
 const {EventEmitter} = require('events')
 const {spawn} = require('child_process')
 const fs = require('fs')
+const net = require('net')
 const os = require('os')
 const path = require('path')
 
@@ -228,6 +229,36 @@ describe('running a command on the machine a connection runs on', () => {
     closeMasters()
 
     expect(spawn).not.toHaveBeenCalled()
+  })
+
+  // a socket no master answers on is a master that died without cleaning up,
+  // and ssh connects without multiplexing rather than use a path it cannot
+  test('removes a socket no master answers on before starting the master', async () => {
+    if (process.platform === 'win32') {
+      return
+    }
+
+    const connection = {is_over_ssh: true, ssh_server: '192.168.1.1', ssh_user: 'root'}
+    const socket = controlPath(connection)
+    const stale = net.createServer()
+
+    await new Promise(resolve => stale.listen(socket, resolve))
+
+    socketIsFree()
+
+    let whileStarting = null
+
+    spawn.mockImplementationOnce(() => {
+      whileStarting = fs.existsSync(socket)
+
+      return answering('', 0)
+    })
+
+    expect(await ensureMaster(connection)).toBe(true)
+    expect(whileStarting).toBe(false)
+    expect(fs.existsSync(socket)).toBe(false)
+
+    await new Promise(resolve => stale.close(resolve))
   })
 
   test('runs the command anyway when the login does not happen', async () => {

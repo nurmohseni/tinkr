@@ -44,8 +44,12 @@ const sshProblem = connection => {
     return 'the ssh user and server cannot hold spaces or slashes'
   }
 
-  if (port && !/^\d+$/.test(port)) {
-    return 'the ssh port has to be a number'
+  // a port is what a machine listens on, and nothing listens outside 1..65535:
+  // ssh says `Bad port` inside the terminal, which is a message about a field
+  // the form could have answered for — and 0 is not the connection's default
+  // either, so it is refused rather than read as "no port"
+  if (port && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) {
+    return 'the ssh port has to be a number between 1 and 65535'
   }
 
   return null

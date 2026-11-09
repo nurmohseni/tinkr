@@ -44,6 +44,10 @@ const fakeTerminal = () => {
 const flush = () => Promise.resolve()
 
 describe('what a session is started with', () => {
+  beforeEach(() => {
+    spawn.mockReset()
+  })
+
   test('starts the session with the psysh pager out of the way', () => {
     // psysh reads cli.pager before it looks for less, and a pager holds the pty,
     // so the value a run is wrapped in would never come back
@@ -53,11 +57,54 @@ describe('what a session is started with', () => {
       .toBe('php -d cli.pager=cat -d memory_limit=1G artisan tinker')
   })
 
-  test('leaves a command it cannot put an ini setting into alone', () => {
-    expect(withoutPager('php8.2 artisan tinker')).toBe('php8.2 artisan tinker')
+  // the bug this waits against: the guard only matched a command that started
+  // with `php `, so a versioned binary, a wrapper and a container — every one of
+  // them a php that pages — sat behind `less` until the run timed out
+  test('puts the pager out of the way wherever the php word is', () => {
+    expect(withoutPager('php83 artisan tinker')).toBe('php83 -d cli.pager=cat artisan tinker')
+    expect(withoutPager('php8.3 artisan tinker')).toBe('php8.3 -d cli.pager=cat artisan tinker')
+    expect(withoutPager('/usr/bin/php8.3 artisan tinker'))
+      .toBe('/usr/bin/php8.3 -d cli.pager=cat artisan tinker')
+    expect(withoutPager('cd app && php artisan tinker'))
+      .toBe('cd app && php -d cli.pager=cat artisan tinker')
+    expect(withoutPager('lerd php artisan tinker'))
+      .toBe('lerd php -d cli.pager=cat artisan tinker')
+    expect(withoutPager('docker exec -it app php artisan tinker'))
+      .toBe('docker exec -it app php -d cli.pager=cat artisan tinker')
+    expect(withoutPager("docker exec -it 'my app' php83 artisan tinker"))
+      .toBe("docker exec -it 'my app' php83 -d cli.pager=cat artisan tinker")
+  })
+
+  test('leaves a word that only begins with php, and the code after it, alone', () => {
+    expect(withoutPager('phpunit --version')).toBe('phpunit --version')
+    expect(withoutPager('/srv/php-app/bin/tinker')).toBe('/srv/php-app/bin/tinker')
     expect(withoutPager('./vendor/bin/tinker')).toBe('./vendor/bin/tinker')
-    expect(withoutPager('cd app && php artisan tinker')).toBe('cd app && php artisan tinker')
     expect(withoutPager('')).toBe('')
+
+    // the first php word is the binary; a php that appears inside the code it is
+    // given is the code, not a second binary
+    expect(withoutPager('php -r \'echo "php 8";\''))
+      .toBe('php -d cli.pager=cat -r \'echo "php 8";\'')
+  })
+
+  // the command a container connection runs is built by containerCommand, not by
+  // the form, and it is written into the session whole: the pager has to be put
+  // out of the way there too
+  test('writes the container command with the pager out of the way', () => {
+    const terminal = fakeTerminal()
+
+    spawn.mockReturnValue(terminal)
+
+    const session = new Session({
+      path: '',
+      container_engine: 'docker',
+      container_name: 'app',
+      container_command: 'php83 artisan tinker',
+    }, {log: {error: () => {}}})
+
+    session.start()
+
+    expect(terminal.written[0]).toContain('docker exec -it app php83 -d cli.pager=cat artisan tinker')
   })
 })
 
@@ -278,6 +325,74 @@ describe('what a session waits for before it is handed a run', () => {
 
     expect(failed.name).toBe('SessionError')
     expect(failed.message).toContain('the ssh line was still connecting')
+  })
+
+  // the bug this waits against: a key connection lets ssh ask its own question,
+  // and the answer used to be fifteen seconds of silence followed by "the ssh
+  // line was still connecting" — which says nothing about what ssh was waiting
+  // for. The key is never accepted on the person's behalf: the message says
+  // where to accept it
+  test('says ssh is waiting for a host key to be accepted', async () => {
+    session = new Session({path: '/tmp', is_over_ssh: true}, {log: {error: () => {}}})
+    session.pty = terminal
+
+    const failure = session.ready().then(() => null, error => error)
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    terminal.print("The authenticity of host 'example.com (10.0.0.2)' can't be established.\r\n")
+    terminal.print('ED25519 key fingerprint is SHA256:abcdef.\r\n')
+    terminal.print('Are you sure you want to continue connecting (yes/no/[fingerprint])? ')
+
+    const error = await failure
+
+    expect(error).toBeInstanceOf(SessionError)
+    expect(error.message).toContain('host key question')
+    expect(error.message).toContain('known_hosts')
+    expect(error.message).toContain('Connect once from a terminal')
+
+    // nothing was spent on the ready limit
+    jest.advanceTimersByTime(0)
+  })
+
+  test('says ssh refused a key that is not the one it saw before', async () => {
+    session = new Session({path: '/tmp', is_over_ssh: true}, {log: {error: () => {}}})
+    session.pty = terminal
+
+    const failure = session.ready().then(() => null, error => error)
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    terminal.print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n')
+    terminal.print('@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n')
+    terminal.print('Host key verification failed.\r\n')
+
+    const error = await failure
+
+    expect(error).toBeInstanceOf(SessionError)
+    expect(error.message).toContain('changed host key')
+    expect(error.message).toContain('known_hosts')
+  })
+
+  // a command that prints ordinary words is not a host key question: only the
+  // line that asks it, or the banner that refuses it, is
+  test('does not take ordinary boot output for a host key problem', async () => {
+    session = new Session({path: '/tmp', is_over_ssh: true}, {log: {error: () => {}}})
+    session.pty = terminal
+
+    let readied = false
+
+    session.ready().then(() => {
+      readied = true
+    })
+
+    terminal.print(`${taken}user@host:~/app$ `)
+    terminal.print(`\r\n${givenUp}\r`)
+    terminal.print('Psy Shell v0.12.18 (PHP 8.2.35 — cli) by Justin Hileman\r\n')
+    terminal.print(`${taken}> `)
+    await flush()
+
+    expect(readied).toBe(true)
   })
 
   // the bug this waits against: a command that never booted leaves the shell at
@@ -533,12 +648,12 @@ describe('a run whose command exits', () => {
 
   // the session reads its command's terminal as a shell does; what the run then
   // writes and what comes back to it are what this is about
-  const boot = async terminal => {
+  const boot = async (terminal, timeout = 0) => {
     spawn.mockReturnValue(terminal)
 
     const run = runCode({path: ''}, 'return 1;', {
       command: 'php artisan tinker',
-      timeout: 0,
+      timeout,
     })
 
     terminal.print(`${taken}user@host:~/app$ `)
@@ -631,6 +746,27 @@ describe('a run whose command exits', () => {
     expect(error).toBeInstanceOf(SessionError)
     expect(error.status).toBe(137)
     expect(error.output).toBe('hello before the kill')
+  })
+
+  // the bug this waits against: a run that outlived its time was answered with
+  // a bare error, so what php had printed was lost, while every other failure
+  // of the run carried it
+  test('answers a run that outlived its time with what it printed, and marks it', async () => {
+    const terminal = fakeTerminal()
+    const {run} = await boot(terminal, 400)
+    const failure = run.then(() => null, error => error)
+    const start = startMarkerOf(terminal)
+
+    expect(start).toMatch(/^STRT[0-9A-F]+$/)
+
+    // the run started and printed, and then its time ran out
+    terminal.print(`${start}\r\nstill working\r\n`)
+
+    const error = await failure
+
+    expect(error.timedOut).toBe(true)
+    expect(error.message).toContain('did not answer within 400ms')
+    expect(error.output).toBe('still working')
   })
 
   test('keeps the command\'s words when the sentinel is split while it boots', async () => {

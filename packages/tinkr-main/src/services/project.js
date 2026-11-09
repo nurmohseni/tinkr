@@ -49,6 +49,15 @@ const maxPaths = 2000
 // index is not worth the reading
 const maxAnswer = 8 * 1024 * 1024
 
+// how long the index walk may take. It is a walk of the whole project — every
+// php file under the project, not a question about a file — and a cold walk of a
+// large project, on a slow link to another machine's disk, is still going long
+// after the ten seconds a question about one file is given: that silence was
+// read as a machine that cannot answer, and the popup went empty. The log
+// reader keeps the shorter default, because a line of log is an answer that
+// arrives or does not
+const indexTimeout = 30000
+
 // the directory of the project's packages, as the paths of another machine's
 // project spell it: they are relative to the project, where this machine's are
 // absolute
@@ -151,7 +160,7 @@ const ask = async (connection, code) => {
   const answer = await exec(
     connection,
     inside || question,
-    {maxBuffer: maxAnswer},
+    {maxBuffer: maxAnswer, timeout: indexTimeout},
   )
 
   return answer.code === 0 ? answer.stdout : null

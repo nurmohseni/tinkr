@@ -15,7 +15,7 @@
 const {spawn} = require('child_process')
 
 const {sshArgs} = require('./parseSSHCommand')
-const {controlPath} = require('./sshControl')
+const {controlPath, clearStaleSocket} = require('./sshControl')
 const {askpassEnvironment} = require('./sshAskpass')
 const {inContainer} = require('./containerCommand')
 
@@ -153,6 +153,12 @@ const openMaster = async (connection, socket, entry, dataDir) => {
     if (await masterAnswers(connection)) {
       return true
     }
+
+    // a socket that does not answer is a master that died without cleaning up,
+    // and ssh would rather connect without multiplexing than use a path it
+    // cannot: removing the file is what lets the new master listen on it (see
+    // clearStaleSocket)
+    clearStaleSocket(connection)
 
     const askpass = askpassEnvironment(dataDir, connection)
 

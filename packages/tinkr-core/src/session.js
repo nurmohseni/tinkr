@@ -205,6 +205,47 @@ const silentSessionMessage = connection =>
     : 'the session printed nothing back: its command never started reading the terminal'
 
 /**
+ * The word a command runs php as: `php`, `php83`, `php8.3`, or a path to one of
+ * them, followed by the first of its arguments. A name that only begins with
+ * `php` (`phpunit`) or a directory that holds it (`/srv/php-app`) is not one:
+ * what makes this a php command is that its next word is an argument.
+ */
+const phpWord = /(^|[\s'"`])((?:[\w.~/-]*\/)?php)(\d+(?:\.\d+)?)?(?=\s|$)/
+
+/**
+ * What ssh prints when it stops at the host's key: the question it asks about a
+ * key it has never seen, and the banner it prints when the key it is given is
+ * not the one it was given before.
+ */
+const sshHostKeyQuestion = /Are you sure you want to continue connecting/
+const sshHostKeyChanged = /REMOTE HOST IDENTIFICATION HAS CHANGED/
+
+/**
+ * What a session over ssh says when the line never got past the host's key.
+ *
+ * A key connection is not given a host key on its behalf (see sshAskpass: only
+ * a saved password carries `StrictHostKeyChecking=accept-new`), so a host ssh
+ * has not seen sits at its own question until someone answers it, and one whose
+ * key changed is refused outright. Neither is a connection that never finished:
+ * ssh said exactly what it was waiting for, and the answer says the same rather
+ * than a message about silence.
+ *
+ * @param {String} output what the line printed while it was booting
+ * @return {String|null} what to say about it, or null when it is not this
+ */
+const sshHostKeyMessage = output => {
+  if (sshHostKeyChanged.test(output)) {
+    return 'the session stopped at ssh\'s changed host key warning: known_hosts holds a different key for this host. Remove or fix that entry there, then run again'
+  }
+
+  if (sshHostKeyQuestion.test(output)) {
+    return 'the session stopped at ssh\'s host key question: this host is not in known_hosts yet. Connect once from a terminal and answer "yes" there, then run again'
+  }
+
+  return null
+}
+
+/**
  * The command to start the session with, with the pager out of the way.
  *
  * psysh hands output taller than the terminal to a pager, and the pager it picks
@@ -219,14 +260,20 @@ const silentSessionMessage = connection =>
  * and a `cat` between the session and the terminal writes the same bytes, so a
  * normal print looks exactly as it did and keeps its colour.
  *
- * Only the `php ...` shape can carry an ini setting, and that is the command the
- * app ships as its default; a command someone wrote differently is left alone
- * rather than rewritten into something they did not ask for.
+ * The option belongs to the php word wherever that word is: `php83 artisan
+ * tinker`, a project reached through `lerd`, and a container reached through
+ * `docker exec` all run a php that pages, and a guard that only looked at the
+ * start of the command would leave every one of them hanging on a tall value.
+ * Only the first php word is rewritten — that is the word the command runs —
+ * so a `php -r '…'` argument that happens to name php is left as the code it is.
  *
  * @param {String} command the connection's command, or the configured default
  * @return {String}
  */
-const withoutPager = command => command.replace(/^(\s*)php(\s)/, '$1php -d cli.pager=cat$2')
+const withoutPager = command => command.replace(
+  phpWord,
+  (word, before, binary, version) => `${before}${binary}${version || ''} -d cli.pager=cat`,
+)
 
 /**
  * A session: the shell, the tinker running in it, and the pty between them.
@@ -593,6 +640,10 @@ class Session {
       let shellTook = false
       let printed = false
       let booted = ''
+      // what the whole boot printed, and not only what came after the terminal
+      // was handed over: ssh's own questions are printed while it is connecting,
+      // and one of them is the answer when ssh stopped at the host's key
+      let seen = ''
 
       const limitAt = (this.connection && this.connection.is_over_ssh) ? readyLimitOverSSH : readyLimit
 
@@ -612,6 +663,23 @@ class Session {
       }
 
       listener = pty.onData(data => {
+        // a line that stopped at the host's key said why, and nothing about the
+        // session is coming: the question and the changed-key warning are both
+        // answers in their own right (see sshHostKeyMessage)
+        if (this.connection && this.connection.is_over_ssh) {
+          seen = (seen + data).slice(-bootOutputLimit)
+
+          const refusedKey = sshHostKeyMessage(seen)
+
+          if (refusedKey) {
+            booted = seen
+
+            fail(null, refusedKey)
+
+            return
+          }
+        }
+
         // the shell printed the status of the command it was given, so the
         // command has exited and the terminal is the shell's again. The watcher
         // installed above reads the sentinel across chunks and was called with
@@ -684,6 +752,21 @@ class Session {
       })
 
       limit = setTimeout(() => {
+        // a boot that printed nothing this listener saw arrive — the question
+        // can come before the wait began — is still the key's question when its
+        // output says so, and saying it is the whole answer
+        const refusedKey = this.connection && this.connection.is_over_ssh
+          ? sshHostKeyMessage(seen)
+          : null
+
+        if (refusedKey) {
+          booted = seen
+
+          fail(null, refusedKey)
+
+          return
+        }
+
         // nothing was ever handed the terminal — a shell without readline — so
         // what came back is the whole of what there is to go on
         if (!handedBack) {
@@ -996,7 +1079,17 @@ const runCode = (connection, code, options = {}) => {
     // preference says when it is cleared: a run whose command dies is still
     // answered, because the status of that command is watched for below
     const timer = timeout > 0
-      ? setTimeout(() => finish(new Error(`the session did not answer within ${timeout}ms`)), timeout)
+      ? setTimeout(() => {
+        const error = new Error(`the session did not answer within ${timeout}ms`)
+
+        // what the run printed before its time ran out is part of its answer:
+        // the same output every other failure of the run carries, marked with
+        // the one thing this failure is
+        error.timedOut = true
+        error.output = runOutput(filter)
+
+        finish(error)
+      }, timeout)
       : null
 
     session.start(command)
