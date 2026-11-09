@@ -8,35 +8,57 @@ const {phpVersionOf} = require('../utils/phpVersion')
 // never will
 const detectTimeout = 5000
 
+// what a session runs when neither the connection nor its container names a
+// command, which is what the app starts a plain connection with
+const defaultCommand = 'php artisan tinker'
+
 /**
- * The php a connection's session runs, from the command it starts with.
+ * The command a session for this connection actually runs, in the shell it runs
+ * it in.
  *
- * `php artisan tinker` is `php`, `php83 artisan tinker` is `php83`, and
- * `php -d memory_limit=1G artisan tinker` is `php -d memory_limit=1G` — the
- * binary and the flags between it and the program it runs. A command that is a
- * container or a wrapper is asked the same way: `docker exec app php artisan
- * tinker` answers the php inside it.
+ * A container's session ignores the connection's own command and builds
+ * `docker exec … <container_command>` instead (see containerCommand), so the
+ * command that counts for a container is the one stored for inside it. A local
+ * or ssh connection runs the command it stores — over ssh the command is the
+ * far side of the ssh line, but its words are the same — and falls back to the
+ * app's default when it stores none.
  *
  * @param {Record<String, any>} connection
  * @return {String}
  */
-const phpBinaryOf = connection => {
-  const command = String(connection.command || '').trim()
-
-  if (!command) {
-    return 'php'
+const sessionLineOf = connection => {
+  if (inContainer(connection)) {
+    return String(connection.container_command || '').trim() || defaultCommand
   }
 
-  // a shell command is split into words, so the answer is the words up to the
-  // program the php runs — `artisan`, `-a`, a file, or nothing
-  const words = command.split(/\s+/)
+  return String((connection && connection.command) || '').trim() || defaultCommand
+}
+
+/**
+ * How a connection's php is asked for its version, without the `-v`.
+ *
+ * The words up to the php word are kept along with it, and so are its flags:
+ * they are what reaches the php the session runs. `php83 artisan tinker` is
+ * `php83`, `php -d memory_limit=1G artisan tinker` is `php -d
+ * memory_limit=1G`, and `lerd php artisan tinker` or `docker exec app php
+ * artisan tinker` are kept whole — asking this machine's `php` instead would
+ * answer a version the session never runs.
+ *
+ * A command that names no php at all — `sail artisan tinker`, `./vendor/bin/sail
+ * tinker` — reaches its php some other way, and no prefix of it can ask that
+ * php anything; `null` says so rather than guessing.
+ *
+ * @param {Record<String, any>} connection
+ * @return {String|null}
+ */
+const phpBinaryOf = connection => {
+  // a shell command is split into words, so the answer is a run of them up to
+  // the program the php runs — `artisan`, `-a`, a file, or nothing
+  const words = sessionLineOf(connection).split(/\s+/)
   const at = words.findIndex(word => /(^|\/)php(\d+(\.\d+)?)?$/.test(word))
 
   if (at === -1) {
-    // a command that names no php at all — `docker exec app tail -f x` — is one
-    // whose php is not knowable from it, and the plain question is the best
-    // answer there is
-    return 'php'
+    return null
   }
 
   // php's flags come in two shapes: `-d` and the value after it, and `-dvalue`.
@@ -65,26 +87,46 @@ const phpBinaryOf = connection => {
     break
   }
 
-  return [words[at], ...kept].join(' ')
+  return [...words.slice(0, at), words[at], ...kept].join(' ')
 }
 
 /**
  * Ask a connection's own shell what php it has, and tell its window.
  *
- * The question is put to the shell the session runs in — the same machine, the
- * same path, the same ssh — because that is the php a run will use. The answer
- * is the version itself, so it is read as soon as it arrives, and a connection
- * that has none is only waited on.
+ * The question is put through the same words the session's own command goes
+ * through — the same exec into a container, the same wrapper, the same ssh —
+ * because that is the php a run will use. The answer is the version itself, so
+ * it is read as soon as it arrives, and a connection that has none is only
+ * waited on.
  *
  * A connection that answers with a version has one; one that answers with
  * nothing, or does not answer at all, has none — which is what the window draws
- * on.
+ * on. A command whose php cannot be read from it at all is neither: nothing is
+ * asked, and the window is told that the answer is not knowable, so it neither
+ * warns about a missing php nor shows a version.
  *
  * @param {Record<String, any>} connection
  * @param {Electron.BrowserWindow} win
  */
 const detectPhpVersion = (connection, win) => {
   if (!win || win.isDestroyed()) {
+    return
+  }
+
+  const binary = phpBinaryOf(connection)
+  const question = binary && `${binary} -v`
+
+  // a container's php is inside the container, not on the machine the shell
+  // reaches: the question goes through the same exec a read does
+  const command = question && (inContainer(connection) ? containerRead(connection, question) : question)
+
+  if (!command) {
+    // a command that names no php, or a container with no name to exec into, is
+    // one whose php is not knowable from it: asking this machine's php would
+    // answer a version the session never runs, and warning that php is missing
+    // would warn about the wrong machine
+    win.webContents.send('phpVersion', {version: null, unknown: true})
+
     return
   }
 
@@ -109,16 +151,7 @@ const detectPhpVersion = (connection, win) => {
     win.webContents.send('phpVersion', {version})
   }
 
-  // the question is put to the php the connection's own command runs, not to
-  // whatever `php` is on the path: a connection that starts `php83 artisan
-  // tinker` or `docker exec app php artisan tinker` runs that php, and a
-  // connection whose ssh never came up used to answer with this machine's php.
-  // The binary is the first word of the command, and it keeps its own flags
-  // A container's php is inside the container, not on the machine the shell
-  // reaches: the question goes through the same exec a run does
-  const question = `${phpBinaryOf(connection)} -v`
-
-  pty.connect(inContainer(connection) ? containerRead(connection, question) : question)
+  pty.connect(command)
 
   const onData = pty.onData(data => {
     output += data
