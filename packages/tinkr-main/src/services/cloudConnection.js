@@ -1,6 +1,7 @@
 const {cloudEnvironment} = require('tinkr-core')
 
 const secrets = require('../database/secrets')
+const {getEditorWindow} = require('../processes')
 const {dataDir} = require('../utils/dataDir')
 
 /**
@@ -42,8 +43,15 @@ const described = (connection, environment) => {
  * @return {Promise<void>}
  */
 const connectCloud = async (connection, win) => {
+  // the app keeps one window and switches its connection in place, so a window
+  // this connection was opened in is not enough: Laravel Cloud answers later,
+  // and by then the window may be closed or showing another connection. What
+  // arrives then is that other connection's window to write to, not this one's
+  const showsThisConnection = () =>
+    Boolean(win) && !win.isDestroyed() && getEditorWindow(connection.id) === win
+
   const say = line => {
-    if (win && !win.isDestroyed()) {
+    if (showsThisConnection()) {
       win.webContents.send('outputConnection', `${line}\n`)
     }
   }
@@ -70,7 +78,7 @@ const connectCloud = async (connection, win) => {
     // the window may have been closed, or switched connection, while Laravel
     // Cloud was answering: neither the line nor the version is that window's
     // any more
-    if (!win || win.isDestroyed()) {
+    if (!showsThisConnection()) {
       return
     }
 

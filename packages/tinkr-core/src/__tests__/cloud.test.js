@@ -32,6 +32,9 @@ const fakeFetch = answer => {
       ok: status >= 200 && status < 300,
       status,
       json: async () => answered,
+      // a command's full output is downloaded as text rather than read as JSON,
+      // so the fake answers the same body either way
+      text: async () => (typeof answered === 'string' ? answered : JSON.stringify(answered === undefined ? null : answered)),
     }
   }
 
@@ -282,8 +285,12 @@ describe('a Laravel Cloud connection', () => {
       '/environments/env1/commands',
       {body: {command: 'php artisan'}, fetch: fetchIt},
     ), 403)).message).toContain('Environments: Create environment commands')
+    // following a command is reading the environment it runs in, so a refused
+    // poll names a different checkbox than a refused create
     expect((await of(fetchIt => cloudRequest('token', 'GET', '/commands/cmd1', {fetch: fetchIt}), 403)).message)
-      .toContain('Environments: Create environment commands')
+      .toContain('Environments: View environments')
+    expect((await of(fetchIt => cloudRequest('token', 'GET', '/environments/env1/commands', {fetch: fetchIt}), 403)).message)
+      .toContain('Environments: View environments')
 
     const notFound = await of(fetchIt => cloudRequest('token', 'GET', '/environments/nope', {fetch: fetchIt}), 404)
 
@@ -362,6 +369,261 @@ describe('a Laravel Cloud connection', () => {
     expect(result).toMatchObject(envelope)
     expect(result.output).toBe('array:1 [\n  0 => 42\n]')
     expect(result.commandId).toBe('cmd1')
+  })
+
+  test('asks again when a finished command has not written its output yet', async () => {
+    let polls = 0
+    // the answer is built from the command that was sent, so the run's own
+    // markers are the ones its wrapper printed
+    let command = ''
+    const {fetch} = fakeFetch((method, url, body) => {
+      if (method === 'POST') {
+        command = body.command
+
+        return {body: {data: {type: 'commands', id: 'cmd7'}}}
+      }
+
+      polls++
+
+      return {
+        body: {
+          data: {
+            type: 'commands',
+            id: 'cmd7',
+            attributes: {
+              status: 'command.success',
+              exit_code: 0,
+              // the status is stored before the output is, so the first poll of
+              // a finished command can carry null and still have an answer
+              output: polls === 1 ? null : outputOf(command, envelope, 'printed'),
+            },
+          },
+        },
+      }
+    })
+
+    const result = await runCloud(cloudConnection, 'echo "printed"; return 42;', {
+      token: 'token',
+      fetch,
+      interval: 0,
+    })
+
+    expect(polls).toBe(2)
+    expect(result.value).toBe(42)
+    expect(result.output).toBe('printed')
+  })
+
+  test('asks three more times for an output that never arrives, then answers as before', async () => {
+    let polls = 0
+    const {fetch} = fakeFetch(method => {
+      if (method === 'POST') {
+        return {body: {data: {type: 'commands', id: 'cmd8'}}}
+      }
+
+      polls++
+
+      return {body: {data: {type: 'commands', id: 'cmd8', attributes: {status: 'command.success', exit_code: 0, output: null}}}}
+    })
+
+    await expect(runCloud(cloudConnection, '1;', {token: 'token', fetch, interval: 0})).rejects.toMatchObject({
+      code: 'failed',
+      message: expect.stringContaining('printed nothing'),
+    })
+    // the first answer plus three retries
+    expect(polls).toBe(4)
+  })
+
+  test('downloads the whole output of a command whose answer was truncated', async () => {
+    const url = 'https://storage.laravel.cloud/outputs/abc.txt?signature=sig'
+    let command = ''
+    const {fetch, calls} = fakeFetch((method, asked, body) => {
+      if (method === 'POST') {
+        command = body.command
+
+        return {body: {data: {type: 'commands', id: 'cmd9'}}}
+      }
+
+      const full = outputOf(command, envelope, 'the whole thing')
+
+      if (asked === url) {
+        return {body: full}
+      }
+
+      return {
+        body: {
+          data: {
+            type: 'commands',
+            id: 'cmd9',
+            attributes: {
+              status: 'command.success',
+              exit_code: 0,
+              // only the tail of it, which is what a truncated answer carries
+              output: full.slice(wrapped(command).start.length),
+              output_truncated: true,
+              output_url: url,
+            },
+          },
+        },
+      }
+    })
+
+    const result = await runCloud(cloudConnection, 'range(1, 1000); return 42;', {
+      token: 'token',
+      fetch,
+      interval: 0,
+    })
+
+    const download = calls.find(call => call.url === url)
+
+    expect(download.method).toBe('GET')
+    // the URL is signed already, and an added Authorization header is not part
+    // of the signature: the download carries the token nowhere
+    expect(download.headers && download.headers.Authorization).toBeUndefined()
+    expect(result.value).toBe(42)
+    expect(result.output).toBe('the whole thing')
+  })
+
+  test('keeps the tail of a truncated output the download could not read', async () => {
+    const url = 'https://storage.laravel.cloud/outputs/gone.txt'
+    let command = ''
+    const {fetch} = fakeFetch((method, asked, body) => {
+      if (method === 'POST') {
+        command = body.command
+
+        return {body: {data: {type: 'commands', id: 'cmd10'}}}
+      }
+
+      if (asked === url) {
+        return {status: 403, body: {message: 'Signature has expired.'}}
+      }
+
+      const full = outputOf(command, envelope, 'printed')
+
+      return {
+        body: {
+          data: {
+            type: 'commands',
+            id: 'cmd10',
+            attributes: {
+              status: 'command.success',
+              exit_code: 0,
+              output: full.slice(wrapped(command).start.length),
+              output_truncated: true,
+              output_url: url,
+            },
+          },
+        },
+      }
+    })
+
+    const result = await runCloud(cloudConnection, 'range(1, 1000); return 42;', {
+      token: 'token',
+      fetch,
+      interval: 0,
+    })
+
+    // the value still arrives, and the run does not look like one that printed
+    // nothing: the beginning of the output is gone and the run says so
+    expect(result.value).toBe(42)
+    expect(result.output.startsWith(
+      '[Laravel Cloud returned only the last part of this run\'s output (about 1 MB); the beginning is lost.]',
+    )).toBe(true)
+  })
+
+  test('follows a command through a dropped poll and a rate limit', async () => {
+    let polls = 0
+    let command = ''
+    const {fetch} = fakeFetch((method, url, body) => {
+      if (method === 'POST') {
+        command = body.command
+
+        return {body: {data: {type: 'commands', id: 'cmd11'}}}
+      }
+
+      polls++
+
+      if (polls === 1) {
+        return {status: 502, body: {message: 'Bad Gateway'}}
+      }
+
+      if (polls === 2) {
+        return {status: 429, body: {message: 'Too Many Attempts.'}}
+      }
+
+      return {
+        body: {
+          data: {
+            type: 'commands',
+            id: 'cmd11',
+            attributes: {status: 'command.success', exit_code: 0, output: outputOf(command, envelope)},
+          },
+        },
+      }
+    })
+
+    const result = await runCloud(cloudConnection, 'return 42;', {token: 'token', fetch, interval: 0})
+
+    expect(polls).toBe(3)
+    expect(result.value).toBe(42)
+    expect(result.commandId).toBe('cmd11')
+  })
+
+  test('names the permission a refused poll needs, and the command it left running', async () => {
+    const {fetch} = fakeFetch(method => (method === 'POST'
+      ? {body: {data: {type: 'commands', id: 'cmd12'}}}
+      : {status: 403, body: {message: 'This action is unauthorized.'}}))
+
+    let error = null
+
+    try {
+      await runCloud(cloudConnection, '1;', {token: 'token', fetch, interval: 0})
+    } catch (e) {
+      error = e
+    }
+
+    expect(error).toBeInstanceOf(CloudError)
+    expect(error.code).toBe('forbidden')
+    expect(error.commandId).toBe('cmd12')
+    expect(error.message).toContain('Environments: View environments')
+    // the command is still going in Laravel Cloud, and running the snippet
+    // again would be a second one on the same data
+    expect(error.message).toContain('keeps running command cmd12')
+  })
+
+  test('carries the run timeout into the environment as a php deadline', async () => {
+    const commands = []
+    const {fetch} = fakeFetch((method, url, body) => {
+      if (method === 'POST') {
+        commands.push(body.command)
+
+        return {body: {data: {type: 'commands', id: `cmd${commands.length}`}}}
+      }
+
+      const id = `cmd${commands.length}`
+
+      return {
+        body: {
+          data: {
+            type: 'commands',
+            id,
+            attributes: {
+              status: 'command.success',
+              exit_code: 0,
+              output: outputOf(commands[commands.length - 1], envelope),
+            },
+          },
+        },
+      }
+    })
+
+    await runCloud(cloudConnection, 'return 42;', {token: 'token', fetch, interval: 0, timeout: 45000})
+    await runCloud(cloudConnection, 'return 42;', {token: 'token', fetch, interval: 0, timeout: 0})
+
+    // the wait here ends the run on this side, and the alarm ends the php where
+    // the environment has pcntl: without it the command runs on to its own end
+    expect(codeOf(commands[0])).toContain('pcntl_alarm(')
+    // zero is no limit, so there is no deadline to arm
+    expect(codeOf(commands[1])).not.toContain('pcntl_alarm(')
   })
 
   test('reports a failed command by what it said, when there is no envelope', async () => {
