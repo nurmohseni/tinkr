@@ -24,17 +24,21 @@ const BrowseIcon = () => (
  * SSH connection reaches a remote path, so the picker is only offered for a
  * project on this machine.
  *
- * A Laravel Cloud connection has no use for a path: its code runs in the
- * environment, not in a directory here. What the path is then is a local copy of
- * the same project, which is read for the class names the editor completes from,
- * so the line under the field says so and the field stays optional.
+ * A Laravel Cloud or Laravel Vapor connection has no use for a path: its code
+ * runs in the environment, not in a directory here. What the path is then is a
+ * local copy of the same project, which is read for the class names the editor
+ * completes from, so the line under the field says so and the field stays
+ * optional.
  */
 const PathField = () => {
   const intl = useIntl()
   const {watch, setValue, register} = useFormContext()
 
   const isOverSSH = watch('is_over_ssh')
-  const isCloud = watch('is_cloud')
+  // both Laravel kinds are reached over an API rather than through a shell, and
+  // for both the path is the checkout the editor reads names from: one note says
+  // it, so one answer is what the field reads
+  const isRemote = Boolean(watch('is_cloud') || watch('is_vapor'))
   const pick = intl.formatMessage({id: 'connections.select_directory'})
 
   return (
@@ -48,7 +52,7 @@ const PathField = () => {
           id='connection-path'
           name='path'
           type='text'
-          placeholder={isCloud ? undefined : '/var/www/html'}
+          placeholder={isRemote ? undefined : '/var/www/html'}
           spellCheck={false}
           autoComplete='off'
           {...register('path')}
@@ -75,7 +79,7 @@ const PathField = () => {
         )}
       </div>
 
-      {isCloud && (
+      {isRemote && (
         <p className='cfield__note'>
           {intl.formatMessage({id: 'connections.path_cloud_hint'})}
         </p>

@@ -2,6 +2,7 @@ import {atom} from 'jotai'
 
 import {runConnection, stopConnection, getConnection, reconnectConnection} from '../utils/api'
 import {mutationScan, unguardableScan} from '../utils/mutationScan'
+import {isApiRun} from '../utils/connectionKind'
 
 const connectionAtom = atom(getConnection())
 const sizesAtom = atom([])
@@ -299,9 +300,9 @@ const dismissMutationsAtom = atom(null, (get, set) => {
  * pane stays as it was: the run did not answer, and pretending it did would be
  * worse than an empty pane.
  *
- * A run on Laravel Cloud is the exception: there is no session of ours to end,
- * and Laravel Cloud cannot cancel a command it was given, so the stop only ends
- * the wait. That is worth saying, and the main process answers with it at once
+ * A run on Laravel Cloud or Laravel Vapor is the exception: there is no session
+ * of ours to end, and neither can cancel a command it was given, so the stop only
+ * ends the wait. That is worth saying, and the main process answers with it at once
  * (see services/connections stopConnection), so the run stays the one in flight
  * and its answer is written like any other.
  */
@@ -312,7 +313,7 @@ const stopRunAtom = atom(null, (get, set) => {
 
   const connection = get(connectionAtom)
 
-  if (!(connection && connection.is_cloud)) {
+  if (!isApiRun(connection)) {
     set(inFlightAtom, null)
   }
 
@@ -345,10 +346,10 @@ const reconnectAtom = atom(null, (get, set, code) => {
 
   // a session's run is ended by the reconnect that replaces the session, and
   // nothing is coming back from it: the window is not waiting for a run any
-  // more. A cloud run is the exception — its wait is aborted, and the answer
-  // that says Laravel Cloud keeps going is still on its way, which is what
-  // clears the run (see services/connections reconnectConnection)
-  if (!(connection && connection.is_cloud)) {
+  // more. A cloud or vapor run is the exception — its wait is aborted, and the
+  // answer that says the environment keeps going is still on its way, which is
+  // what clears the run (see services/connections reconnectConnection)
+  if (!isApiRun(connection)) {
     set(inFlightAtom, null)
   }
 

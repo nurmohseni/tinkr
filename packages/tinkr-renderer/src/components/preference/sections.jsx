@@ -4,6 +4,7 @@ import LabForm from './LabForm'
 import AiForm from './AiForm'
 import McpForm from './McpForm'
 import CloudForm from './CloudForm'
+import VaporForm from './VaporForm'
 
 /* The rail's icons, drawn the way the rest of the interface is: a bar whose
    ends are cut at the same 29 degrees as the return bars, and nothing else. A
@@ -68,6 +69,15 @@ const CloudIcon = () => (
   </Icon>
 )
 
+/* vapor is a bar with the dot it was reached by above it: a function that is
+   not there until a run arrives, which is what the connection rail draws too */
+const VaporIcon = () => (
+  <Icon>
+    <circle cx='8' cy='3.8' r='0.9'/>
+    <path d={bar(3, 7.2, 10)}/>
+  </Icon>
+)
+
 /**
  * The settings the app has, in the order the rail lists them. The index is what
  * `preferenceTabIndexAtom` holds, so the rail and the column read one list.
@@ -108,6 +118,12 @@ const sections = [
     labelId: 'preference.cloud',
     Icon: CloudIcon,
     Form: CloudForm,
+  },
+  {
+    id: 'vapor',
+    labelId: 'preference.vapor',
+    Icon: VaporIcon,
+    Form: VaporForm,
   },
 ]
 

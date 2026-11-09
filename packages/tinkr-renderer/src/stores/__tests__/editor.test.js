@@ -318,6 +318,22 @@ describe('two tabs and their runs', () => {
     expect(store.get(runningAtom)).toBe(false)
   })
 
+  // a stop on an API run only ends the wait: the product keeps the command it
+  // was given, and the answer that says so is what clears the run
+  test('a stop on a cloud run leaves it in flight for its answer', () => {
+    store.set(connectionAtom, {name: 'cloud', is_cloud: true})
+    store.set(runAtom, 'return 1;')
+
+    const flight = store.get(inFlightAtom)
+
+    expect(flight).not.toBe(null)
+
+    store.set(stopRunAtom)
+
+    expect(window.api.stopConnection).toHaveBeenCalled()
+    expect(store.get(inFlightAtom)).toEqual(flight)
+  })
+
   test('what a run printed is the printing tab output', () => {
     store.set(activeDocumentAtom, 'one')
     store.set(runAtom, 'echo "one";', {document: 'one'})
@@ -359,6 +375,21 @@ describe('reconnecting the connection', () => {
   // keeps going is what clears it, so the run stays in flight until then
   test('leaves a cloud run in flight for its answer', () => {
     store.set(connectionAtom, {name: 'cloud', is_cloud: true})
+    store.set(runAtom, 'return 1;')
+
+    const flight = store.get(inFlightAtom)
+
+    expect(flight).not.toBe(null)
+
+    store.set(reconnectAtom)
+
+    expect(store.get(inFlightAtom)).toEqual(flight)
+    expect(window.api.reconnectConnection).toHaveBeenCalledTimes(1)
+  })
+
+  // Vapor keeps the command too: the answer that says so is what clears it
+  test('leaves a vapor run in flight for its answer', () => {
+    store.set(connectionAtom, {name: 'vapor', is_vapor: true})
     store.set(runAtom, 'return 1;')
 
     const flight = store.get(inFlightAtom)

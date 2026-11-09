@@ -33,6 +33,13 @@ const newConnection = name => ({
   cloud_application_name: '',
   cloud_environment_id: '',
   cloud_environment_name: '',
+  // the same for a Laravel Vapor connection, empty for the same reason
+  is_vapor: false,
+  vapor_team_id: '',
+  vapor_project_id: '',
+  vapor_project_name: '',
+  vapor_environment_id: '',
+  vapor_environment_name: '',
   // what an MCP client may do here when the connection is tagged production:
   // nothing follows the app's setting, which is what Settings → MCP offers as
   // "Follow the setting"

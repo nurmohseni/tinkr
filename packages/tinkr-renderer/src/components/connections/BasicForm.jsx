@@ -13,15 +13,15 @@ import {configAtom} from '../../stores/config'
  * tinker in it, and the tag that says what kind of data it holds. The name is
  * not here: it is the dialog's title.
  *
- * A Laravel Cloud connection's project is its environment, and the command that
- * runs there is the one the app sends: there is nothing for the command field to
- * say, so it is not shown.
+ * A Laravel Cloud or Laravel Vapor connection's project is its environment, and
+ * the command that runs there is the one the app sends: there is nothing for the
+ * command field to say, so it is not shown.
  */
 const BasicForm = () => {
   const intl = useIntl()
   const {register, watch} = useFormContext()
   const config = useAtomValue(configAtom)
-  const cloud = watch('is_cloud')
+  const remote = watch('is_cloud') || watch('is_vapor')
 
   return (
     <Section
@@ -34,12 +34,12 @@ const BasicForm = () => {
           shows for a connection that is not one: a command typed here for a
           container would be replaced the moment a container field changed.
           Left empty, it is the default command from the settings, which is
-          what the placeholder shows. Laravel Cloud's runs are its own commands
-          too, so the field is not there for one */}
+          what the placeholder shows. Laravel Cloud's and Laravel Vapor's runs
+          are their own commands too, so the field is not there for one */}
       <Field
         label={intl.formatMessage({id: 'connections.command'})}
         htmlFor='connection-command'
-        hidden={Boolean(watch('container_engine')) || Boolean(cloud)}
+        hidden={Boolean(watch('container_engine')) || Boolean(remote)}
       >
         <input
           className='input input--mono'

@@ -33,15 +33,17 @@ import {cellOf} from '../../utils/resultReading'
  * A SELECT also offers its plan. The plan is asked out of band — of the
  * connection's background session, not the tab's, and not as a run — so reading
  * it changes nothing about what the person is running and adds nothing to the
- * history. A Laravel Cloud connection has no such session: a command there is a
- * command in the environment's history, so the action is shown disabled with
- * that reason rather than hidden. The plan is drawn under the row it belongs
- * to, and the pane keeps it until another run gives the rows another meaning.
+ * history. A Laravel Cloud or Laravel Vapor connection has no such session: a
+ * command there is a command in the environment's history, so the action is
+ * shown disabled with that reason rather than hidden. The plan is drawn under
+ * the row it belongs to, and the pane keeps it until another run gives the rows
+ * another meaning.
  *
  * @param {Object} result  the last run's envelope
- * @param {Boolean} [cloud]  whether the connection is a Laravel Cloud one
+ * @param {String} [api]  'cloud' or 'vapor' when the connection runs through an
+ *   API, which is the product the disabled action's reason names
  */
-const Queries = ({result, cloud = false}) => {
+const Queries = ({result, api = null}) => {
   const intl = useIntl()
   const [menu, setMenu] = useState(null)
   const [plans, setPlans] = useState({})
@@ -195,9 +197,9 @@ const Queries = ({result, cloud = false}) => {
                       <button
                         className='btn btn--ghost btn--sm'
                         type='button'
-                        disabled={cloud || Boolean(plan && plan.status === 'loading')}
-                        title={cloud
-                          ? intl.formatMessage({id: 'queries.explain_cloud'})
+                        disabled={Boolean(api) || Boolean(plan && plan.status === 'loading')}
+                        title={api
+                          ? intl.formatMessage({id: `queries.explain_${api}`})
                           : intl.formatMessage({id: 'queries.explain_title'})}
                         onClick={() => explain(index, sent)}
                       >
@@ -256,9 +258,10 @@ const Queries = ({result, cloud = false}) => {
 }
 
 Queries.propTypes = {
-  // whether a plan may be asked of this connection: Laravel Cloud has no
-  // session to ask, and a command there would be in the environment's history
-  cloud: PropTypes.bool,
+  // whether a plan may be asked of this connection: Laravel Cloud and Laravel
+  // Vapor have no session to ask, and a command there would be in the
+  // environment's history
+  api: PropTypes.oneOf(['cloud', 'vapor']),
   // the pane is drawn before the first run as well, when there is no envelope
   result: PropTypes.shape({
     queries: PropTypes.array,

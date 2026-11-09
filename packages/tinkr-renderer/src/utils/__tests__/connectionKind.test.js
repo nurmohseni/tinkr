@@ -1,4 +1,4 @@
-import kindOf from '../connectionKind'
+import kindOf, {apiRunOf, isApiRun} from '../connectionKind'
 
 describe('what a connection is called', () => {
   test('a plain connection is local or ssh', () => {
@@ -26,5 +26,31 @@ describe('what a connection is called', () => {
     expect(kindOf({is_cloud: true})).toBe('connections.kind_cloud')
     expect(kindOf({is_cloud: true, is_over_ssh: true, container_engine: 'docker'})).toBe('connections.kind_cloud')
     expect(kindOf({is_cloud: true, tag: 'production'})).toBe('connections.kind_cloud')
+  })
+
+  // the same for Vapor: a function environment is not a machine here either
+  test('Laravel Vapor is the kind, whatever else the connection carries', () => {
+    expect(kindOf({is_vapor: true})).toBe('connections.kind_vapor')
+    expect(kindOf({is_vapor: true, is_over_ssh: true, container_engine: 'docker'})).toBe('connections.kind_vapor')
+    expect(kindOf({is_vapor: true, tag: 'production'})).toBe('connections.kind_vapor')
+  })
+})
+
+// one question — does a run leave this machine — asked in four places, so it is
+// asked here once. Which product it is is the answer only where the reason for a
+// missing action names one of them
+describe('whether a connection runs through an API', () => {
+  test('is one of the two products, or nothing', () => {
+    expect(apiRunOf({is_cloud: true})).toBe('cloud')
+    expect(apiRunOf({is_vapor: true})).toBe('vapor')
+    expect(apiRunOf({container_engine: 'docker'})).toBe(null)
+    expect(apiRunOf()).toBe(null)
+  })
+
+  test('is what the gates read', () => {
+    expect(isApiRun({is_cloud: true})).toBe(true)
+    expect(isApiRun({is_vapor: true})).toBe(true)
+    expect(isApiRun({is_over_ssh: true})).toBe(false)
+    expect(isApiRun(null)).toBe(false)
   })
 })

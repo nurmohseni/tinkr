@@ -19,6 +19,12 @@ describe('newConnection', () => {
       cloud_application_name: '',
       cloud_environment_id: '',
       cloud_environment_name: '',
+      is_vapor: false,
+      vapor_team_id: '',
+      vapor_project_id: '',
+      vapor_project_name: '',
+      vapor_environment_id: '',
+      vapor_environment_name: '',
       mcp_access: '',
     })
   })

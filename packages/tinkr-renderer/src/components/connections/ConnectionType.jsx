@@ -3,7 +3,7 @@ import {useFormContext} from 'react-hook-form'
 import {useIntl} from 'react-intl'
 
 /**
- * The marks of the five kinds, drawn in the app's one silhouette: a bar cut at
+ * The marks of the six kinds, drawn in the app's one silhouette: a bar cut at
  * the 29° of the return glyphs is a machine that runs PHP, a run of dots is a
  * hop over the network, and brackets around a bar are a container. Each mark is
  * the route itself, read left to right, and each is centred on (14,6).
@@ -11,6 +11,9 @@ import {useIntl} from 'react-intl'
  * Laravel Cloud is two bars in a step rather than one: a fleet of instances
  * somewhere else, which is what the code runs in there, and no marks for a hop
  * because the app reaches it through the API rather than through a shell.
+ *
+ * Laravel Vapor is the one bar those dots reach: a function that is not running
+ * until a run arrives, which is what an environment there is.
  */
 const MARKS = {
   local: {
@@ -33,6 +36,13 @@ const MARKS = {
   // environment the code is sent to, which is the whole route of this kind
   cloud: {
     bars: ['M6.2 3.5H14.2L12.8 6H4.8Z', 'M6.2 6.9H19.2L17.8 9.4H4.8Z'],
+  },
+  // a single bar at the end of a run of dots: the code is sent over the
+  // network and runs as a function, so there is one machine and it is not
+  // standing there before the run arrives
+  vapor: {
+    bars: ['M14.2 4.75H20.2L18.8 7.25H12.8Z'],
+    dots: [7, 9, 11],
   },
 }
 
@@ -61,7 +71,7 @@ KindMark.propTypes = {
 /**
  * Where the tinker process runs: on this machine, inside a container, over an
  * SSH tunnel, inside a container that lives on a server reached over SSH, or in
- * an environment of Laravel Cloud.
+ * an environment of Laravel Cloud or of Laravel Vapor.
  *
  * The app keeps two answers, in `is_over_ssh` for ssh and in `container_engine`
  * for a container, and they are not exclusive: a project deployed by a compose
@@ -70,36 +80,44 @@ KindMark.propTypes = {
  * — but the state it sets is two fields, which is what keeps a connection saved
  * before containers readable as it was.
  *
- * Laravel Cloud is a third answer, `is_cloud`, and it is a kind of its own
- * because there is no machine and no container the app reaches: the code is
- * sent to an environment over the API. So it clears both of the other answers,
- * and any other kind clears it.
+ * Laravel Cloud is a third answer, `is_cloud`, and Laravel Vapor a fourth,
+ * `is_vapor`, and each is a kind of its own because there is no machine and no
+ * container the app reaches: the code is sent to an environment over the API.
+ * So choosing either clears both of the other answers and the other one of the
+ * two, and any other kind clears both.
  *
  * A kind that is not chosen clears what it owns: local and ssh clear the
  * container, and the two container kinds keep an engine that is already chosen
  * rather than resetting it to docker under someone who picked podman. What a
  * cloud connection chose — the application and the environment — is kept when
  * another kind is picked: it is inert there, and it is what the rail shows again
- * when the connection is set back to Laravel Cloud.
+ * when the connection is set back to Laravel Cloud. A Vapor connection's team,
+ * project and environment are kept the same way.
  */
 const ConnectionType = () => {
   const intl = useIntl()
   const {watch, setValue} = useFormContext()
 
-  const [ssh, engine, cloud] = watch(['is_over_ssh', 'container_engine', 'is_cloud'])
+  const [ssh, engine, cloud, vapor] = watch([
+    'is_over_ssh', 'container_engine', 'is_cloud', 'is_vapor',
+  ])
 
   const kind = cloud
     ? 'cloud'
-    : ssh
-      ? (engine ? 'ssh-container' : 'ssh')
-      : (engine ? 'container' : 'local')
+    : vapor
+      ? 'vapor'
+      : ssh
+        ? (engine ? 'ssh-container' : 'ssh')
+        : (engine ? 'container' : 'local')
 
   const choose = next => {
     const isCloud = next === 'cloud'
+    const isVapor = next === 'vapor'
     const overSsh = next === 'ssh' || next === 'ssh-container'
     const inContainer = next === 'container' || next === 'ssh-container'
 
     setValue('is_cloud', isCloud, {shouldDirty: true})
+    setValue('is_vapor', isVapor, {shouldDirty: true})
     setValue('is_over_ssh', overSsh, {shouldDirty: true})
 
     // the engine a container connection starts on: docker is what most
@@ -119,6 +137,7 @@ const ConnectionType = () => {
     ['ssh', 'where_ssh'],
     ['ssh-container', 'where_ssh_container'],
     ['cloud', 'where_cloud'],
+    ['vapor', 'where_vapor'],
   ]
 
   return (

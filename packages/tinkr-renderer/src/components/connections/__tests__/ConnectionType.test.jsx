@@ -45,10 +45,10 @@ const render = values => {
 describe('the type of a connection', () => {
   // the two answers are not exclusive any more: a project deployed by a compose
   // file on a server is a container on that server, and the rail has to say so
-  test('offers the five, including a container on a server and Laravel Cloud', () => {
+  test('offers the six, including a container on a server and the two Laravel kinds', () => {
     const view = render({is_over_ssh: false})
 
-    expect(view.kinds).toEqual(['local', 'container', 'ssh', 'ssh-container', 'cloud'])
+    expect(view.kinds).toEqual(['local', 'container', 'ssh', 'ssh-container', 'cloud', 'vapor'])
     expect(view.checked()).toBe('local')
 
     view.done()
@@ -72,6 +72,11 @@ describe('the type of a connection', () => {
     const cloud = render({is_cloud: true})
     expect(cloud.checked()).toBe('cloud')
     cloud.done()
+
+    // a Vapor connection is read from its own field the same way
+    const vapor = render({is_vapor: true})
+    expect(vapor.checked()).toBe('vapor')
+    vapor.done()
   })
 
   // a kind sets both fields, and clears what it no longer owns: leaving the
@@ -121,6 +126,50 @@ describe('the type of a connection', () => {
     view.choose('local')
 
     expect(view.values().is_cloud).toBe(false)
+    view.done()
+  })
+
+  // a Vapor connection has no machine and no container either, and the two
+  // Laravel kinds are exclusive of each other: one connection runs its code in
+  // one place
+  test('choosing Laravel Vapor clears the ssh, container and cloud fields', () => {
+    const view = render({
+      is_over_ssh: true,
+      container_engine: 'podman',
+      container_path: '/var/www/html',
+      container_name: 'app',
+      is_cloud: true,
+      cloud_environment_id: 'env-1',
+    })
+
+    view.choose('vapor')
+
+    expect(view.values().is_vapor).toBe(true)
+    expect(view.values().is_cloud).toBe(false)
+    expect(view.values().is_over_ssh).toBe(false)
+    expect(view.values().container_engine).toBe('')
+    expect(view.values().container_path).toBe('')
+
+    view.done()
+  })
+
+  test('choosing Laravel Cloud stops being a Vapor connection', () => {
+    const view = render({is_vapor: true, vapor_environment_id: 'env-1'})
+
+    view.choose('cloud')
+
+    expect(view.values().is_vapor).toBe(false)
+    expect(view.values().is_cloud).toBe(true)
+
+    view.done()
+  })
+
+  test('choosing any other kind stops being a Vapor connection', () => {
+    const view = render({is_vapor: true, vapor_project_id: 'proj-1'})
+
+    view.choose('ssh')
+
+    expect(view.values().is_vapor).toBe(false)
     view.done()
   })
 })

@@ -22,7 +22,7 @@ import DeleteConnectionConfirm from './components/connections/DeleteConnectionCo
 import StageLight from './components/connections/StageLight'
 import useSplit from './hooks/useSplit'
 import useNewSession from './hooks/useNewSession'
-import kindOf from './utils/connectionKind'
+import kindOf, {isApiRun} from './utils/connectionKind'
 import DocumentScope from './components/editor/DocumentScope'
 import {sizesAtom, connectionAtom, settledRunAtom, setAnswer, setOutput, inFlightDocumentAtom, inFlightAtom} from './stores/editor'
 import {configAtom} from './stores/config'
@@ -167,9 +167,10 @@ const EditorWindow = () => {
     <WindowContainer>
       <div className='app'>
         {/* the logs are files on the machine the project runs on, and a Laravel
-            Cloud connection has none the app can read: the viewer is not offered
-            for one, rather than opening a window that would only say so */}
-        <Titlebar logs={!connection.is_cloud}>
+            Cloud or Laravel Vapor connection has none the app can read: the
+            viewer is not offered for one, rather than opening a window that
+            would only say so */}
+        <Titlebar logs={!isApiRun(connection)}>
           <StageLight tag={connection.tag}/>
           <span className='mono'>{connection.name}</span>
           <span className='titlebar__sep'>·</span>

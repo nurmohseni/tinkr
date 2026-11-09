@@ -106,9 +106,18 @@ describe('the queries pane', () => {
   })
 
   test('a Laravel Cloud connection shows the action disabled, with the reason', () => {
-    const markup = render({queries: [sent[0]], queriesTotal: 1}, {cloud: true})
+    const markup = render({queries: [sent[0]], queriesTotal: 1}, {api: 'cloud'})
 
     expect(markup).toContain('<button class="btn btn--ghost btn--sm" type="button" disabled=""')
     expect(markup).toContain('title="Explain is off on Laravel Cloud: the statement would land in the environment&#x27;s history"')
+  })
+
+  // the same rule, in the product's own name: a Vapor environment keeps the
+  // command in its history too
+  test('a Laravel Vapor connection shows the action disabled, with its own reason', () => {
+    const markup = render({queries: [sent[0]], queriesTotal: 1}, {api: 'vapor'})
+
+    expect(markup).toContain('<button class="btn btn--ghost btn--sm" type="button" disabled=""')
+    expect(markup).toContain('title="Explain is off on Laravel Vapor: the statement would land in the environment&#x27;s history"')
   })
 })

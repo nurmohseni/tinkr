@@ -15,8 +15,10 @@ import {configAtom} from '../../stores/config'
  * in a container runs in the container's directory, and a command left empty is
  * the default command from the settings.
  *
- * A Laravel Cloud connection's route is two stops and no command: this machine
- * sends the code, and the environment runs it. The command is the app's own, so
+ * A Laravel Cloud or Laravel Vapor connection's route is two stops and no
+ * command: this machine sends the code, and the environment runs it. Vapor's
+ * route has the project before the environment, because an environment there is
+ * deployed from one of the project's branches. The command is the app's own, so
  * there is nothing of the connection's to print in its place.
  */
 const ConnectionRoute = () => {
@@ -24,8 +26,10 @@ const ConnectionRoute = () => {
   const {watch} = useFormContext()
   const config = useAtomValue(configAtom)
 
-  const [cloud, application, environment, ssh, server, port, user, engine, name, inContainer, path, command, inside] = watch([
-    'is_cloud', 'cloud_application_name', 'cloud_environment_name',
+  const [cloud, vapor, application, environment, vaporProject, vaporEnvironment, ssh, server, port, user, engine, name, inContainer, path, command, inside] = watch([
+    'is_cloud', 'is_vapor',
+    'cloud_application_name', 'cloud_environment_name',
+    'vapor_project_name', 'vapor_environment_name',
     'is_over_ssh', 'ssh_server', 'ssh_port', 'ssh_user',
     'container_engine', 'container_name', 'container_path',
     'path', 'command', 'container_command',
@@ -36,18 +40,25 @@ const ConnectionRoute = () => {
 
   const stops = []
 
-  if (cloud) {
+  if (cloud || vapor) {
     stops.push({value: say('connections.route_this_machine')})
 
-    const app = text(application)
-    const env = text(environment)
+    const project = text(cloud ? application : vaporProject)
+    const environmentName = text(cloud ? environment : vaporEnvironment)
 
-    stops.push(app ? {value: app} : {missing: say('connections.cloud_application')})
+    stops.push(project
+      ? {value: project}
+      : {missing: say(cloud ? 'connections.cloud_application' : 'connections.vapor_project')})
 
-    stops.push(env ? {value: env, last: true} : {missing: say('connections.cloud_environment'), last: true})
+    stops.push(environmentName
+      ? {value: environmentName, last: true}
+      : {
+        missing: say(cloud ? 'connections.cloud_environment' : 'connections.vapor_environment'),
+        last: true,
+      })
   }
 
-  if (!cloud) {
+  if (!cloud && !vapor) {
     if (ssh) {
       const host = text(server)
       const at = text(user)

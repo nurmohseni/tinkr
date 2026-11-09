@@ -5,6 +5,7 @@ import Output from './Output'
 import Queries from './Queries'
 import Terminal from './Terminal'
 import {outputTabIndexAtom, currentResultAtom, connectionAtom} from '../../stores/editor'
+import {apiRunOf} from '../../utils/connectionKind'
 
 // the view that is not shown is hidden where it keeps the size it is measured
 // at: a terminal that is fitted while its view is hidden has to fit the same box
@@ -55,7 +56,7 @@ const OutputTabView = () => {
         className='output__body'
         style={tabIndex === 3 ? {height: 'inherit'} : {height: 'inherit', ...hidden}}
       >
-        <Queries result={result} cloud={Boolean(connection && connection.is_cloud)}/>
+        <Queries result={result} api={apiRunOf(connection)}/>
       </div>
 
       <div style={tabIndex === 2 ? {height: 'inherit'} : {height: 'inherit', ...hidden}}>
