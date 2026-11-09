@@ -176,6 +176,18 @@ const serve = ({server, name, version, input = process.stdin, output = process.s
 
     const params = isObject(message.params) ? message.params : {}
 
+    // the handshake comes first. A client that lists tools or calls one before
+    // it has said hello is answered with -32002 and has to start the
+    // conversation over — the revision it speaks and who it is are what every
+    // later answer is shaped by. A ping is legal at any moment, because it asks
+    // the server nothing but whether it is there, and a notification is
+    // ignored, the way every notification this server does not know is
+    const beforeHello = negotiated === null && message.method !== 'initialize' && message.method !== 'ping'
+
+    if (beforeHello) {
+      return notification ? null : failure(message.id, -32002, 'Server not initialized')
+    }
+
     if (message.method === 'notifications/cancelled') {
       const running = inFlight.get(keyOf(params.requestId))
 

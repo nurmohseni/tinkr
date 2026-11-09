@@ -732,10 +732,11 @@ describe('the tools', () => {
   test('asks for the code it is going to run', async () => {
     const {server} = opened({at: project, run: async () => envelope()})
 
-    const answer = await server.call('tinkr_run_php', {})
-
-    expect(answer.isError).toBe(true)
-    expect(answer.content[0].text).toMatch(/`code` is required/)
+    // a call that leaves out what the tool declares is answered as a protocol
+    // error, before the tool runs: there is no code to run and no answer of a
+    // run to give
+    await expect(server.call('tinkr_run_php', {}))
+      .rejects.toMatchObject({code: -32602, message: expect.stringMatching(/`code` is required/)})
   })
 })
 
@@ -1128,5 +1129,107 @@ describe('what an answer hides', () => {
     expect(answer.isError).toBe(false)
     expect(answer.structuredContent.value).toEqual({id: 1, token: '[hidden]'})
     expect(answer.content[0].text).toContain('"token": "[hidden]"')
+  })
+})
+
+describe('the arguments of a call', () => {
+  test('refuses an argument the tool does not take, before anything runs', async () => {
+    const calls = []
+    const {server} = opened({
+      at: project,
+      dataDir: '/nowhere',
+      run: async (connection, code) => {
+        calls.push(code)
+
+        return envelope()
+      },
+    })
+
+    // a dry run the tool has no argument for: an ignored key here is the run
+    // the caller was trying not to make
+    await expect(server.call('tinkr_run_php', {code: 'DB::table("users")->delete();', dry_run: true}))
+      .rejects.toMatchObject({
+        code: -32602,
+        message: expect.stringMatching(
+          /`dry_run` is not an argument tinkr_run_php takes\. It takes: code, path, connection, guard, timeout_ms\./,
+        ),
+      })
+
+    expect(calls).toEqual([])
+  })
+
+  test('refuses an argument of the wrong type, and names it', async () => {
+    const {server} = opened({at: project, dataDir: '/nowhere'})
+
+    await expect(server.call('tinkr_run_php', {code: '1;', timeout_ms: '5000'}))
+      .rejects.toMatchObject({
+        code: -32602,
+        message: expect.stringMatching(/`timeout_ms` has to be a number, not a string\./),
+      })
+  })
+
+  test('refuses a value the schema does not allow, and one outside its range', async () => {
+    const {server} = opened({at: project, dataDir: '/nowhere'})
+
+    await expect(server.call('tinkr_run_php', {code: '1;', guard: 'pretend'}))
+      .rejects.toMatchObject({
+        code: -32602,
+        message: expect.stringMatching(/`guard` has to be one of "rollback", "sandbox", not "pretend"\./),
+      })
+
+    await expect(server.call('tinkr_list_history', {limit: 500}))
+      .rejects.toMatchObject({
+        code: -32602,
+        message: expect.stringMatching(/`limit` has to be at most 50: it was 500\./),
+      })
+  })
+
+  test('does not change a call that fits its schema', async () => {
+    const {server} = opened({at: project, dataDir: '/nowhere'})
+
+    const answer = await server.call('tinkr_run_php', {code: '1;', timeout_ms: 5000})
+
+    expect(answer.isError).toBe(false)
+    expect(answer.structuredContent.value).toBe(3)
+  })
+
+  test('answers from the data directory it was given, never from the default one', async () => {
+    const elsewhere = makeAppDir({
+      connections: {zeta: connection({id: 'zeta', name: 'Zeta', path: project})},
+      snippets: {zeta: {abc: {id: 'abc', code: '$n = 1;', name: 'One'}}},
+    })
+    // the machine's own app data is there, with a connection in it; the
+    // directory this server was pointed at holds no connections file at all
+    const find = jest.spyOn(app, 'find').mockImplementation(found => (found ? null : elsewhere))
+
+    try {
+      const {server} = opened({at: project, dataDir: '/nowhere'})
+
+      // a call that names a connection reads the profile the server was given,
+      // and there is no such connection in it: reading the default one would
+      // answer with another profile's snippets, mode and saved password
+      const answer = await server.call('tinkr_list_snippets', {connection: 'Zeta'})
+
+      expect(answer.isError).toBe(true)
+      expect(answer.content[0].text).toMatch(/no connection "Zeta"/)
+
+      const listed = await server.call('tinkr_list_connections', {})
+
+      expect(listed.structuredContent.connections).toEqual([])
+    } finally {
+      find.mockRestore()
+      removeAppDir(elsewhere)
+    }
+  })
+
+  test('says the run tool can reach the world, because the code it runs can', () => {
+    const {server} = opened({at: project, dataDir: '/nowhere'})
+
+    // a run makes HTTP calls, or reaches Laravel Cloud and Laravel Vapor, as
+    // easily as it touches a row: a client that auto-approves on the hint has
+    // to read it as open
+    for (const name of ['tinkr_run_php', 'tinkr_run_php_over_ssh']) {
+      expect(server.tools.find(one => one.name === name).annotations.openWorldHint).toBe(true)
+    }
   })
 })

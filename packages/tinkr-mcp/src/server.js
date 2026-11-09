@@ -3,6 +3,7 @@ const fs = require('fs')
 const {redactResult, redactValue, runCode, logs: logReader, unguardableReasons, unguardableScan} = require('tinkr-core')
 
 const app = require('./app')
+const schema = require('./schema')
 const {topics, documentation} = require('./documentation')
 const target = require('./target')
 
@@ -577,7 +578,7 @@ const failure = error => {
  */
 const sessionFailureOf = error => {
   const output = typeof error.output === 'string' ? error.output : ''
-  const message = truncate(output ? `${error.message}` : error.message)
+  const message = truncate(error.message)
 
   return {
     content: [{type: 'text', text: truncate(message)}],
@@ -1065,7 +1066,7 @@ const TOOLS = [
       'here, and a run that is stopped keeps running there until it ends. A Laravel Vapor ' +
       'connection is sent the same way, to the environment of the project it names. ' +
       productionRule,
-    annotations: {readOnlyHint: false, destructiveHint: true, openWorldHint: false},
+    annotations: {readOnlyHint: false, destructiveHint: true, openWorldHint: true},
     inputSchema: {
       type: 'object',
       properties: {
@@ -1106,13 +1107,15 @@ const TOOLS = [
       properties: {
         connection: {
           type: 'string',
-          description: 'The id or name of a connection saved in Tinkr that runs over ssh.',
+          description: 'The id or name of a connection saved in Tinkr that runs over ssh. The ' +
+            'connection this server was started on when it is not given, which has to be one ' +
+            'that runs over ssh.',
         },
         code: {type: 'string', description: 'The PHP to run, written as it would be typed into tinker.'},
         guard: guardInput,
         timeout_ms: timeoutInput,
       },
-      required: ['connection', 'code'],
+      required: ['code'],
       additionalProperties: false,
     },
     outputSchema: runOutput,
@@ -2056,9 +2059,18 @@ const createServer = ({
    * @param {{signal?: AbortSignal}} [options] `signal` is aborted when the client
    * cancels the call, and a run that is still going is stopped
    * @return {Promise<Object>} what the tool answers with. A tool that throws is
-   * an answer with `isError`, because the caller has to read what went wrong
+   * an answer with `isError`, because the caller has to read what went wrong.
+   * Arguments that do not fit the tool's schema are not the tool's to answer:
+   * they are refused before anything runs, as protocol errors (-32602)
    */
   const call = async (name, args = {}, {signal} = {}) => {
+    const tool = TOOLS.find(one => one.name === name)
+    const problem = tool ? schema.problemOf(tool, args) : null
+
+    if (problem) {
+      throw Object.assign(new Error(problem), {code: -32602})
+    }
+
     const at = journal ? journal.now() : 0
     // what the production mode did to this call, when it did anything: the
     // journal shows a forced guard beside the call it was forced on

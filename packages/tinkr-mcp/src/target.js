@@ -114,44 +114,56 @@ const withCommand = (connection, command, dir) => Object.assign({}, connection, 
 /**
  * @param {{connection?: String, at?: String, command?: String,
  *   dataDir?: String}} [options] `at` is a directory, `connection` an id or name
- * @return {{connection: Object, dataDir: String|null, saved: Boolean}} `saved` says
- * whether the connection is one the app knows, which is what a snippet needs
+ * @return {{connection: Object, dataDir: String|null, saved: Boolean}} `dataDir` is
+ * the directory the app's own files are read from — the one named with
+ * `--data-dir` even when it holds none, because that is still the profile this
+ * server was pointed at, and null only when no directory was named and none was
+ * found. `saved` says whether the connection is one the app knows, which is what
+ * a snippet needs
  */
 const resolve = (options = {}) => {
   const {connection, at, command, dataDir} = options
-  const dir = app.find(dataDir)
+  // the directory named with --data-dir, which is the profile this server reads
+  // whether or not the app has written anything there yet: a mode, an access, a
+  // redaction list or a saved password from the machine's own directory is an
+  // answer about a profile nobody here named. An empty one is a profile with no
+  // connections, not an invitation to go looking in the default places again
+  const named = dataDir ? path.resolve(dataDir) : null
+  const dir = app.find(named)
+  const store = named || dir
 
   if (connection) {
-    if (!dir) {
+    if (!store) {
       throw new Error(
         'Tinkr\'s own data was not found, so there is no connection to look a name up in. ' +
         'Pass where the app keeps it with --data-dir, or a directory to run in with --path.',
       )
     }
 
-    const found = findConnection(dir, connection)
+    const found = findConnection(store, connection)
 
     if (!found) {
-      const known = app.connections(dir).map(one => `${one.id} (${one.name})`).join(', ') || 'none'
+      const known = app.connections(store).map(one => `${one.id} (${one.name})`).join(', ') || 'none'
+      const where = named ? `Tinkr's data at ${named}` : 'Tinkr'
 
-      throw new Error(`There is no connection "${said(connection)}" in Tinkr. Known connections: ${known}.`)
+      throw new Error(`There is no connection "${said(connection)}" in ${where}. Known connections: ${known}.`)
     }
 
-    return {connection: withCommand(found, command, dir), dataDir: dir, saved: true}
+    return {connection: withCommand(found, command, store), dataDir: store, saved: true}
   }
 
   const project = path.resolve(at || process.cwd())
-  const saved = dir
-    ? app.connections(dir).find(one => one.path && !one.is_over_ssh && sameDirectory(one.path, project))
+  const saved = store
+    ? app.connections(store).find(one => one.path && !one.is_over_ssh && sameDirectory(one.path, project))
     : null
 
   if (saved) {
-    return {connection: withCommand(saved, command, dir), dataDir: dir, saved: true}
+    return {connection: withCommand(saved, command, store), dataDir: store, saved: true}
   }
 
-  const fallback = command || (dir && app.command(dir)) || defaultCommand
+  const fallback = command || (store && app.command(store)) || defaultCommand
 
-  return {connection: directoryConnection(project, fallback), dataDir: dir, saved: false}
+  return {connection: directoryConnection(project, fallback), dataDir: store, saved: false}
 }
 
 module.exports = {

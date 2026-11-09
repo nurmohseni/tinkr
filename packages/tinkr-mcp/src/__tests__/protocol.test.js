@@ -67,6 +67,14 @@ const open = ({run = async () => envelope, onEnd} = {}) => {
 
 const initialize = (protocolVersion = latest) => ({jsonrpc: '2.0', id: 1, method: 'initialize', params: {protocolVersion}})
 
+// what every client sends first: the handshake, answered and taken out of the
+// stream so the test that follows reads only what it asked for
+const hello = async client => {
+  client.send(initialize())
+
+  return client.take()
+}
+
 describe('the mcp conversation', () => {
   test('answers the handshake with the revision asked for, and what it can do', async () => {
     const client = open()
@@ -98,6 +106,7 @@ describe('the mcp conversation', () => {
   test('lists every tool with what it is and what it takes', async () => {
     const client = open()
 
+    await hello(client)
     client.send({jsonrpc: '2.0', id: 2, method: 'tools/list'})
 
     const {result} = await client.take()
@@ -133,6 +142,7 @@ describe('the mcp conversation', () => {
       },
     })
 
+    await hello(client)
     client.send({
       jsonrpc: '2.0',
       id: 3,
@@ -150,6 +160,7 @@ describe('the mcp conversation', () => {
   test('refuses a tool it does not have', async () => {
     const client = open()
 
+    await hello(client)
     client.send({jsonrpc: '2.0', id: 4, method: 'tools/call', params: {name: 'tinkr_nope', arguments: {}}})
 
     expect(await client.take()).toMatchObject({id: 4, error: {code: -32602}})
@@ -158,9 +169,58 @@ describe('the mcp conversation', () => {
   test('refuses a method it does not have', async () => {
     const client = open()
 
+    await hello(client)
     client.send({jsonrpc: '2.0', id: 5, method: 'resources/list'})
 
     expect(await client.take()).toMatchObject({id: 5, error: {code: -32601}})
+  })
+
+  test('refuses a call whose arguments the tool does not declare', async () => {
+    const seen = []
+    const client = open({
+      run: async (connection, code) => {
+        seen.push(code)
+
+        return envelope
+      },
+    })
+
+    await hello(client)
+    client.send({
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'tools/call',
+      params: {name: 'tinkr_run_php', arguments: {code: 'DB::table("users")->delete();', dry_run: true}},
+    })
+
+    const answer = await client.take()
+
+    // the guard the caller believed it asked for is not a guard this tool has,
+    // and a run it believed was a dry run must not happen at all
+    expect(answer.error).toMatchObject({code: -32602})
+    expect(answer.error.message).toMatch(/`dry_run` is not an argument tinkr_run_php takes/)
+    expect(answer.error.message).toMatch(/It takes: code, path, connection, guard, timeout_ms\./)
+    expect(seen).toEqual([])
+  })
+
+  test('answers a request that comes before the handshake with -32002', async () => {
+    const client = open()
+
+    client.send({jsonrpc: '2.0', id: 10, method: 'tools/list'})
+
+    expect(await client.take()).toMatchObject({id: 10, error: {code: -32002, message: 'Server not initialized'}})
+  })
+
+  test('ignores a notification before the handshake rather than answering it', async () => {
+    const client = open()
+
+    client.send({jsonrpc: '2.0', method: 'tools/list'})
+    client.send({jsonrpc: '2.0', id: 11, method: 'ping'})
+
+    // the ping is legal at any moment, and it is the first thing that comes
+    // back: the notification got no answer of its own
+    expect(await client.take()).toMatchObject({id: 11})
+    expect(client.messages).toEqual([])
   })
 
   test('answers a line that is not a message with a parse error', async () => {

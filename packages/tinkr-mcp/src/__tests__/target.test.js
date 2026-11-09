@@ -1,6 +1,7 @@
 const path = require('path')
 
 const {makeAppDir, removeAppDir, connection} = require('../__fixtures__/app')
+const app = require('../app')
 const target = require('../target')
 
 describe('what code runs in', () => {
@@ -94,6 +95,28 @@ describe('what code runs in', () => {
 
     expect(found.connection.path).toBe(process.cwd())
     expect(found.saved).toBe(false)
-    expect(found.dataDir).toBe(null)
+    // the directory it was pointed at is the one it reads, empty or not: a
+    // data directory is a profile, and going back to the default places when
+    // it holds nothing is reading someone else's connections
+    expect(found.dataDir).toBe(path.resolve('/nowhere'))
+  })
+
+  test('reads no profile but the one it was given', () => {
+    const elsewhere = makeAppDir({connections: {zeta: connection({id: 'zeta', name: 'Zeta'})}})
+    // the machine's own app data is there, with a connection in it, and the
+    // directory this server was given has no connections file at all
+    const find = jest.spyOn(app, 'find').mockImplementation(dir => (dir ? null : elsewhere))
+
+    try {
+      const found = target.resolve({dataDir: '/nowhere', at: '/tmp/elsewhere'})
+
+      expect(found.dataDir).toBe(path.resolve('/nowhere'))
+      expect(found.saved).toBe(false)
+      expect(() => target.resolve({dataDir: '/nowhere', connection: 'Zeta'}))
+        .toThrow(/no connection "Zeta"/)
+    } finally {
+      find.mockRestore()
+      removeAppDir(elsewhere)
+    }
   })
 })
