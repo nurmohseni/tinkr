@@ -19,39 +19,57 @@ describe('a value as one word of a shell', () => {
     expect(shellWord('/srv/app', 'posix')).toBe('/srv/app')
   })
 
-  test('cmd.exe gets the word between double quotes, and the quotes are the only ones', () => {
-    // a space is a separator outside quotes and an ordinary character inside
-    // them, and the quotes are what makes one word of a path
-    expect(shellQuote('a b', 'win32')).toBe('"a b"')
-    // the separators and redirections lose their meaning inside quotes, so they
-    // are not caret-escaped: a caret there would be a character php or docker got
-    expect(shellQuote('a&b|c<d>e(f)g', 'win32')).toBe('"a&b|c<d>e(f)g"')
-    // a caret is ordinary inside quotes for the same reason
-    expect(shellQuote('a^b', 'win32')).toBe('"a^b"')
+  test('a cmd word is written for cmd and for the program it is handed to', () => {
+    // cmd does not hand a program the words of a line — it hands it the line, and
+    // the program splits that again. So a word is written twice: the form the
+    // program's parser reads as one argument, and then a caret before every
+    // character cmd would act on, the quotes of that form included. Escaping the
+    // quotes is what keeps cmd out of quote mode, where the caret is a character
+    // and a `%` or a `!` is expanded anyway
+    expect(shellQuote('a b', 'win32')).toBe('^"a^ b^"')
+    expect(shellQuote('a&b|c<d>e(f)g', 'win32')).toBe('^"a^&b^|c^<d^>e^(f^)g^"')
+    expect(shellQuote('a^b', 'win32')).toBe('^"a^^b^"')
+    expect(shellQuote('trail\\', 'win32')).toBe('^"trail\\\\^"')
+    expect(shellQuote('', 'win32')).toBe('^"^"')
   })
 
-  test('a quote inside a cmd word is doubled, so it ends nothing', () => {
-    // the receiving program's parser reads "" between quotes as one quote, and
-    // the pair keeps the number of quotes even for cmd itself
-    expect(shellQuote('say "hi"', 'win32')).toBe('"say ""hi"""')
-    expect(cmdQuote('"')).toBe('""""')
+  test('a quote inside a cmd word is escaped for both readers', () => {
+    // `\"` is one quote to the program's parser and the caret is what hands it
+    // that backslash and quote as themselves
+    expect(shellQuote('say "hi"', 'win32')).toBe('^"say^ \\^"hi\\^"^"')
+    expect(cmdQuote('"')).toBe('^"\\^"^"')
   })
 
-  test('a percent or a bang is caret-escaped, which is what stops cmd expanding it', () => {
-    // these two are expanded before quotes are looked at, on every platform's
-    // rule that matters here: %PATH% would otherwise become a machine's path
-    expect(shellQuote('%PATH%', 'win32')).toBe('"^%PATH^%"')
-    expect(shellQuote('C:\\100%\\bin', 'win32')).toBe('"C:\\100^%\\bin"')
-    expect(shellQuote('a!b!', 'win32')).toBe('"a^!b^!"')
+  test('a percent is caret-escaped, which is what stops cmd expanding it', () => {
+    // `%name%` is expanded while the line is read, before any escape is acted on,
+    // and the caret is what makes it a percent rather than the name of a variable
+    expect(shellQuote('%PATH%', 'win32')).toBe('^"^%PATH^%^"')
+    expect(shellQuote('C:\\100%\\bin', 'win32')).toBe('^"C:\\100^%\\bin^"')
+  })
+
+  test('a bang takes one caret or two, and which one is the shell\'s to say', () => {
+    // a line handed to `cmd /d /s /c` — what a read is given — has delayed
+    // expansion off: the escape phase takes the one caret and nothing reads the
+    // bang after it
+    expect(shellQuote('a!b!', 'win32')).toBe('^"a^!b^!^"')
+    // the session's shell is started with `/V:ON`, and there the delayed phase
+    // reads the bang after the escape phase has taken a caret: two of them are
+    // what one bang survives both phases with
+    expect(shellQuote('a!b!', 'win32', {delayed: true})).toBe('^"a^^!b^^!^"')
+    expect(cmdQuote('!', {delayed: true})).toBe('^"^^!^"')
+    // the flag is a windows one, and a posix word does not know it is there
+    expect(shellQuote('a!b!', 'posix', {delayed: true})).toBe("'a!b!'")
   })
 
   test('a run of backslashes at the end is doubled, so it does not eat the closing quote', () => {
-    expect(shellQuote('C:\\srv\\', 'win32')).toBe('"C:\\srv\\\\"')
+    expect(cmdQuote('C:\\srv\\')).toBe('^"C:\\srv\\\\^"')
+    expect(shellQuote('C:\\srv\\\\', 'win32')).toBe('^"C:\\srv\\\\\\\\^"')
     expect(shellQuote('C:\\srv\\\\', 'posix')).toBe("'C:\\srv\\\\'")
   })
 
   test('a unicode value survives both', () => {
-    expect(shellQuote('C:\\srv\\prøjekt', 'win32')).toBe('"C:\\srv\\prøjekt"')
+    expect(shellQuote('C:\\srv\\prøjekt', 'win32')).toBe('^"C:\\srv\\prøjekt^"')
+    expect(shellQuote('ü x', 'win32')).toBe('^"ü^ x^"')
     expect(shellQuote('prøjekt', 'posix')).toBe("'prøjekt'")
   })
 
@@ -59,8 +77,8 @@ describe('a value as one word of a shell', () => {
     expect(shellWord('app-abc123', 'win32')).toBe('app-abc123')
     expect(shellWord('/var/www/html', 'win32')).toBe('/var/www/html')
     // % and ! are never safe, even when nothing else about the word is special
-    expect(shellWord('100%', 'win32')).toBe('"100^%"')
-    expect(shellWord('a b', 'win32')).toBe('"a b"')
+    expect(shellWord('100%', 'win32')).toBe('^"100^%^"')
+    expect(shellWord('a b', 'win32')).toBe('^"a^ b^"')
   })
 
   test('the platform name is a parameter rather than this machine', () => {

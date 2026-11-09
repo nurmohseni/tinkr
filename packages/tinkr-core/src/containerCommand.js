@@ -63,10 +63,10 @@ const engines = {
   // image this app reaches has a posix `sh` — while the word the shell is given
   // is quoted for the shell that reads this line
   kubectl: {
-    exec: ({name, command, where, shell, cluster, namespace, container}) =>
+    exec: ({name, command, where, shell, options, cluster, namespace, container}) =>
       `kubectl${cluster} exec -it${namespace}${container} ${name} -- ${
         where
-          ? `sh -c ${whole(`cd ${word(where, 'posix')} && ${command}`, shell)}`
+          ? `sh -c ${whole(`cd ${word(where, 'posix')} && ${command}`, shell, options)}`
           : command}`,
   },
 }
@@ -143,9 +143,21 @@ const engineNames = Object.keys(engines)
  * @param {String} value
  * @param {String} [platform] the shell that reads the line, which is not this
  *   machine's when the command travels over ssh or into a container
+ * @param {{delayed?: Boolean}} [options] whether the cmd that reads the word was
+ *   started with delayed expansion on (see shell.cmdQuote)
  * @return {String}
  */
-const word = (value, platform = process.platform) => shellWord(value, platform)
+const word = (value, platform = process.platform, options = {}) => shellWord(value, platform, options)
+
+/**
+ * The options of a word typed into the session's own shell.
+ *
+ * That shell is cmd started with `/V:ON` (see session.statusFrames), so a bang
+ * in a value is written for two escape phases and not one. A word built for a
+ * read is not: those are handed to `cmd /d /s /c`, which has delayed expansion
+ * off, and the same bang takes one caret there (see shell.cmdQuote).
+ */
+const typed = {delayed: true}
 
 /**
  * What each of a kubectl connection's fields is a flag of the command.
@@ -179,13 +191,15 @@ const kubeFlags = {
  *
  * @param {Record<String, any>} connection
  * @param {String} [shell] the shell that reads the line
+ * @param {{delayed?: Boolean}} [options] whether that cmd has delayed expansion
+ *   on (see word)
  * @return {{file: String, cluster: String, namespace: String, container: String}}
  */
-const kubeSelection = (connection = {}, shell = process.platform) => {
+const kubeSelection = (connection = {}, shell = process.platform, options = {}) => {
   const flag = field => {
     const text = String((connection || {})[field] || '').trim()
 
-    return text ? ` ${kubeFlags[field]} ${word(text, shell)}` : ''
+    return text ? ` ${kubeFlags[field]} ${word(text, shell, options)}` : ''
   }
 
   const file = flag('kube_config')
@@ -267,6 +281,11 @@ const inContainer = connection => Boolean(connection && String(connection.contai
  * for one over ssh (see shell.connectionShell): `app` is one word either way,
  * but a name with a space in it is `'my app'` there and `"my app"` here.
  *
+ * It is a line typed into the session's shell, so a windows one is read by a cmd
+ * with delayed expansion on (see `typed` and shell.cmdQuote) — that shell is
+ * where every value of this line ends up, unlike a read's, which is handed to
+ * `cmd /d /s /c`.
+ *
  * @param {ContainerConnection} connection
  * @param {String} [platform] the shell that reads the line, when the caller knows
  *   it; otherwise the connection decides
@@ -283,7 +302,7 @@ const containerCommand = (connection = {}, platform = null) => {
   }
 
   const inside = String(command || '').trim() || 'php artisan tinker'
-  const kube = kubeSelection(connection, shell)
+  const kube = kubeSelection(connection, shell, typed)
 
   // the command runs where the container's project is, not where the session
   // happens to be: a local session starts in the project on this machine, and
@@ -292,14 +311,17 @@ const containerCommand = (connection = {}, platform = null) => {
   const dir = containerPath(connection)
 
   return chosen.exec({
-    name: word(container, shell),
+    name: word(container, shell, typed),
     command: inside,
     // where the command runs, as the engine's own flag takes it (docker, podman)
-    dir: dir ? word(dir, shell) : null,
+    dir: dir ? word(dir, shell, typed) : null,
     // and the same path as the container names it, which is what a `cd` inside
     // it is given: kubectl has no flag, so its `cd` is quoted for the pod's shell
     where: engine === 'kubectl' ? kubePath(connection) : null,
     shell,
+    // the payload the pod's shell is given is one word of the shell that reads
+    // this line, so it is written for the same cmd the rest of it is
+    options: typed,
     cluster: kube.cluster,
     namespace: kube.namespace,
     container: kube.container,

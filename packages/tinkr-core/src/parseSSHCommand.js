@@ -4,6 +4,12 @@ const {controlOptions, masterOptions} = require('./sshControl')
 const {shellQuote} = require('./shell')
 
 /**
+ * The options of a word typed into the session's own shell, which on windows is
+ * a cmd with delayed expansion on (see word).
+ */
+const typed = {delayed: true}
+
+/**
  * A value as one word of the shell the session is typed into.
  *
  * The connection's fields are what a person typed, and they are typed into a
@@ -19,11 +25,16 @@ const {shellQuote} = require('./shell')
  * and then handed over as one word of this one, so the two layers do not depend
  * on each other.
  *
+ * The line is typed into a pty, and on windows that shell is cmd started with
+ * `/V:ON` (see session.statusFrames): a value holding a `!` is written for the
+ * two escape phases that shell reads, and one holding it in a line handed to
+ * `cmd /d /s /c` would be written for one (see shell.cmdQuote).
+ *
  * @param {String} value
  * @param {String} [platform] this machine's platform, when the caller knows it
  * @return {String}
  */
-const word = (value, platform = process.platform) => shellQuote(value, platform)
+const word = (value, platform = process.platform) => shellQuote(value, platform, typed)
 
 /**
  * Whether a connection's fields are ones ssh can be given at all.

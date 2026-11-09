@@ -64,59 +64,98 @@ const posixQuote = value => `'${String(value).replace(/'/g, "'\\''")}'`
 const cmdSafeWord = /^[A-Za-z0-9@._/:-]+$/
 
 /**
- * The characters cmd acts on even between double quotes.
+ * The characters cmd acts on in a line it reads.
  *
- * This is the whole of why the win32 rule is not "wrap it in quotes and be
- * done": cmd expands `%name%` while the line is being read and `!name!` when
- * delayed expansion is on (the session starts cmd with `/V:ON`, see
- * session.statusFrames), and neither of those phases looks at quotes. Everything
- * else cmd would act on — the separators, the redirections, the grouping
- * parentheses, the caret itself — is an ordinary character once it is inside
- * double quotes, which is where every word written here is.
+ * `^` is the escape itself; `&` `|` `<` `>` separate, pipe and redirect; `(`
+ * `)` group; `"` is the only quote cmd has; a space ends a word; `*` `?` `[` `]`
+ * are the pattern a wildcard or a `for` set reads; a backtick is what some
+ * builtins take as a command; `,` `;` `=` are delimiters of cmd's own; and `%`
+ * is expanded while the line is being read, before any of the rest is looked at.
+ *
+ * `!` is not here: it is expanded in a later phase, and only by a cmd started
+ * with `/V:ON`, so how many carets it takes depends on the shell that reads the
+ * word rather than on the word (see cmdQuote).
  */
-const cmdExpanded = /[%!]/g
+const cmdSpecial = /([()%^"`<>&|;, *?[\]])/g
 
 /**
- * A value as one word of cmd.exe.
+ * A value in the form the program's own command-line parser reads as one
+ * argument.
  *
- * Three things, in this order:
- *
- * - **The word is wrapped in double quotes.** That is what makes the separators
- *   (`&`, `|`, `<`, `>`, `(`, `)`) and the caret ordinary characters, so a path
- *   with ` & ` in it is one word rather than a command and a redirection.
- * - **A double quote inside it is doubled.** cmd passes the pair through and the
- *   receiving program's own command-line parser reads `""` between quotes as one
- *   `"` — which is how an argument that holds a quote survives. Doubling keeps
- *   the number of quote characters even, so cmd's own idea of whether it is
- *   inside a quoted section is not left flipped for the rest of the line.
- * - **A run of backslashes at the end is doubled.** A backslash means nothing to
- *   cmd, but the receiving program's parser treats one in front of the closing
- *   quote as escaping it, which eats the quote and takes the rest of the line
- *   with it. Doubling the run is what makes the parser hand back one.
- *
- * `%` and `!` are caret-escaped last, once the word exists: at an interactive
- * prompt that is what stops cmd expanding them (a `.bat` would need `%%`, which
- * is why nothing here is ever written to one). The value that carries either is
- * rare — a path holding a percent sign — but a path is exactly the value this
- * function exists for, and silently expanding it into somebody's environment
- * variable is worse than a caret that costs a character.
- *
- * What is not verifiable without windows: the caret's behaviour in front of `%`
- * and `!` inside double quotes, and cmd's exact handling of `""`. Both are the
- * documented reading of cmd's phases (and the rule `npm`'s own `.cmd` shims have
- * run on for years); the tests here pin the strings, not the shell's answer to
- * them.
+ * That parser is the C runtime's, and it is the same one in every program built
+ * with MSVC — php.exe, and a node.exe built for windows. It splits a line on
+ * spaces that are not quoted, reads a run of backslashes as itself unless a `"`
+ * follows it, where half of them are the backslashes and the last one escapes
+ * the quote, and takes a `"` outside a quoted run as the start of one. So the
+ * one spelling it turns back into the value: any `"` in the value is written as
+ * `\"` with the backslashes before it doubled, a run of backslashes at the end
+ * is doubled as well, and the whole is wrapped in quotes.
  *
  * @param {String} value
  * @return {String}
  */
-const cmdQuote = value => {
+const crtQuote = value => {
   const text = String(value)
-  const doubled = text.replace(/"/g, '""')
-  const tail = /\\+$/.test(doubled) ? '\\' : ''
+  let out = '"'
+  let slashes = 0
 
-  return `"${`${doubled}${tail}`.replace(cmdExpanded, '^$&')}"`
+  for (const char of text) {
+    if (char === '\\') {
+      slashes++
+      out += char
+
+      continue
+    }
+
+    if (char === '"') {
+      out += `${'\\'.repeat(slashes)}\\"`
+      slashes = 0
+
+      continue
+    }
+
+    slashes = 0
+    out += char
+  }
+
+  return `${out}${'\\'.repeat(slashes)}"`
 }
+
+/**
+ * A value as one word of cmd.exe.
+ *
+ * cmd does not hand a program the words of a line: it hands it the line, and the
+ * program splits that again by its own rules. So a word is written twice — once
+ * so cmd passes it on unchanged, and once so the program reads the one argument
+ * in it — and the two spellings are the two halves of this function.
+ *
+ * The value is put in the form the program's parser reads (see crtQuote), and
+ * then every character cmd acts on is caret-escaped, the quotes of that form
+ * included. Escaping the quotes is what keeps cmd out of quote mode altogether,
+ * and that is the whole reason the rule is this and not "wrap it in quotes":
+ * inside quotes the caret is an ordinary character, `%name%` and `!name!` are
+ * expanded anyway, and a `"` in the value ends the quoted run in the middle of
+ * the word. Outside quotes one caret escapes one character and is removed,
+ * `^%` is a percent that is not the name of a variable at the prompt, and the
+ * program is handed the quotes and spaces of the form it reads.
+ *
+ * `!` is the one character whose escaping belongs to the shell rather than to the
+ * value. cmd expands it only with delayed expansion on — `/V:ON`, which is how the
+ * session's shell is started (see session.statusFrames) and how a line given to
+ * `cmd /d /s /c` is not. With it on, the caret phase consumes one caret and the
+ * delayed phase the other, so the word needs `^^!`; with it off, `^!` is what
+ * survives both phases as one bang. `options.delayed` says which shell reads the
+ * word, and every caller knows: the session types its line at a `/V:ON` prompt,
+ * and a read is given to `/s /c`.
+ *
+ * @param {String} value
+ * @param {{delayed?: Boolean}} [options] whether the cmd that reads the word was
+ *   started with delayed expansion on
+ * @return {String}
+ */
+const cmdQuote = (value, {delayed = false} = {}) => crtQuote(value)
+  .replace(cmdSpecial, '^$&')
+  .replace(/!/g, delayed ? '^^!' : '^!')
 
 /**
  * A value as one word of the platform's shell, quoted only when it has to be.
@@ -129,13 +168,15 @@ const cmdQuote = value => {
  *
  * @param {String} value
  * @param {Platform} [platform]
+ * @param {{delayed?: Boolean}} [options] whether the cmd that reads the word was
+ *   started with delayed expansion on (see cmdQuote)
  * @return {String}
  */
-const shellWord = (value, platform = process.platform) => {
+const shellWord = (value, platform = process.platform, options = {}) => {
   const text = String(value)
 
   if (isWindows(platform)) {
-    return cmdSafeWord.test(text) ? text : cmdQuote(text)
+    return cmdSafeWord.test(text) ? text : cmdQuote(text, options)
   }
 
   return /^[A-Za-z0-9@%+=:,._/-]+$/.test(text) ? text : posixQuote(text)
@@ -150,10 +191,12 @@ const shellWord = (value, platform = process.platform) => {
  *
  * @param {String} value
  * @param {Platform} [platform]
+ * @param {{delayed?: Boolean}} [options] whether the cmd that reads the word was
+ *   started with delayed expansion on (see cmdQuote)
  * @return {String}
  */
-const shellQuote = (value, platform = process.platform) =>
-  (isWindows(platform) ? cmdQuote(value) : posixQuote(value))
+const shellQuote = (value, platform = process.platform, options = {}) =>
+  (isWindows(platform) ? cmdQuote(value, options) : posixQuote(value))
 
 /**
  * The platform whose shell reads a command built for a connection.

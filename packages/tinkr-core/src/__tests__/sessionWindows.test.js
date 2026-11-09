@@ -126,7 +126,7 @@ describe('what a windows session is started with', () => {
     // the name is a word of *this* shell, so it is quoted by cmd's rule — a single
     // quote here would be an ordinary character and the name would be two words
     expect(terminal.written[0]).toContain(
-      'docker exec -it "my app" php83 -d cli.pager=cat artisan tinker',
+      'docker exec -it ^"my^ app^" php83 -d cli.pager=cat artisan tinker',
     )
   })
 
@@ -148,10 +148,11 @@ describe('what a windows session is started with', () => {
 
     // `ssh` and `-t` are the program and its flag, and every option after them is
     // one word of cmd: single quotes would not quote anything there
-    expect(line.startsWith('ssh -t "-o" "ControlMaster=auto"')).toBe(true)
+    expect(line.startsWith('ssh -t ^"-o^" ^"ControlMaster=auto^"')).toBe(true)
     // the remote `cd` and the remote command are quoted for the far posix shell,
-    // and the pair is then one word of this one
-    expect(line).toContain('"cd \'/srv/my app\' && php -d cli.pager=cat artisan tinker"')
+    // and the pair is then one word of this one — a cmd word, written for the
+    // shell the session is typed into (see shell.cmdQuote)
+    expect(line).toContain('^"cd^ \'/srv/my^ app\'^ ^&^&^ php^ -d^ cli.pager=cat^ artisan^ tinker^"')
     expect(line.endsWith(`${windowsBootSentinel}\r`)).toBe(true)
     // there is no `NAME=value command` form in cmd, and no login profile to
     // defeat: the helper's variables are in the pty's environment instead
@@ -336,7 +337,7 @@ describe('the line a windows session starts php with', () => {
     }, 'php artisan tinker', null, 'win32')
 
     // the far command, quoted posix for the far shell and cmd for this one
-    expect(line).toContain('"cd \'/srv/my app\' && php artisan tinker"')
+    expect(line).toContain('^"cd^ \'/srv/my^ app\'^ ^&^&^ php^ artisan^ tinker^"')
 
     // a session with no command runs the account's login shell there, and that
     // word is cmd-quoted too
@@ -345,13 +346,14 @@ describe('the line a windows session starts php with', () => {
       is_over_ssh: true,
       ssh_server: '192.168.1.1',
       ssh_user: 'root',
-    }, null, null, 'win32')).toContain('"cd \'/srv/app\' && exec bash --login -i"')
+    }, null, null, 'win32')).toContain('^"cd^ \'/srv/app\'^ ^&^&^ exec^ bash^ --login^ -i^"')
   })
 
   test('says why a connection ssh cannot be given is not used, in cmd', () => {
-    // the message holds a double quote, and a cmd word doubles it: an unescaped
-    // one would finish the word and leave the rest of the message to cmd
+    // the message holds double quotes, and a cmd word escapes them for the
+    // program's parser: an unescaped one would end the word in the middle and
+    // leave the rest of the message to cmd
     expect(parseSSHCommand({ssh_user: '-oProxyCommand=x', ssh_server: 'host'}, null, null, 'win32'))
-      .toBe('echo "Tinkr: the ssh user and server cannot start with ""-"""')
+      .toBe('echo ^"Tinkr:^ the^ ssh^ user^ and^ server^ cannot^ start^ with^ \\^"-\\^"^"')
   })
 })

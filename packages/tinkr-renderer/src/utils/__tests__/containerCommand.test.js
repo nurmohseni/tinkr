@@ -94,7 +94,7 @@ test('names the pod the connection is about, in kubectl\'s own order', () => {
   // a windows app quotes the word the pod's shell is given for cmd, and the
   // payload's own `cd` stays posix
   expect(containerCommand(Object.assign({}, pod, {container_path: '/var/www/html'}), 'win32'))
-    .toBe('kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -it -n production -c php api-7f9 -- sh -c "cd /var/www/html && php artisan tinker"')
+    .toBe('kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -it -n production -c php api-7f9 -- sh -c ^"cd^ /var/www/html^ ^&^&^ php^ artisan^ tinker^"')
 
   expect(containerCommand({container_engine: 'kubectl', container_name: 'api-7f9'}, 'linux'))
     .toBe('kubectl exec -it api-7f9 -- php artisan tinker')
@@ -112,7 +112,7 @@ test('reads the machine from the bridge, and a page without one is posix', () =>
   try {
     expect(appPlatform()).toBe('win32')
     expect(containerCommand({container_engine: 'docker', container_name: 'my app'}))
-      .toBe('docker exec -it "my app" php artisan tinker')
+      .toBe('docker exec -it ^"my^ app^" php artisan tinker')
     // and an ssh connection is still quoted for the far shell there
     expect(containerCommand({
       is_over_ssh: true,

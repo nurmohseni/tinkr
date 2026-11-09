@@ -329,8 +329,8 @@ describe('running a command on the machine a connection runs on', () => {
     expect(quoted("/var/www/it's here")).toBe("'/var/www/it'\\''s here'")
     // the platform is a parameter, because the shell that reads the value is not
     // always this machine's: a windows one gets cmd's word
-    expect(quoted('C:\\srv\\my app', 'win32')).toBe('"C:\\srv\\my app"')
-    expect(quoted('100%', 'win32')).toBe('"100^%"')
+    expect(quoted('C:\\srv\\my app', 'win32')).toBe('^"C:\\srv\\my^ app^"')
+    expect(quoted('100%', 'win32')).toBe('^"100^%^"')
   })
 })
 

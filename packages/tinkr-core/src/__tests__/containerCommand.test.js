@@ -253,13 +253,15 @@ describe('a pod connection that names where its pod is', () => {
     // a value that holds a quote is still one word, in each shell's own way
     expect(containerCommand(pod({kube_container: "it's"})))
       .toBe("kubectl exec -it -c 'it'\\''s' api-7f9 -- php artisan tinker")
+    // a cmd word is the form the program reads with a caret before every
+    // character cmd acts on, the form's own quotes included (see shell.cmdQuote)
     expect(containerCommand(pod({kube_namespace: 'my ns', kube_container: "it's"}), 'win32'))
-      .toBe('kubectl exec -it -n "my ns" -c "it\'s" api-7f9 -- php artisan tinker')
+      .toBe('kubectl exec -it -n ^"my^ ns^" -c ^"it\'s^" api-7f9 -- php artisan tinker')
 
     // cmd expands a name between percents before it looks at quotes, so a path
     // holding one is caret-escaped rather than left to the environment
     expect(containerCommand(pod({kube_config: 'C:\\Users\\me\\.kube\\prod %USERNAME%.yaml'}), 'win32'))
-      .toBe('kubectl --kubeconfig "C:\\Users\\me\\.kube\\prod ^%USERNAME^%.yaml" exec -it api-7f9 -- php artisan tinker')
+      .toBe('kubectl --kubeconfig ^"C:\\Users\\me\\.kube\\prod^ ^%USERNAME^%.yaml^" exec -it api-7f9 -- php artisan tinker')
 
     // and an ssh line is read there rather than here, so its words stay posix
     // even in a windows app
@@ -280,7 +282,7 @@ describe('a pod connection that names where its pod is', () => {
     // the payload is read by the pod's own `sh`, which is posix, while the word
     // the shell is given is quoted for the shell that reads the line
     expect(containerCommand(pod({container_path: '/srv/app'}), 'win32'))
-      .toBe('kubectl exec -it api-7f9 -- sh -c "cd /srv/app && php artisan tinker"')
+      .toBe('kubectl exec -it api-7f9 -- sh -c ^"cd^ /srv/app^ ^&^&^ php^ artisan^ tinker^"')
     expect(containerCommand(pod({container_path: '/srv/my app', kube_namespace: 'a b'})))
       .toBe("kubectl exec -it -n 'a b' api-7f9 -- sh -c 'cd '\\''/srv/my app'\\'' && php artisan tinker'")
   })
@@ -297,7 +299,7 @@ describe('a pod connection that names where its pod is', () => {
     expect(containerRead(connection, 'php -r 1'))
       .toBe("kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -i -n production -c php api-7f9 -- sh -c 'cd /var/www/html && php -r 1'")
     expect(containerRead(connection, 'php -r 1', 'win32'))
-      .toBe('kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -i -n production -c php api-7f9 -- sh -c "cd /var/www/html && php -r 1"')
+      .toBe('kubectl --kubeconfig /home/me/.kube/prod.yaml --context prod-eu exec -i -n production -c php api-7f9 -- sh -c ^"cd^ /var/www/html^ ^&^&^ php^ -r^ 1^"')
 
     // a pod's filesystem is its image's, so the machine's path is not a directory
     // the read is given: a pod that names none is read where it starts
@@ -316,7 +318,7 @@ describe('a pod connection that names where its pod is', () => {
       kube_context: 'prod-eu',
       kube_namespace: 'production',
     })))
-      .toBe('kubectl --kubeconfig /c/kube/prod.yaml --context prod-eu get pods -n production --no-headers -o custom-columns="NAME:.metadata.name,IMAGE:.spec.containers[0].image"')
+      .toBe('kubectl --kubeconfig /c/kube/prod.yaml --context prod-eu get pods -n production --no-headers -o custom-columns=^"NAME:.metadata.name^,IMAGE:.spec.containers^[0^].image^"')
 
     // a listing with nothing named is the one it always was
     expect(containerList('kubectl', 'posix', pod())).toBe(containerList('kubectl', 'posix'))
@@ -356,12 +358,12 @@ describe('a container connection on a windows machine', () => {
     // the name and the directory are words of cmd here: single quotes would not
     // quote anything, and the line would be `docker exec -it 'my` and no app
     expect(containerCommand(connection, 'win32'))
-      .toBe('docker exec -it -w /var/www/html "my app" php artisan tinker')
+      .toBe('docker exec -it -w /var/www/html ^"my^ app^" php artisan tinker')
 
     // `-w` comes before the name, so the working directory is the engine's flag
     // and not a word of the command inside
     expect(containerCommand(Object.assign({}, connection, {container_path: 'C:\\srv\\my app'}), 'win32'))
-      .toBe('docker exec -it -w "C:\\srv\\my app" "my app" php artisan tinker')
+      .toBe('docker exec -it -w ^"C:\\srv\\my^ app^" ^"my^ app^" php artisan tinker')
   })
 
   test('keeps the `cd` inside the container posix, and quotes only the way in', () => {
@@ -374,12 +376,12 @@ describe('a container connection on a windows machine', () => {
     // the payload is read by `sh -c` in the container, so its `cd` is posix
     // quoted; the payload itself, and the name, are one word of cmd
     expect(containerRead(connection, 'php -r 1', 'win32'))
-      .toBe('docker exec -i "my app" sh -c "cd /var/www/html && php -r 1"')
+      .toBe('docker exec -i ^"my^ app^" sh -c ^"cd^ /var/www/html^ ^&^&^ php^ -r^ 1^"')
 
-    // a quote inside the payload is doubled for cmd, and the container's sh still
+    // a quote inside the payload is escaped for cmd, and the container's sh still
     // reads one quote: the php code that reads a log keeps its own quotes
     expect(containerRead(connection, 'php -r "echo 1;"', 'win32'))
-      .toBe('docker exec -i "my app" sh -c "cd /var/www/html && php -r ""echo 1;"""')
+      .toBe('docker exec -i ^"my^ app^" sh -c ^"cd^ /var/www/html^ ^&^&^ php^ -r^ \\^"echo^ 1^;\\^"^"')
   })
 
   test('is quoted for the far shell when the container is on a server', () => {
@@ -400,8 +402,8 @@ describe('a container connection on a windows machine', () => {
 
   test('lists what the engine runs in the words of the shell that reads it', () => {
     expect(containerList('docker')).toBe("docker ps --format '{{.Names}}\t{{.Image}}'")
-    expect(containerList('docker', 'win32')).toBe('docker ps --format "{{.Names}}\t{{.Image}}"')
+    expect(containerList('docker', 'win32')).toBe('docker ps --format ^"{{.Names}}\t{{.Image}}^"')
     expect(containerList('kubectl', 'win32'))
-      .toBe('kubectl get pods --no-headers -o custom-columns="NAME:.metadata.name,IMAGE:.spec.containers[0].image"')
+      .toBe('kubectl get pods --no-headers -o custom-columns=^"NAME:.metadata.name^,IMAGE:.spec.containers^[0^].image^"')
   })
 })

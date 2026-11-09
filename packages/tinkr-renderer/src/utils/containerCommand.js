@@ -35,30 +35,66 @@ const ENGINES = ['docker', 'podman', 'sail', 'kubectl']
 // own. (the same set as tinkr-core's shell.js)
 const CMD_SAFE_WORD = /^[A-Za-z0-9@._/:-]+$/
 
+// what cmd acts on in a line it reads, the space included. (the same set as
+// tinkr-core's shell.CMD_SPECIAL)
+const CMD_SPECIAL = /([()%^"`<>&|;, *?[\]])/g
+
 // a posix shell does not interpret anything inside single quotes, and the one
 // character they cannot hold is the quote itself, which is written as a close,
 // an escaped quote and a reopen. (the same rule as tinkr-core's shell.js)
 const POSIX_SAFE_WORD = /^[A-Za-z0-9@%+=:,._/-]+$/
 
 /**
- * A value as one word of cmd.exe.
- *
- * The word is wrapped in double quotes, which is what makes the separators and
- * the caret ordinary characters; a quote inside it is doubled, so the receiving
- * program's own command-line parser reads it back as one and the number of
- * quotes cmd sees stays even; a run of backslashes at the end is doubled, or the
- * parser would read one as escaping the closing quote. `%` and `!` are escaped
- * last because cmd expands them before it looks at quotes.
+ * A value in the form the program's own command-line parser reads as one
+ * argument: a quote written as `\"` with the backslashes before it doubled, a
+ * run of backslashes at the end doubled, and the whole wrapped in quotes. (the
+ * same rule as tinkr-core's shell.crtQuote)
  *
  * @param {String} value
  * @return {String}
  */
-const cmdQuote = value => {
-  const doubled = value.replace(/"/g, '""')
-  const tail = /\\+$/.test(doubled) ? '\\' : ''
+const crtQuote = value => {
+  let out = '"'
+  let slashes = 0
 
-  return `"${`${doubled}${tail}`.replace(/[%!]/g, '^$&')}"`
+  for (const char of String(value)) {
+    if (char === '\\') {
+      slashes++
+      out += char
+
+      continue
+    }
+
+    if (char === '"') {
+      out += `${'\\'.repeat(slashes)}\\"`
+      slashes = 0
+
+      continue
+    }
+
+    slashes = 0
+    out += char
+  }
+
+  return `${out}${'\\'.repeat(slashes)}"`
 }
+
+/**
+ * A value as one word of cmd.exe.
+ *
+ * The value is put in the form the program reads, and every character cmd acts
+ * on is caret-escaped, the quotes of that form included: cmd is kept out of
+ * quote mode, where the caret would be a character and the expansions would read
+ * a `%` or a `!` anyway. This line is typed into the session's shell, and that
+ * shell has delayed expansion on (see tinkr-core's shell.cmdQuote), so a bang is
+ * written for both escape phases.
+ *
+ * @param {String} value
+ * @return {String}
+ */
+const cmdQuote = value => crtQuote(value)
+  .replace(CMD_SPECIAL, '^$&')
+  .replace(/!/g, '^^!')
 
 /**
  * A value as one word of a shell, quoted only when it has to be.
