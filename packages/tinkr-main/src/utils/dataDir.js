@@ -2,7 +2,8 @@ const {app} = require('electron')
 
 /**
  * Where the app keeps its own files — the stores, and the secrets file a
- * connection's password and the Laravel Cloud token are kept in.
+ * connection's password and the Laravel Cloud and Laravel Vapor tokens are kept
+ * in.
  *
  * It is asked for rather than passed down: every caller is a question about
  * what the app knows, and a question is not a place to thread a directory

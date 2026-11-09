@@ -3,18 +3,18 @@ const {writeFields} = require('./phpLiteral')
 const {readForm} = require('./phpForm')
 const {getFormPrefix} = require('./services/config')
 
-const {isCloud} = require('tinkr-core')
+const {isApiRun} = require('tinkr-core')
 
 /**
- * What a closure-valued field on a Laravel Cloud connection is told instead of
- * being asked.
+ * What a closure-valued field on a connection that runs through an API is told
+ * instead of being asked.
  *
- * A closure's value is whatever it returns, and only a session can run it. A
- * cloud connection has none — a run there is a command in a production
+ * A closure's value is whatever it returns, and only a session can run it. Such
+ * a connection has none — a run there is a command in a production
  * environment's history — so the field keeps the code it was written as and the
  * form says why it cannot be more than that.
  */
-const closureOnCloud = 'A closure field needs a live session to be resolved, and Laravel Cloud connections have none.'
+const closureWithoutSession = 'A closure field needs a live session to be resolved, and connections that run through an API have none.'
 
 /**
  * Whether a field's value is written as a closure.
@@ -43,10 +43,11 @@ class DynamicPhpForm {
    * says what a variable is, and a closure's answer is whatever it returns —
    * while every other value is the text it was written with.
    *
-   * A connection on Laravel Cloud has no session to ask, so a closure field
-   * there is an error rather than a value nobody could resolve: the form is told
-   * why, in the message the form already shows for a snippet it could not read,
-   * instead of drawing a field whose own code would be sent as the value.
+   * A connection that runs through an API has no session to ask, so a closure
+   * field there is an error rather than a value nobody could resolve: the form
+   * is told why, in the message the form already shows for a snippet it could
+   * not read, instead of drawing a field whose own code would be sent as the
+   * value.
    *
    * @param {String} connectionId
    * @param {String} code
@@ -61,8 +62,8 @@ class DynamicPhpForm {
 
     const fields = readForm(source, prefix)
 
-    if (fields.some(isClosure) && isCloud(getEditorConnection(connectionId))) {
-      throw new Error(closureOnCloud)
+    if (fields.some(isClosure) && isApiRun(getEditorConnection(connectionId))) {
+      throw new Error(closureWithoutSession)
     }
 
     const pty = getBackgroundPtyProcess(connectionId)

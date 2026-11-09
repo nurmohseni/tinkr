@@ -17,7 +17,7 @@ jest.mock('electron', () => ({
 
 global.TINKR_TEST_DIR = dir
 
-const {CLOUD_SECRET_KEY} = require('tinkr-core')
+const {CLOUD_SECRET_KEY, VAPOR_SECRET_KEY} = require('tinkr-core')
 
 const secrets = require('../database/secrets')
 const {connections, sessionConnection} = require('../database/connections')
@@ -138,6 +138,68 @@ describe('the Laravel Cloud token', () => {
     expect(secrets.forgetCloudToken(dir)).toBe(true)
     expect(secrets.cloudToken(dir)).toBe('')
     expect(secrets.hasCloudToken(dir)).toBe(false)
+    expect(kept()).toEqual({})
+  })
+})
+
+describe('the Laravel Vapor token', () => {
+  // the file is one file for the whole run, so each case starts from an empty
+  // one, exactly as the Cloud token's cases do
+  beforeEach(() => {
+    secrets.write(dir, {})
+  })
+
+  test('is kept in the secrets file, and never in a connection', () => {
+    expect(secrets.setVaporToken(dir, '  vapor-token  ')).toBe(true)
+    expect(kept()).toEqual({[VAPOR_SECRET_KEY]: 'vapor-token'})
+
+    expect(secrets.vaporToken(dir)).toBe('vapor-token')
+    expect(secrets.hasVaporToken(dir)).toBe(true)
+
+    // a connection saved with that id is not one whose password is the token
+    const stored = secrets.keptConnection(dir, form({id: VAPOR_SECRET_KEY, password: 'hunter2'}), {})
+
+    expect(stored.ssh_password).toBe(false)
+    expect(secrets.vaporToken(dir)).toBe('vapor-token')
+    expect(kept()).toEqual({[VAPOR_SECRET_KEY]: 'vapor-token'})
+  })
+
+  // a connection that goes is a password that goes with it; the token names who
+  // the whole app asks Laravel Vapor as, and it is not that connection's
+  test('survives a connection being forgotten', () => {
+    secrets.setVaporToken(dir, 'vapor-token')
+    secrets.keptConnection(dir, form({password: 'hunter2'}), {})
+
+    secrets.forget(dir, 'c1')
+
+    expect(kept()).toEqual({[VAPOR_SECRET_KEY]: 'vapor-token'})
+
+    // a password kept under the token's own key never replaces it, and the
+    // token is not a connection's password either
+    secrets.set(dir, VAPOR_SECRET_KEY, 'a password')
+    expect(secrets.vaporToken(dir)).toBe('vapor-token')
+    expect(secrets.has(dir, VAPOR_SECRET_KEY)).toBe(false)
+  })
+
+  // the two tokens are separate secrets: writing one is not forgetting the other
+  test('lives beside the Cloud token rather than in its place', () => {
+    secrets.setCloudToken(dir, 'cloud-token')
+    secrets.setVaporToken(dir, 'vapor-token')
+
+    expect(kept()).toEqual({[CLOUD_SECRET_KEY]: 'cloud-token', [VAPOR_SECRET_KEY]: 'vapor-token'})
+
+    secrets.forgetVaporToken(dir)
+
+    expect(secrets.cloudToken(dir)).toBe('cloud-token')
+    expect(secrets.hasVaporToken(dir)).toBe(false)
+  })
+
+  test('is forgotten only when it is forgotten', () => {
+    secrets.setVaporToken(dir, 'vapor-token')
+
+    expect(secrets.forgetVaporToken(dir)).toBe(true)
+    expect(secrets.vaporToken(dir)).toBe('')
+    expect(secrets.hasVaporToken(dir)).toBe(false)
     expect(kept()).toEqual({})
   })
 })

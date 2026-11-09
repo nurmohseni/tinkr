@@ -48,6 +48,10 @@ describe('a container connection', () => {
     expect(connectionKind({is_cloud: true})).toBe('cloud')
     expect(connectionKind({is_cloud: true, is_over_ssh: true, container_engine: 'docker'})).toBe('cloud')
     expect(connectionKind({is_cloud: false, is_over_ssh: true})).toBe('ssh')
+    // and a Vapor connection runs in an environment that API owns, so it is its
+    // own kind too
+    expect(connectionKind({is_vapor: true})).toBe('vapor')
+    expect(connectionKind({is_vapor: true, is_over_ssh: true, container_engine: 'docker'})).toBe('vapor')
   })
 
   // the engine on a server is the server's: the command is the same words, and

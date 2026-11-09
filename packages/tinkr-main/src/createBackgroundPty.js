@@ -1,4 +1,4 @@
-const {isCloud} = require('tinkr-core')
+const {isApiRun} = require('tinkr-core')
 
 const {BackgroundPty} = require('./pty/BackgroundPty')
 
@@ -14,10 +14,10 @@ const {
 const createBackgroundPty = connection => {
   const {id} = connection
 
-  // a connection on Laravel Cloud has no session anything could be asked of,
-  // and no background one either: a second command is a second command in the
-  // environment's history, on production, for a popup
-  if (isCloud(connection)) {
+  // a connection whose code runs through an API has no session anything could be
+  // asked of, and no background one either: a second command is a second command
+  // in the environment's history, on production, for a popup
+  if (isApiRun(connection)) {
     return
   }
 
@@ -47,9 +47,9 @@ const createBackgroundPty = connection => {
  * the first time it needs to resolve a value. Booting it lazily keeps a run
  * from paying for a session it may never use.
  *
- * A connection on Laravel Cloud never has one: there is no session to ask, and
- * what a cloud connection offers instead is read from the local checkout it
- * names, if it names one.
+ * A connection that runs through an API never has one: there is no session to
+ * ask, and what such a connection offers instead is read from the local checkout
+ * it names, if it names one.
  *
  * @param {String} id
  */
@@ -60,7 +60,7 @@ const ensureBackgroundPty = id => {
 
   const connection = getEditorConnection(id)
 
-  if (!connection || isCloud(connection)) {
+  if (!connection || isApiRun(connection)) {
     return
   }
 

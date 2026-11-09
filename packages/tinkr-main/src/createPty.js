@@ -3,8 +3,10 @@ const {
   typedRun,
   RunResultFilter,
   runOutput,
-  isCloud,
+  isApiRun,
+  isVapor,
   runCloud,
+  runVapor,
   SessionError,
 } = require('tinkr-core')
 
@@ -52,8 +54,9 @@ const {dataDir} = require('./utils/dataDir')
  * time is up the session is stopped, which is what reaches the php doing the
  * work, and the pane is answered with the wait it was.
  *
- * A connection on Laravel Cloud has no session at all: nothing here is booted
- * for it, and its run is a command sent to Laravel Cloud (see runInCloud).
+ * A connection whose code runs through an API has no session at all: nothing
+ * here is booted for it, and its run is a command sent to that API (see
+ * runRemote).
  *
  * @param {Record<String, any>} connection
  * @param {String} [code]
@@ -61,8 +64,8 @@ const {dataDir} = require('./utils/dataDir')
  * @param {Number} [timeout] how long the run may take, in milliseconds
  */
 const createPty = (connection, code, guard = null, timeout = null) => {
-  if (isCloud(connection)) {
-    runInCloud(connection, code, guard, timeout)
+  if (isApiRun(connection)) {
+    runRemote(connection, code, guard, timeout)
 
     return
   }
@@ -348,42 +351,61 @@ const createPty = (connection, code, guard = null, timeout = null) => {
 }
 
 /**
- * Run a snippet inside a Laravel Cloud environment.
+ * What an API-run connection's run is: which product it is sent to, how that
+ * product runs it, and the token that answers for the app there.
  *
- * A cloud connection has no session to boot and nothing on this machine to
- * start: the run is one command sent to Laravel Cloud, which runs it in the
- * environment's own container and answers when it ends (see tinkr-core's
- * runCloud). What a session's run answers through — the window, the history,
- * the project index — is answered the same way here, so nothing that reads a
- * result has to know which kind of connection it came from.
+ * Both kinds have no session to boot and nothing on this machine to start: the
+ * run is one command, sent to the product's API, which runs it in the
+ * environment and answers when it ends (see tinkr-core's runCloud and runVapor).
+ * The token is one secret for the whole app rather than one per connection, and
+ * which one is read is the only thing the kind decides.
+ *
+ * @param {Record<String, any>} connection
+ * @return {{name: String, run: Function, token: Function}}
+ */
+const remoteOf = connection => (isVapor(connection)
+  ? {name: 'Laravel Vapor', run: runVapor, token: () => secrets.vaporToken(dataDir())}
+  : {name: 'Laravel Cloud', run: runCloud, token: () => secrets.cloudToken(dataDir())})
+
+/**
+ * Run a snippet inside the environment of a connection that runs through an API.
+ *
+ * A connection to Laravel Cloud or Laravel Vapor has no session to boot and
+ * nothing on this machine to start: the run is one command sent to that
+ * product's API, which runs it in the environment and answers when it ends (see
+ * tinkr-core's runCloud and runVapor). What a session's run answers through —
+ * the window, the history, the project index — is answered the same way here, so
+ * nothing that reads a result has to know which kind of connection it came from.
  *
  * The handle kept for the connection is what stop, replace and close act on. A
- * pty's kill reaches the php doing the work; a cloud run has no process of ours
+ * pty's kill reaches the php doing the work; an API run has no process of ours
  * to reach, so the handle's kill ends this wait only, and the answer says so —
- * Laravel Cloud has no way to cancel a command it was given.
+ * neither product has a way to cancel a command it was given.
  *
- * A cloud connection has no terminal, so a call without code boots nothing: the
- * connection is a place runs are sent to, and the status line the window shows
- * is written where the connection is opened (see services/connections).
+ * Such a connection has no terminal either, so a call without code boots
+ * nothing: the connection is a place runs are sent to, and the status line the
+ * window shows is written where the connection is opened (see
+ * services/connections).
  *
  * @param {Record<String, any>} connection
  * @param {String} [code]
  * @param {String} [guard]
  * @param {Number} [timeout]
  */
-const runInCloud = (connection, code, guard, timeout) => {
+const runRemote = (connection, code, guard, timeout) => {
   if (!code) {
     return
   }
 
+  const remote = remoteOf(connection)
   const {id} = connection
   const startedAt = Date.now()
   const stop = new AbortController()
   const handle = {kill: () => stop.abort()}
 
-  // a cloud command goes on in Laravel Cloud whether or not this window shows
-  // the connection, so the handle is one the move to another connection keeps
-  // (see services/connections)
+  // the command goes on in the product whether or not this window shows the
+  // connection, so the handle is one the move to another connection keeps (see
+  // services/connections)
   handle.running = true
 
   setPtyProcess(id, handle)
@@ -437,16 +459,17 @@ const runInCloud = (connection, code, guard, timeout) => {
 
   /**
    * The run's answer when it did not come back: a timeout, a stop, a command
-   * Laravel Cloud refused, or a command that could not be set up here.
+   * the API refused, or a command that could not be set up here.
    *
    * Each says its own reason in its message, and the shape is the one every
    * failed run has, so the pane and the history read it the same way. What a
    * failed command printed is already the message's own words (see tinkr-core's
-   * runCloud), so the run's output is nothing of its own here.
+   * runCloud and runVapor), so the run's output is nothing of its own here.
    *
    * A run that was stopped — by Stop, or by a reconnect that ends this wait —
-   * is aborted here while Laravel Cloud keeps going: the message says so rather
-   * than leaving the pane with a run that only "stopped" somewhere it cannot.
+   * is aborted here while the product keeps going: the message names the product
+   * so it says what is still running rather than leaving the pane with a run that
+   * only "stopped" somewhere it cannot.
    *
    * @param {Error} error
    */
@@ -454,16 +477,16 @@ const runInCloud = (connection, code, guard, timeout) => {
     const message = error && error.message ? error.message : String(error)
     const aborted = error && error.code === 'aborted'
     const honest = aborted && !/keeps running/i.test(message)
-      ? `${message} Laravel Cloud may still be running what it started.`
+      ? `${message} ${remote.name} may still be running what it started.`
       : message
 
     settled({
       blocks: [],
       value: null,
       error: {
-        // the error's own name is what it says it is: a CloudError names itself,
-        // and reading the name rather than the constructor keeps that true even
-        // when the core module is loaded twice
+        // the error's own name is what it says it is: CloudError and VaporError
+        // name themselves, and reading the name rather than the constructor
+        // keeps that true even when the core module is loaded twice
         class: (error && error.name) || 'Error',
         message: honest,
       },
@@ -477,12 +500,12 @@ const runInCloud = (connection, code, guard, timeout) => {
 
   try {
     options = {
-      token: secrets.cloudToken(dataDir()),
+      token: remote.token(),
       guard,
       signal: stop.signal,
     }
 
-    // nothing given is Laravel Cloud's own default rather than a run with no end
+    // nothing given is the API's own default rather than a run with no end
     if (timeout > 0) {
       options.timeout = timeout
     }
@@ -495,10 +518,10 @@ const runInCloud = (connection, code, guard, timeout) => {
     return
   }
 
-  // a cloud connection's project is inside Laravel Cloud, where this machine
-  // cannot read composer's files: the classes a snippet names are read from the
-  // local checkout the connection names, if it names one, which is the only copy
-  // of the project this side has (see services/project importsForRun)
+  // the connection's project is inside the product, where this machine cannot
+  // read composer's files: the classes a snippet names are read from the local
+  // checkout the connection names, if it names one, which is the only copy of
+  // the project this side has (see services/project importsForRun)
   const aliases = connection.path ? importsForRun(connection, code) : Promise.resolve({})
 
   Promise.resolve(aliases)
@@ -512,7 +535,7 @@ const runInCloud = (connection, code, guard, timeout) => {
 
       options.imports = imports
 
-      return runCloud(connection, code, options)
+      return remote.run(connection, code, options)
     })
     .then(result => settled(result), failed)
 }

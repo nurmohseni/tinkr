@@ -19,6 +19,27 @@
 
 const {wrapRun, RunResultFilter} = require('./runResult')
 
+/**
+ * Whether a connection runs its code through an API rather than in a session.
+ *
+ * Such a connection has no shell to boot and nothing on this machine to run in:
+ * its snippet is a command the provider's API is given (see runRemoteCommand),
+ * and everything a session would answer — the terminal's typing, the background
+ * session a form or a plan is asked of, the logs of a project — has no answer
+ * there. The two modules that own the kinds are read when this is called rather
+ * than when it loads: both of them require this one for the runner, so reading
+ * them at the top would be a cycle that leaves one of the two with nothing.
+ *
+ * @param {Record<String, any>} connection
+ * @return {Boolean}
+ */
+const isApiRun = connection => {
+  const {isCloud} = require('./cloud')
+  const {isVapor} = require('./vapor')
+
+  return isCloud(connection) || isVapor(connection)
+}
+
 // what a run is given to answer when the caller names no limit: the wait here
 // ends the run on this side, and the wrapper carries the same number into the
 // snippet so the php ends itself where it can
@@ -452,5 +473,6 @@ const runRemoteCommand = (code, provider, options = {}) => {
 }
 
 module.exports = {
+  isApiRun,
   runRemoteCommand,
 }

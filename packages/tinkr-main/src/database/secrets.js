@@ -2,7 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const log = require('electron-log')
 
-const {secretsFile, CLOUD_SECRET_KEY} = require('tinkr-core')
+const {secretsFile, CLOUD_SECRET_KEY, VAPOR_SECRET_KEY} = require('tinkr-core')
 
 /**
  * What a connection that logs in with a password needs kept, and where.
@@ -20,8 +20,12 @@ const {secretsFile, CLOUD_SECRET_KEY} = require('tinkr-core')
  * The Laravel Cloud API token is kept in the same file, under a key of its own
  * (`CLOUD_SECRET_KEY`, which no connection id can be). It is one token for the
  * whole app rather than one per connection: it names who is asking Laravel
- * Cloud, and every cloud connection asks as that one person. Nothing hands it
- * back either — the window is told whether there is one, never what it is.
+ * Cloud, and every cloud connection asks as that one person. The Laravel Vapor
+ * token is the same arrangement under its own key (`VAPOR_SECRET_KEY`): one
+ * token, read by every Vapor connection, and it is the CLI's key file that
+ * supplies a first one when the app has none (see tinkr-core's vapor). Nothing
+ * hands either token back — the window is told whether there is one, never what
+ * it is.
  *
  * It is written 0600: the same protection ssh's own files have, against the same
  * person the session already runs as.
@@ -87,10 +91,10 @@ const write = (dir, secrets) => {
  * @param {String} password
  */
 const set = (dir, id, password) => {
-  // the key the Cloud token lives under is not a connection's: one written
-  // through here would be a password replacing the token, and forgetting one
-  // would be the app forgetting who it asks Laravel Cloud as
-  if (!dir || !id || id === CLOUD_SECRET_KEY) {
+  // the keys the two API tokens live under are not a connection's: one written
+  // through here would be a password replacing a token, and forgetting one would
+  // be the app forgetting who it asks that product as
+  if (!dir || !id || id === CLOUD_SECRET_KEY || id === VAPOR_SECRET_KEY) {
     return
   }
 
@@ -127,7 +131,10 @@ const forget = (dir, id) => set(dir, id, '')
  * @param {String} id
  * @return {Boolean}
  */
-const has = (dir, id) => Boolean(id) && id !== CLOUD_SECRET_KEY && typeof read(dir)[id] === 'string'
+const has = (dir, id) => Boolean(id) &&
+  id !== CLOUD_SECRET_KEY &&
+  id !== VAPOR_SECRET_KEY &&
+  typeof read(dir)[id] === 'string'
 
 /**
  * The Laravel Cloud API token, or nothing when none is saved.
@@ -203,6 +210,76 @@ const forgetCloudToken = dir => setCloudToken(dir, '')
 const hasCloudToken = dir => cloudToken(dir) !== ''
 
 /**
+ * The Laravel Vapor API token, or nothing when none is saved.
+ *
+ * The same arrangement as the Cloud token and for the same reason: the main
+ * process is what asks Vapor anything, the window is told only whether one is
+ * there, and a run's token is read here rather than sent with the connection.
+ *
+ * @param {String} dir
+ * @return {String}
+ */
+const vaporToken = dir => {
+  const token = read(dir)[VAPOR_SECRET_KEY]
+
+  return typeof token === 'string' ? token : ''
+}
+
+/**
+ * Keep the Laravel Vapor API token.
+ *
+ * It is written only once Vapor has answered with it (see ipc.setVaporToken): a
+ * token Vapor refuses is one to say so about, not one to keep and fail every run
+ * with afterwards. An empty token is a token removed, the same way an empty
+ * password is.
+ *
+ * @param {String} dir
+ * @param {String} token
+ * @return {Boolean} whether it was written
+ */
+const setVaporToken = (dir, token) => {
+  if (!dir) {
+    return false
+  }
+
+  const secrets = read(dir)
+  const worth = typeof token === 'string' ? token.trim() : ''
+
+  if (worth === '') {
+    delete secrets[VAPOR_SECRET_KEY]
+  } else {
+    secrets[VAPOR_SECRET_KEY] = worth
+  }
+
+  try {
+    write(dir, secrets)
+  } catch (e) {
+    // nothing of the token reaches the log, for the same reason as the Cloud one
+    log.error('[secrets] the Laravel Vapor token could not be kept:', e.message)
+
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Forget the Laravel Vapor API token.
+ *
+ * @param {String} dir
+ */
+const forgetVaporToken = dir => setVaporToken(dir, '')
+
+/**
+ * Whether a Laravel Vapor API token is saved. This is the only thing about the
+ * token the window is ever told.
+ *
+ * @param {String} dir
+ * @return {Boolean}
+ */
+const hasVaporToken = dir => vaporToken(dir) !== ''
+
+/**
  * What the app keeps of a connection that was just saved.
  *
  * The form autosaves on every edit and never shows a saved password back, so a
@@ -256,5 +333,9 @@ module.exports = {
   setCloudToken,
   forgetCloudToken,
   hasCloudToken,
+  vaporToken,
+  setVaporToken,
+  forgetVaporToken,
+  hasVaporToken,
   keptConnection,
 }

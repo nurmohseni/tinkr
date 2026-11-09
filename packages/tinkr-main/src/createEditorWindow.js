@@ -1,10 +1,11 @@
 const {BrowserWindow} = require('electron')
 const log = require('electron-log')
 
-const {isCloud} = require('tinkr-core')
+const {isApiRun, isVapor} = require('tinkr-core')
 
 const {createPty} = require('./createPty')
 const {connectCloud} = require('./services/cloudConnection')
+const {connectVapor} = require('./services/vaporConnection')
 const {detectPhpVersion} = require('./services/phpVersion')
 const {createBackgroundPty} = require('./createBackgroundPty')
 const {
@@ -92,11 +93,15 @@ const createEditorWindow = async connection => {
   setEditorWindow(id, win)
   setEditorConnection(id, connection)
 
-  // a connection on Laravel Cloud has no session to boot and nothing on this
-  // machine to read: what the window is told about it is what its environment
-  // answers about itself
-  if (isCloud(connection)) {
-    connectCloud(connection, win)
+  // a connection that runs through an API has no session to boot and nothing on
+  // this machine to read: what the window is told about it is what the product
+  // running it answers about itself
+  if (isApiRun(connection)) {
+    if (isVapor(connection)) {
+      connectVapor(connection, win)
+    } else {
+      connectCloud(connection, win)
+    }
 
     return win
   }

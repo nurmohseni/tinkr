@@ -4,7 +4,8 @@ const readline = require('readline')
 
 const {phpString} = require('./runResult')
 const {containerRead, containerPath, inContainer} = require('./containerCommand')
-const {isCloud} = require('./cloud')
+const {isVapor} = require('./vapor')
+const {isApiRun} = require('./remoteCommand')
 const {exec, quoted} = require('./remote')
 
 /**
@@ -65,6 +66,21 @@ const levels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'aler
 // filesystem in that environment to read, and the API's own log endpoint is not
 // something this viewer is written against (see the plan's own scope note)
 const cloudUnavailable = 'Logs are not available for Laravel Cloud connections.'
+
+// what a Laravel Vapor connection answers, for the same reason: the environment
+// is a lambda behind an API, and nothing of its filesystem is reachable here
+const vaporUnavailable = 'Logs are not available for Laravel Vapor connections.'
+
+/**
+ * What a connection whose code runs through an API says about its logs.
+ *
+ * Which product it is is the only difference between the two: a person reading
+ * the line has to know what answered, and the rest of the sentence is the same.
+ *
+ * @param {Record<String, any>} connection
+ * @return {String}
+ */
+const unavailableFor = connection => (isVapor(connection) ? vaporUnavailable : cloudUnavailable)
 
 /**
  * Where a connection's log files are.
@@ -189,11 +205,12 @@ const sshFiles = async (connection, {logDir = defaultDir, dataDir = null} = {}) 
  * @return {Object|Promise<Object>} `files`, and `dir` for the panel to say where it looked
  */
 const files = (connection, {logDir = defaultDir, dataDir = null} = {}) => {
-  // a cloud connection has no project on this machine to read, and no log
-  // directory of its own here: its path is a local checkout that is not the
-  // environment's, so reading it would be showing the wrong machine's logs
-  if (isCloud(connection)) {
-    throw new Error(cloudUnavailable)
+  // a connection whose code runs through an API has no project on this machine
+  // to read, and no log directory of its own here: its path is a local checkout
+  // that is not the environment's, so reading it would be showing the wrong
+  // machine's logs
+  if (isApiRun(connection)) {
+    throw new Error(unavailableFor(connection))
   }
 
   if (connection && connection.is_over_ssh) {
@@ -2151,10 +2168,11 @@ const regionOf = ({from, to}, {after, before} = {}) => {
  * @return {Object|Promise<Object>} `entries`, and where the page sits in the file
  */
 const read = (connection, name, {bytes, before, since, until, after, level, term, limit, paginate, excludeLevels} = {}, settings = {}) => {
-  // a cloud connection's logs are inside Laravel Cloud, and this reads files:
-  // answering with a local checkout's log would be another machine's file
-  if (isCloud(connection)) {
-    throw new Error(cloudUnavailable)
+  // a connection that runs through an API keeps its logs inside that product,
+  // and this reads files: answering with a local checkout's log would be another
+  // machine's file
+  if (isApiRun(connection)) {
+    throw new Error(unavailableFor(connection))
   }
 
   // the name comes from a window, and a window has no business naming a path

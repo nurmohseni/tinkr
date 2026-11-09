@@ -100,12 +100,19 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: url => ipcRenderer.send('openExternal', url),
   openLogs: () => ipcRenderer.send('openLogs'),
 
-  // the Laravel Cloud token is the main process's, and this window is told only
-  // whether there is one: every call that needs it is made there
+  // the API tokens are the main process's, and this window is told only whether
+  // one is there: every call that needs one is made there
   cloudStatus: () => invoke('cloudStatus'),
   setCloudToken: token => invoke('setCloudToken', token),
   forgetCloudToken: () => invoke('forgetCloudToken'),
   listCloudApplications: () => invoke('listCloudApplications'),
+  // the same for Laravel Vapor, plus the CLI login the settings screen offers to
+  // import when the app has no token of its own
+  vaporStatus: () => invoke('vaporStatus'),
+  setVaporToken: token => invoke('setVaporToken', token),
+  forgetVaporToken: () => invoke('forgetVaporToken'),
+  importVaporCliToken: () => invoke('importVaporCliToken'),
+  listVaporProjects: () => invoke('listVaporProjects'),
   logFiles: () => invoke('logFiles', connectionId()),
   logRead: (name, options) => invoke('logRead', connectionId(), name, options),
   mcpInfo: () => ipcRenderer.sendSync('mcpInfo'),

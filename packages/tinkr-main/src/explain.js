@@ -1,5 +1,6 @@
 const {
-  isCloud,
+  isApiRun,
+  isVapor,
   isExplainable,
   explainSql,
   normalizeBindings,
@@ -144,11 +145,13 @@ const explainQuery = async (connectionId, request = {}) => {
     throw new Error('the connection is not open')
   }
 
-  // a command on Laravel Cloud is a command in the environment's history, on
-  // production: a plan is not worth one, and the pane says so where the action
-  // would be (see Queries.jsx)
-  if (isCloud(connection)) {
-    throw new Error('a plan is not asked of Laravel Cloud: the command would land in its history')
+  // a command on a connection that runs through an API is a command in the
+  // environment's history, on production: a plan is not worth one, and the pane
+  // says so where the action would be (see Queries.jsx)
+  if (isApiRun(connection)) {
+    const product = isVapor(connection) ? 'Laravel Vapor' : 'Laravel Cloud'
+
+    throw new Error(`a plan is not asked of ${product}: the command would land in its history`)
   }
 
   const sql = typeof request.sql === 'string' ? request.sql : ''

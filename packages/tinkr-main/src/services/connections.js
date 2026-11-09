@@ -1,7 +1,8 @@
-const {isCloud} = require('tinkr-core')
+const {isApiRun, isVapor} = require('tinkr-core')
 
 const {dataDir} = require('../utils/dataDir')
 const {connectCloud} = require('./cloudConnection')
+const {connectVapor} = require('./vaporConnection')
 const {detectPhpVersion} = require('./phpVersion')
 const {connections, sessionConnection} = require('../database/connections')
 const {
@@ -31,6 +32,23 @@ const {watchSnippets} = require('./snippetsWatch')
 // window, and one connection it is showing
 let snippetsWatcher = null
 const {allSnippets} = require('./snippets')
+
+/**
+ * Tell the window what a connection that runs through an API is, by asking the
+ * product that runs it.
+ *
+ * Which product it is is the only thing to decide here: Laravel Cloud and
+ * Laravel Vapor each answer the one line the terminal shows instead of a shell's
+ * greeting, and each answer is held to the window that is still showing this
+ * connection (see services/cloudConnection and services/vaporConnection).
+ *
+ * @param {Record<string, any>} connection
+ * @param {Electron.BrowserWindow} win
+ * @return {Promise<void>}
+ */
+const connectApi = (connection, win) => (isVapor(connection)
+  ? connectVapor(connection, win)
+  : connectCloud(connection, win))
 
 /**
  * The connections the app lists. The quick connection is the session the
@@ -204,15 +222,15 @@ const connectConnection = async connection => {
   setEditorConnection(connection.id, connection)
   watchSnippetsOf(connection.id)
 
-  // a connection on Laravel Cloud has no session to boot and no php here to
-  // ask: what it runs is a command sent to its environment, and what the window
-  // is told about it comes from that environment instead (see connectCloud)
-  const cloud = isCloud(connection)
+  // a connection that runs through an API has no session to boot and no php
+  // here to ask: what it runs is a command sent to its environment, and what the
+  // window is told about it comes from that product instead (see connectApi)
+  const api = isApiRun(connection)
 
   // a connection this window comes back to may still be running the session it
   // was left with: booting a second one over it would leave the first with
   // nobody reading it, and the run it is in with no way to answer
-  if (!cloud && !getPtyProcess(connection.id)) {
+  if (!api && !getPtyProcess(connection.id)) {
     createPty(connection)
 
     if (!getBackgroundPtyProcess(connection.id)) {
@@ -233,8 +251,8 @@ const connectConnection = async connection => {
   // the tab that sent it
   flushAnswer(connection.id, win)
 
-  if (cloud) {
-    await connectCloud(connection, win)
+  if (api) {
+    await connectApi(connection, win)
 
     return
   }
@@ -284,13 +302,13 @@ const reconnectConnection = connection => {
   if (pty) {
     pty.kill()
 
-    // a cloud run's handle is what its own answer is delivered through: the
+    // an API run's handle is what its own answer is delivered through: the
     // abort a reconnect causes rejects the wait, and that rejection is the
     // answer the pane needs to stop showing the run. Clearing the handle here
     // would drop it before it could be written, leaving the pane in flight for
-    // a run that is over. Laravel Cloud keeps running the command either way,
-    // and the answer says so (see createPty's runInCloud)
-    if (!(isCloud(connection) && pty.running)) {
+    // a run that is over. The product keeps running the command either way, and
+    // the answer says so (see createPty's runRemote)
+    if (!(isApiRun(connection) && pty.running)) {
       setPtyProcess(connection.id, null)
     }
   }
@@ -303,11 +321,11 @@ const reconnectConnection = connection => {
 
   win.webContents.send('reconnectConnection')
 
-  // a cloud connection has nothing to boot: a reconnect is the question put to
-  // its environment again, which is what notices an application that was
-  // redeployed onto another php
-  if (isCloud(connection)) {
-    connectCloud(connection, win)
+  // a connection that runs through an API has nothing to boot: a reconnect is
+  // the question put to its environment again, which is what notices an
+  // application that was redeployed onto another php
+  if (isApiRun(connection)) {
+    connectApi(connection, win)
 
     return
   }
@@ -362,9 +380,10 @@ const getConnection = id => connections.get(id, {})
 /**
  * Write what was typed in the terminal into the connection's session.
  *
- * A connection on Laravel Cloud has no session the typing could reach — its runs
- * are commands sent to the API — so what is typed into the terminal is dropped
- * there rather than written into a handle that is not a shell.
+ * A connection whose code runs through an API has no session the typing could
+ * reach — its runs are commands sent to the API — so what is typed into the
+ * terminal is dropped there rather than written into a handle that is not a
+ * shell.
  *
  * @param {String} id
  * @param {String } code
@@ -372,7 +391,7 @@ const getConnection = id => connections.get(id, {})
 const inputConnection = (id, code) => {
   const connection = getEditorConnection(id)
 
-  if (connection && isCloud(connection)) {
+  if (connection && isApiRun(connection)) {
     return
   }
 
@@ -420,7 +439,7 @@ const runConnection = (id, code, guard = null, timeout = null) => {
     return
   }
 
-  const cloud = isCloud(connection)
+  const api = isApiRun(connection)
 
   const pty = getPtyProcess(id)
   if (pty) {
@@ -435,9 +454,10 @@ const runConnection = (id, code, guard = null, timeout = null) => {
   }
 
   const win = getEditorWindow(id)
-  // a connection on Laravel Cloud has no terminal to reset: nothing of it is a
-  // session, and the line it was given when it opened is the only thing in it
-  if (win && !cloud) {
+  // a connection that runs through an API has no terminal to reset: nothing of
+  // it is a session, and the line it was given when it opened is the only thing
+  // in it
+  if (win && !api) {
     // the terminal shows a brand new session now
     win.webContents.send('reconnectConnection')
   }
@@ -453,11 +473,12 @@ const runConnection = (id, code, guard = null, timeout = null) => {
  * quit, then the signal. So stopping a run is ending the session it is in, and
  * the next run boots its own — which is what a run does anyway.
  *
- * A run on Laravel Cloud is a command Laravel Cloud is already running, and the
- * API has no way to cancel one. What is stopped is this app's wait for it: the
- * run's own answer then says that Laravel Cloud keeps running the command, which
- * is the truth the pane has to show rather than an interrupted run. The handle
- * is left in place so that answer reaches the window it belongs to.
+ * A run on Laravel Cloud or Laravel Vapor is a command the product is already
+ * running, and neither API has a way to cancel one. What is stopped is this
+ * app's wait for it: the run's own answer then says that the product keeps
+ * running the command, which is the truth the pane has to show rather than an
+ * interrupted run. The handle is left in place so that answer reaches the window
+ * it belongs to.
  *
  * @param {String} id
  */
@@ -472,7 +493,7 @@ const stopConnection = id => {
 
   const connection = getEditorConnection(id)
 
-  if (connection && isCloud(connection)) {
+  if (connection && isApiRun(connection)) {
     return
   }
 

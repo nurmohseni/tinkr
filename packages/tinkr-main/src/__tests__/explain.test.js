@@ -129,6 +129,19 @@ describe('asking a connection for the plan of one of its queries', () => {
     expect(ensureBackgroundPty).not.toHaveBeenCalled()
   })
 
+  test('Laravel Vapor is never asked: a command there is in its history', async () => {
+    setEditorConnection('vapor', {id: 'vapor', name: 'Vapor', is_vapor: true})
+    setBackgroundPtyProcess('vapor', session('mysql'))
+
+    await expect(explainQuery('vapor', {
+      connection: 'app',
+      sql: 'select * from orders',
+      bindings: [],
+    })).rejects.toThrow('a plan is not asked of Laravel Vapor')
+
+    expect(ensureBackgroundPty).not.toHaveBeenCalled()
+  })
+
   test('an unopened connection is refused', async () => {
     await expect(explainQuery('missing', {sql: 'select 1', bindings: []}))
       .rejects.toThrow('the connection is not open')

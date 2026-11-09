@@ -371,7 +371,8 @@ const sessionCommand = connection => {
  * in a container, whichever machine the container is on.
  *
  * @param {Record<String, any>} connection
- * @return {String} `local`, `ssh`, `container`, `ssh-container` or `cloud`
+ * @return {String} `local`, `ssh`, `container`, `ssh-container`, `cloud` or
+ * `vapor`
  */
 const connectionKind = connection => {
   // a cloud connection runs nowhere this machine can reach: it is its own kind
@@ -379,6 +380,12 @@ const connectionKind = connection => {
   // Laravel Cloud owns
   if (connection && connection.is_cloud) {
     return 'cloud'
+  }
+
+  // a connection to Laravel Vapor is the same kind of thing: a command sent to
+  // an API, in an environment this machine has no shell into
+  if (connection && connection.is_vapor) {
+    return 'vapor'
   }
 
   const container = inContainer(connection)

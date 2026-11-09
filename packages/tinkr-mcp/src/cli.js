@@ -101,12 +101,12 @@ const parseArguments = argv => {
 /**
  * Where a connection runs, as the line the server logs says it.
  *
- * It is three different sentences, because they answer three different
- * questions: a path is a directory here, an ssh connection is an account on a
- * server, and a Laravel Cloud connection is an application and environment
- * inside an environment Laravel Cloud owns — nowhere on this machine and nowhere
- * to ssh to. Saying "in <path>" for the last one names the local checkout, which
- * is where the classes are read from and not where anything runs.
+ * It is four different sentences, because they answer four different questions:
+ * a path is a directory here, an ssh connection is an account on a server, and a
+ * Laravel Cloud connection or a Laravel Vapor one is an environment inside that
+ * product — nowhere on this machine and nowhere to ssh to. Saying "in <path>" for
+ * the last two names the local checkout, which is where the classes are read from
+ * and not where anything runs.
  *
  * @param {Record<String, any>} connection
  * @return {{where: String, name: String}}
@@ -117,6 +117,13 @@ const whereOf = connection => {
     const environment = connection.cloud_environment_name || 'an environment'
 
     return {where: 'in Laravel Cloud app', name: `${application} / ${environment}`}
+  }
+
+  if (connection.is_vapor) {
+    const project = connection.vapor_project_name || 'a project'
+    const environment = connection.vapor_environment_name || 'an environment'
+
+    return {where: 'in Laravel Vapor project', name: `${project} / ${environment}`}
   }
 
   if (connection.is_over_ssh) {
@@ -177,9 +184,10 @@ const main = () => {
   process.on('exit', session.end)
 
   // the client's stderr is the log: what the server is running in is the first
-  // thing to look at when a call comes back wrong. A cloud connection runs in an
-  // environment Laravel Cloud owns, which is neither a directory here nor a
-  // server over ssh, so it is named by its application and environment instead
+  // thing to look at when a call comes back wrong. A connection that runs
+  // through an API is in an environment that product owns, which is neither a
+  // directory here nor a server over ssh, so it is named by its own project or
+  // application and its environment instead
   const place = whereOf(resolved.connection)
 
   process.stderr.write(

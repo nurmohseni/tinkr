@@ -17,15 +17,20 @@ jest.mock('tinkr-core', () => {
     // the window is told of it; the rest of them answer with the real protocol,
     // which rejects for a connection with no token before it reaches the network
     runCloud: jest.fn((...args) => actual.runCloud(...args)),
+    // and a Vapor run is the same kind of thing, through its own API
+    runVapor: jest.fn((...args) => actual.runVapor(...args)),
   }
 })
 
 // the history of a connection is the database's, which is not what this is about
 jest.mock('../services/history', () => ({appendHistory: jest.fn(() => [])}))
 
-// the token a cloud run is given is the main process's secret, and a test has no
+// the token an API run is given is the main process's secret, and a test has no
 // secrets file: what the app would have saved is what this answers with
-jest.mock('../database/secrets', () => ({cloudToken: jest.fn(() => 'a-cloud-token')}))
+jest.mock('../database/secrets', () => ({
+  cloudToken: jest.fn(() => 'a-cloud-token'),
+  vaporToken: jest.fn(() => 'a-vapor-token'),
+}))
 
 // the project of a connection over ssh is read by a command of its own, and a
 // test has no machine to reach: what another machine would answer is what this
@@ -35,7 +40,7 @@ jest.mock('../remote', () => ({
   quoted: jest.requireActual('../remote').quoted,
 }))
 
-const {runCloud, wrapRun, runOutput, typedRun, SessionError, RunResultFilter} = require('tinkr-core')
+const {runCloud, runVapor, wrapRun, runOutput, typedRun, SessionError, RunResultFilter} = require('tinkr-core')
 
 const {Pty} = require('../pty/Pty')
 const {exec} = require('../remote')
@@ -738,6 +743,118 @@ describe('a run of a connection on Laravel Cloud', () => {
     createPty(cloud)
 
     expect(runCloud).not.toHaveBeenCalled()
+    expect(Pty).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A connection to a Laravel Vapor environment: the same shape as a cloud one —
+ * no shell to boot anywhere, and a run that is a command the API is sent — with
+ * its own token and its own API behind it.
+ *
+ * What is checked here is that the run goes to Vapor rather than to Cloud, and
+ * that nothing of a session is started for it: a Vapor connection that booted a
+ * pty would be a shell on this machine running code that was supposed to run in
+ * the environment.
+ */
+describe('a run of a connection on Laravel Vapor', () => {
+  const vapor = {
+    id: 'vapor',
+    is_vapor: true,
+    path: '',
+    vapor_project_id: 'proj-1',
+    vapor_project_name: 'App',
+    vapor_environment_id: 'env-1',
+    vapor_environment_name: 'Production',
+  }
+
+  beforeEach(() => {
+    Pty.mockClear()
+    runVapor.mockReset()
+    runCloud.mockReset()
+    secrets.vaporToken.mockClear()
+    appendHistory.mockClear()
+  })
+
+  afterEach(() => {
+    setEditorWindow('vapor', null)
+    setPtyProcess('vapor', null)
+  })
+
+  test('is Vapor\'s, and never a session booted on this machine', async () => {
+    const win = {webContents: {send: jest.fn()}}
+
+    setEditorWindow('vapor', win)
+
+    runVapor.mockResolvedValue({
+      blocks: [{type: 'text', value: 'hello'}],
+      value: "it's",
+      error: null,
+      queries: [],
+      queriesTotal: 0,
+      output: 'hello',
+      commandId: 'cmd-1',
+    })
+
+    createPty(vapor, 'the snippet', null, 45000)
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    // nothing of a session exists for a Vapor connection
+    expect(Pty).not.toHaveBeenCalled()
+    expect(runCloud).not.toHaveBeenCalled()
+
+    const [connection, code, options] = runVapor.mock.calls[0]
+
+    expect(connection).toBe(vapor)
+    expect(code).toBe('the snippet')
+    // the run is given the Vapor token the app holds and the time it may take,
+    // which is the preference's own number of milliseconds
+    expect(options.token).toBe('a-vapor-token')
+    expect(options.timeout).toBe(45000)
+    expect(options.signal.aborted).toBe(false)
+
+    const result = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(result[1].value).toBe("it's")
+    expect(result[1].output).toBe('hello')
+    expect(win.webContents.send).toHaveBeenCalledWith('runOutput', 'hello')
+    expect(win.webContents.send).toHaveBeenCalledWith('historyConnection', [])
+
+    expect(getPtyProcess('vapor')).toBe(null)
+  })
+
+  // a stop cannot cancel a command Vapor was already given, so the answer says
+  // what is still running rather than claiming the run ended somewhere it cannot
+  test('answers an aborted run with what Laravel Vapor keeps doing', async () => {
+    const win = {webContents: {send: jest.fn()}}
+
+    setEditorWindow('vapor', win)
+    runVapor.mockRejectedValue(Object.assign(
+      new Error('The run was stopped.'),
+      {name: 'VaporError', code: 'aborted'},
+    ))
+
+    createPty(vapor, 'the snippet')
+
+    await new Promise(resolve => setImmediate(resolve))
+
+    const answer = win.webContents.send.mock.calls.find(([channel]) => channel === 'runResult')
+
+    expect(answer[1].error.class).toBe('VaporError')
+    expect(answer[1].error.message).toContain('The run was stopped.')
+    expect(answer[1].error.message).toContain('Laravel Vapor may still be running what it started.')
+    expect(getPtyProcess('vapor')).toBe(null)
+  })
+
+  // a Vapor connection is a place runs are sent to, not a shell that a session
+  // can be booted in: opening one must not start anything
+  test('boots nothing when the window opens it without code', () => {
+    setEditorWindow('vapor', {webContents: {send: jest.fn()}})
+
+    createPty(vapor)
+
+    expect(runVapor).not.toHaveBeenCalled()
     expect(Pty).not.toHaveBeenCalled()
   })
 })

@@ -1,4 +1,4 @@
-const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead, isCloud, importsIn} = require('tinkr-core')
+const {classIndex, indexFrom, matchingFilesIn, phpString, containerRead, isApiRun, importsIn} = require('tinkr-core')
 
 const {exec, quoted} = require('../remote')
 
@@ -273,11 +273,12 @@ const walkIndex = connection => {
  * Whether a connection's project lives on a machine this one has to ask.
  *
  * A connection over ssh does, and its machine is asked with a command of its
- * own. A connection on Laravel Cloud does not: its code runs in Laravel Cloud's
- * container, and the project this app can read is the local checkout the
- * connection names, if it names one. That checkout is read here, from this
- * machine's files, and never through the API — a class list is not worth a
- * command in a production environment's history.
+ * own. A connection that runs its code through an API, such as Laravel Cloud or
+ * Laravel Vapor, does not: its code runs in that product's environment, and the
+ * project this app can read is the local checkout the connection names, if it
+ * names one. That checkout is read here, from this machine's files, and never
+ * through the API — a class list is not worth a command in a production
+ * environment's history.
  *
  * @param {Record<String, any>} connection
  * @return {Boolean}
@@ -287,14 +288,14 @@ const onAnotherMachine = connection => Boolean(connection && connection.is_over_
 /**
  * The index of the project this machine holds for a connection.
  *
- * A cloud connection without a path has no project here at all: an empty index
- * is what it offers, because a suggestion popup with no names is the truth and
- * a walk of the home directory would be a guess.
+ * A connection that runs through an API and names no path has no project here
+ * at all: an empty index is what it offers, because a suggestion popup with no
+ * names is the truth and a walk of the home directory would be a guess.
  *
  * @param {Record<String, any>} connection
  * @return {Object|null}
  */
-const localIndex = connection => (isCloud(connection) && !connection.path
+const localIndex = connection => (isApiRun(connection) && !connection.path
   ? emptyIndex()
   : classIndex(connection.path))
 
@@ -414,7 +415,7 @@ const readyIndex = connection => {
  */
 const prefetchIndex = connection => {
   // this machine's projects are read here, in the moment they are asked about,
-  // and a cloud connection's local checkout is one of them
+  // and an API-run connection's local checkout is one of them
   if (!connection || !onAnotherMachine(connection)) {
     return undefined
   }

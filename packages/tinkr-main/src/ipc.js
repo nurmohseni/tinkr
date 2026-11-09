@@ -1,7 +1,17 @@
 const {app, BrowserWindow, ipcMain, shell} = require('electron')
 const log = require('electron-log')
 
-const {cloudApplications, isCloud, CloudError} = require('tinkr-core')
+const {
+  cloudApplications,
+  vaporTeams,
+  vaporProjects,
+  vaporEnvironments,
+  vaporCliCredentials,
+  isApiRun,
+  isVapor,
+  CloudError,
+  VaporError,
+} = require('tinkr-core')
 
 const secrets = require('./database/secrets')
 const {dataDir} = require('./utils/dataDir')
@@ -350,6 +360,163 @@ ipcMain.handle('listCloudApplications', async () => {
 })
 
 /**
+ * The teams a token can see, with the projects and environments under them.
+ *
+ * The picker asks this once and draws the whole tree from it: a token sees
+ * teams, a team has projects, and a project has the environments a command can
+ * be sent to. They are asked one after the other rather than all at once because
+ * Vapor's endpoints nest that way — a project belongs to a team, and there is no
+ * listing of every project a token can see.
+ *
+ * @param {String} token
+ * @return {Promise<Array<Object>>}
+ */
+const vaporTree = async token => {
+  const teams = await vaporTeams(token)
+  const tree = []
+
+  for (const team of teams) {
+    const projects = await vaporProjects(token, team.id)
+    const branch = []
+
+    for (const project of projects) {
+      branch.push(Object.assign({}, project, {
+        environments: await vaporEnvironments(token, project.id),
+      }))
+    }
+
+    tree.push(Object.assign({}, team, {projects: branch}))
+  }
+
+  return tree
+}
+
+/**
+ * The error code a Laravel Vapor failure is reported with.
+ *
+ * A VaporError carries its own code, which is what the settings screen words its
+ * answer by; anything else — a bug, a fetch that threw something of its own — is
+ * a failure without a better name.
+ *
+ * @param {Error} error
+ * @return {String}
+ */
+const vaporCodeOf = error => (error instanceof VaporError ? error.code : 'failed')
+
+/**
+ * Whether a Laravel Vapor API token is saved, and whether the Vapor CLI has a
+ * login on this machine.
+ *
+ * The window is told both and never what either token is: which is saved is the
+ * main process's to know, and the CLI's own login is what the settings screen
+ * offers to import when the app has none.
+ */
+ipcMain.handle('vaporStatus', async () => ({
+  hasToken: secrets.hasVaporToken(dataDir()),
+  cliLogin: Boolean(vaporCliCredentials()),
+}))
+
+/**
+ * Check a Laravel Vapor API token and, when it answers, keep it.
+ *
+ * The check is the listing of teams, because that is the first call a Vapor
+ * connection makes and the one the picker starts from: a token that cannot list
+ * teams cannot run anything. A token that is refused is not written, so the app
+ * never holds one Vapor has told it is wrong.
+ *
+ * Only the count of what it saw comes back: a token that works is a fact, and
+ * the tree belongs to the picker that asks for it.
+ */
+ipcMain.handle('setVaporToken', async (event, token) => {
+  const worth = typeof token === 'string' ? token.trim() : ''
+
+  if (worth === '') {
+    return {ok: false, error: {code: 'no_token', message: 'A token is needed before it can be checked.'}}
+  }
+
+  try {
+    const teams = await vaporTeams(worth)
+
+    if (!secrets.setVaporToken(dataDir(), worth)) {
+      return {
+        ok: false,
+        error: {code: 'failed', message: 'The token was checked but could not be saved.'},
+      }
+    }
+
+    return {ok: true, teams: teams.length}
+  } catch (error) {
+    return {ok: false, error: {code: vaporCodeOf(error), message: error.message}}
+  }
+})
+
+/**
+ * Forget the Laravel Vapor API token, so the app asks as nobody again.
+ */
+ipcMain.handle('forgetVaporToken', async () => {
+  secrets.forgetVaporToken(dataDir())
+
+  return {hasToken: secrets.hasVaporToken(dataDir())}
+})
+
+/**
+ * Take the token the Vapor CLI saved and keep it, once Vapor answers with it.
+ *
+ * `vapor login` writes the token to `~/.laravel-vapor/config.json`, and someone
+ * who has used the CLI has no reason to make a second one: what is checked here
+ * is that token, and the team the CLI defaults to comes back so the settings
+ * screen can say which login was imported. A login that Vapor refuses is not
+ * written, the same as a pasted one.
+ */
+ipcMain.handle('importVaporCliToken', async () => {
+  const credential = vaporCliCredentials()
+
+  if (!credential) {
+    return {
+      ok: false,
+      error: {code: 'no_token', message: 'No Laravel Vapor CLI token is saved on this machine.'},
+    }
+  }
+
+  try {
+    const teams = await vaporTeams(credential.token)
+
+    if (!secrets.setVaporToken(dataDir(), credential.token)) {
+      return {
+        ok: false,
+        error: {code: 'failed', message: 'The token was checked but could not be saved.'},
+      }
+    }
+
+    return {ok: true, teams: teams.length, team: credential.team || null}
+  } catch (error) {
+    return {ok: false, error: {code: vaporCodeOf(error), message: error.message}}
+  }
+})
+
+/**
+ * Every team, project and environment a token can see.
+ *
+ * This is the picker's question for a Vapor connection, and the answer is the
+ * whole tree the connection dialog draws: teams at the top, the projects of each
+ * one under it, and the environments of each project last, because a run is sent
+ * to an environment by name.
+ */
+ipcMain.handle('listVaporProjects', async () => {
+  const token = secrets.vaporToken(dataDir())
+
+  if (!token) {
+    return {ok: false, error: {code: 'no_token', message: 'No Laravel Vapor API token is saved.'}}
+  }
+
+  try {
+    return {ok: true, teams: await vaporTree(token)}
+  } catch (error) {
+    return {ok: false, error: {code: vaporCodeOf(error), message: error.message}}
+  }
+})
+
+/**
  * Open the log viewer for the connection of the window that asked.
  *
  * The window that asks is an editor window: the logs window itself has no logs
@@ -357,12 +524,12 @@ ipcMain.handle('listCloudApplications', async () => {
  * window rather than sent with the message, because a window that has switched
  * connection is a fact about the window and not about the message.
  *
- * A connection on Laravel Cloud has no log files this app can read — they are
- * inside the environment, and the API's own log endpoint is not what this viewer
- * is written against — so no window is opened for it. The editor hides the logs
- * button on a cloud connection, so this is the second guard rather than the
- * first: a message from a window that was switched connection a moment ago is
- * not one to open a viewer of some local checkout's logs for.
+ * A connection that runs through an API has no log files this app can read —
+ * they are inside the environment, and the API's own log endpoint is not what
+ * this viewer is written against — so no window is opened for it. The editor
+ * hides the logs button on such a connection, so this is the second guard rather
+ * than the first: a message from a window that was switched connection a moment
+ * ago is not one to open a viewer of some local checkout's logs for.
  */
 ipcMain.on('openLogs', event => {
   const connection = getEditorConnection(getEditorConnectionId(windowOf(event)))
@@ -371,8 +538,10 @@ ipcMain.on('openLogs', event => {
     return
   }
 
-  if (isCloud(connection)) {
-    log.warn('[logs] logs are not available for Laravel Cloud connections')
+  if (isApiRun(connection)) {
+    const product = isVapor(connection) ? 'Laravel Vapor' : 'Laravel Cloud'
+
+    log.warn(`[logs] logs are not available for ${product} connections`)
 
     return
   }
@@ -443,8 +612,8 @@ ipcMain.handle('logFiles', async (event, connectionId) => {
 
   // the viewer reads a file on the machine the project runs on: the service asks
   // this one for a local project and the other one for a project over ssh. A
-  // cloud connection has no such machine here, and the service says so in its
-  // own words, which is what the window shows
+  // connection that runs through an API has no such machine here, and the
+  // service says so in its own words, which is what the window shows
   if (!connection) {
     return {dir: '', files: []}
   }

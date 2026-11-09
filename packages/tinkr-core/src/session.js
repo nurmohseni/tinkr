@@ -11,6 +11,7 @@ const {parseSSHCommand} = require('./parseSSHCommand')
 const {askpassEnvironment} = require('./sshAskpass')
 const {sessionCommand} = require('./containerCommand')
 const {isCloud, runCloud, cloudTokenOf} = require('./cloud')
+const {isVapor, runVapor, vaporTokenOf} = require('./vapor')
 
 /**
  * The keys a kill sends before it gives up on the session, and how long each is
@@ -887,7 +888,8 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  *
  * A connection whose code runs on Laravel Cloud has no session to run it in: it
  * goes through the API instead (see cloud.runCloud), and answers with the same
- * shape plus the id of the command that ran it.
+ * shape plus the id of the command that ran it. A connection to Laravel Vapor
+ * is the same kind of thing, through its own API (see vapor.runVapor).
  *
  * @param {Record<String, any>} connection
  * @param {String} code
@@ -897,12 +899,12 @@ const runOutput = filter => stripSessionNotes(filter.printedText()).replace(/\r\
  *   what the session is started with when the connection names none, `guard` is
  *   what the run is guarded with: `rollback` for a dry run, `commit` for the
  *   same run kept, `dataDir` is where the app's data is — which is where a
- *   connection's saved password is answered from — and `token` is a Laravel
- *   Cloud token for a cloud connection, which is read from that same data
+ *   connection's saved password is answered from — and `token` is the API token
+ *   of a connection that runs through an API, which is read from that same data
  *   directory when the caller has none. `signal` stops a run, `fetch` replaces
- *   the one a cloud run talks to the API with, and `interval` is how often it
- *   asks how the command is going. `timeout` is how long the run may take, and
- *   zero is no limit: the run is still answered when its command exits (see
+ *   the one an API run talks to, and `interval` is how often it asks how the
+ *   command is going. `timeout` is how long the run may take, and zero is no
+ *   limit: the run is still answered when its command exits (see
  *   Session#onCommandExit)
  * @return {Promise<{value: any, blocks: Array, error: Object|null,
  *   queries: Array, queriesTotal: Number, imported?: Object,
@@ -923,6 +925,22 @@ const runCode = (connection, code, options = {}) => {
   if (isCloud(connection)) {
     return runCloud(connection, code, {
       token: options.token || cloudTokenOf(options.dataDir),
+      guard,
+      timeout,
+      signal: options.signal,
+      fetch: options.fetch,
+      interval: options.interval,
+      imports: connection.path ? importsFor(connection.path, code) : {},
+    })
+  }
+
+  // Laravel Vapor is the same shape of connection: a run is a command in an
+  // environment behind an API, its token is the app's own secret, and the
+  // classes it names come from the local checkout when the connection has one,
+  // because the environment's files cannot be read from here
+  if (isVapor(connection)) {
+    return runVapor(connection, code, {
+      token: options.token || vaporTokenOf(options.dataDir),
       guard,
       timeout,
       signal: options.signal,
