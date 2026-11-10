@@ -7,6 +7,7 @@ const pty = require('node-pty')
 
 const {exec} = require('../packages/tinkr-core/src/remote')
 const {shellQuote} = require('../packages/tinkr-core/src/shell')
+const {wrapRun, typedRun} = require('../packages/tinkr-core/src/runResult')
 
 const app = process.env.APP
 let failed = 0
@@ -112,7 +113,7 @@ const throughTypedShell = async (list, encode) => {
       buffer += data
 
       if (bannerAt === null && /Psy Shell/.test(buffer)) bannerAt = Date.now() - at
-      if (promptAt === null && bannerAt !== null && /(?:^|[\r\n])>>> $/.test(buffer.slice(-256))) promptAt = Date.now() - at
+      if (promptAt === null && bannerAt !== null && /(?:^|[\r\n])> $/.test(buffer.slice(-256))) promptAt = Date.now() - at
     })
 
     terminal.write('php artisan tinker\r')
@@ -129,6 +130,82 @@ const throughTypedShell = async (list, encode) => {
 
   const boot = await bootFloor()
   check(`floor cmd + php artisan tinker prompt (${boot.ms} ms, banner ${boot.bannerAt} ms, prompt ${boot.promptAt} ms)`, boot.promptAt !== null, boot)
+
+  // --- what the typing costs -------------------------------------------------
+  //
+  // a run is 41 lines of base64 for a one-line snippet, and the console echoes
+  // every character of it back through conpty: this measures what that echo
+  // costs when the lines are handed over in one write, in fours, and one at a
+  // time, and whether the console takes the whole run in a single write at all
+
+  const nap = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+  const typedProbe = async (batch) => {
+    const at = Date.now()
+    const run = wrapRun('1 + 1')
+    const lines = typedRun(run.code)
+    const terminal = pty.spawn(process.env.ComSpec, ['/V:ON'], {cwd: app, env: process.env})
+    const state = {buffer: '', bannerAt: null, promptAt: null, answeredAt: null, chunks: 0, bytes: 0}
+
+    terminal.onData(data => {
+      state.chunks += 1
+      state.bytes += data.length
+      state.buffer += data
+
+      if (state.bannerAt === null && /Psy Shell/.test(state.buffer)) state.bannerAt = Date.now() - at
+      if (state.promptAt === null && state.bannerAt !== null && /(?:^|[\r\n])> $/.test(state.buffer.slice(-256))) state.promptAt = Date.now() - at
+      if (state.answeredAt !== null) return
+      const found = state.buffer.indexOf(run.marker)
+      const opens = found === -1 ? -1 : state.buffer.indexOf('@', found + run.marker.length)
+      const closes = opens === -1 ? -1 : state.buffer.indexOf('@', opens + 1)
+      if (closes !== -1) state.answeredAt = Date.now() - at
+    })
+
+    terminal.write('php artisan tinker\r')
+
+    const until = Date.now() + 60000
+    while (Date.now() < until && state.promptAt === null) await nap(10)
+
+    const typedAt = Date.now()
+    let writtenAt = null
+    for (let at2 = 0; at2 < lines.length; at2 += batch) {
+      terminal.write(lines.slice(at2, at2 + batch).map(line => `${line}\r`).join(''))
+      writtenAt = Date.now()
+    }
+
+    while (Date.now() < until && state.answeredAt === null) await nap(10)
+
+    // the answer is read back out of the stream the way the filter reads it: the
+    // base64 between the two `@`, with whatever the console rendered into it cut
+    let value = null
+    const found = state.buffer.indexOf(run.marker)
+    const opens = found === -1 ? -1 : state.buffer.indexOf('@', found + run.marker.length)
+    const closes = opens === -1 ? -1 : state.buffer.indexOf('@', opens + 1)
+    if (closes !== -1) {
+      const payload = state.buffer.slice(opens + 1, closes).replace(/[^A-Za-z0-9+/=]/g, '')
+      try { value = JSON.parse(Buffer.from(payload, 'base64').toString('utf8')).value } catch (e) { value = `payload ${payload.length}` }
+    }
+    terminal.kill()
+
+    return {
+      batch,
+      lines: lines.length,
+      bytesTyped: lines.reduce((sum, line) => sum + line.length + 1, 0),
+      ms: Date.now() - at,
+      bootAt: state.promptAt,
+      writeAt: writtenAt === null ? null : writtenAt - typedAt,
+      answeredAt: state.answeredAt === null ? null : state.answeredAt - typedAt,
+      chunks: state.chunks,
+      echoed: state.bytes,
+      value,
+    }
+  }
+
+  for (const size of [1000, 8, 1]) {
+    const probe = await typedProbe(size)
+    const how = size === 1 || size === 8 ? `in ${size}s` : 'in one write'
+    check(`typing ${probe.lines} lines ${how} (${probe.ms} ms, echo ${probe.echoed} bytes in ${probe.chunks} chunks, write ${probe.writeAt} ms, answer ${probe.answeredAt} ms)`, probe.value === 2, probe)
+  }
 
   // --- a session -------------------------------------------------------------
   //
