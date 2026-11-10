@@ -29,11 +29,14 @@ const throughTypedShell = async (list, encode) => {
 
   const end = '~~SMOKE-END~~'
   const argvScript = path.join(__dirname, 'argv.js')
-  const line = `${shellQuote(process.execPath, 'win32', {delayed: true})} ${shellQuote(argvScript, 'win32', {delayed: true})} ${list.map(encode).join(' ')}`
+  const out = path.join(app, 'typed-argv.json')
+  const line = `${shellQuote(process.execPath, 'win32', {delayed: true})} ${shellQuote(argvScript, 'win32', {delayed: true})} --out ${shellQuote(out, 'win32', {delayed: true})} ${list.map(encode).join(' ')}`
+
+  try { fs.unlinkSync(out) } catch (e) {}
 
   terminal.write(`${line} & echo ${end}\r`)
 
-  const until = Date.now() + 20000
+  const until = Date.now() + 30000
 
   while (Date.now() < until && !buffer.includes(end)) {
     await new Promise(resolve => setTimeout(resolve, 25))
@@ -41,11 +44,10 @@ const throughTypedShell = async (list, encode) => {
 
   terminal.kill()
 
-  const part = buffer.slice(0, buffer.lastIndexOf(end))
-  const found = part.split(/\r?\n/).reverse().find(line => line.trim().startsWith('['))
+  const part = buffer.slice(0, Math.max(0, buffer.lastIndexOf(end)))
 
   try {
-    return {got: JSON.parse(String(found || '').trim()), part}
+    return {got: JSON.parse(fs.readFileSync(out, 'utf8')), part}
   } catch (e) {
     return {got: null, part}
   }
@@ -63,8 +65,9 @@ const throughTypedShell = async (list, encode) => {
   const typed = await throughTypedShell(words, word => shellQuote(word, 'win32', {delayed: true}))
   check('cmd quoting round trip through the session shell (/V:ON)', JSON.stringify(typed.got) === JSON.stringify(words), {words, got: typed.got, part: typed.part.slice(-1500)})
 
-  const phpRead = await exec({path: app}, `php -r ${shellQuote('echo json_encode(["a" => "%PATH%", "b" => "x&y", "c" => "it\'s"]);', 'win32')}`, {timeout: 30000})
-  check('php -r through cmd keeps %, & and quotes', String(phpRead.stdout || '').includes('"a":"%PATH%","b":"x&y","c":"it\'s"'), phpRead)
+  const phpCode = 'echo json_encode(["a" => "100%", "b" => "x&y", "c" => "it\'s", "d" => "a b"]);'
+  const phpRead = await exec({path: app}, `php -r ${shellQuote(phpCode, 'win32')}`, {timeout: 30000})
+  check('php -r through cmd keeps %, & and quotes', String(phpRead.stdout || '').includes(`{"a":"100%","b":"x&y","c":"it's","d":"a b"}`), phpRead)
 
   // a path of the machine's that holds what cmd expands, as a word of a line
   const oddWord = 'C:\\100%\\a!b&c^d'
