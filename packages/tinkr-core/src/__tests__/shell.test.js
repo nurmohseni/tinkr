@@ -61,6 +61,23 @@ describe('a value as one word of a shell', () => {
     expect(shellQuote('a!b!', 'posix', {delayed: true})).toBe("'a!b!'")
   })
 
+  test('a caret of the value\'s own takes an escape for each phase, as a bang does', () => {
+    // a line handed to `cmd /d /s /c` reads the caret in one phase: two carets
+    // are the one the value had
+    expect(shellQuote('a^b', 'win32')).toBe('^"a^^b^"')
+    expect(cmdQuote('caret^x')).toBe('^"caret^^x^"')
+    // the session's shell reads it in two — the parse and the delayed phase —
+    // and two carets are read as an escape for what follows them, which is how
+    // `caret^x` reached the program as `caretx`. Four are read as one caret
+    expect(shellQuote('caret^x', 'win32', {delayed: true})).toBe('^"caret^^^^x^"')
+    expect(cmdQuote('x^', {delayed: true})).toBe('^"x^^^^^"')
+    expect(cmdQuote('^x', {delayed: true})).toBe('^"^^^^x^"')
+    expect(cmdQuote('two^^carets', {delayed: true})).toBe('^"two^^^^^^^^carets^"')
+    // an escape the function writes itself is not doubled: the `&` still takes
+    // the one caret cmd removes, and the caret before it is the value's
+    expect(cmdQuote('a&b^c', {delayed: true})).toBe('^"a^&b^^^^c^"')
+  })
+
   test('a run of backslashes at the end is doubled, so it does not eat the closing quote', () => {
     expect(cmdQuote('C:\\srv\\')).toBe('^"C:\\srv\\\\^"')
     expect(shellQuote('C:\\srv\\\\', 'win32')).toBe('^"C:\\srv\\\\\\\\^"')

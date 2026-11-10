@@ -148,13 +148,23 @@ const crtQuote = value => {
  * word, and every caller knows: the session types its line at a `/V:ON` prompt,
  * and a read is given to `/s /c`.
  *
+ * A caret of the value's own is read in those same two phases, so it takes one
+ * escape for each as well. With delayed expansion on it is written as four
+ * carets rather than two: two are read by the parse as one, and the one that is
+ * left still escapes whatever follows it while the delayed phase reads the line,
+ * which is how `caret^x` reached the program as `caretx`. Four carets are read
+ * as two by the parse and as one by the delayed phase, which is the caret the
+ * value had. Four carets were read back as one on a real cmd started with
+ * `/V:ON`, which is what the count is taken from rather than from reasoning
+ * about the two phases.
+ *
  * @param {String} value
  * @param {{delayed?: Boolean}} [options] whether the cmd that reads the word was
  *   started with delayed expansion on
  * @return {String}
  */
 const cmdQuote = (value, {delayed = false} = {}) => crtQuote(value)
-  .replace(cmdSpecial, '^$&')
+  .replace(cmdSpecial, char => (char === '^' ? (delayed ? '^^^^' : '^^') : `^${char}`))
   .replace(/!/g, delayed ? '^^!' : '^!')
 
 /**

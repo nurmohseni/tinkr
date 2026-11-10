@@ -87,13 +87,15 @@ const crtQuote = value => {
  * quote mode, where the caret would be a character and the expansions would read
  * a `%` or a `!` anyway. This line is typed into the session's shell, and that
  * shell has delayed expansion on (see tinkr-core's shell.cmdQuote), so a bang is
- * written for both escape phases.
+ * written for both escape phases — and so is a caret of the value's own, which is
+ * read once by the parse and once by the delayed phase and so is written four
+ * times rather than twice.
  *
  * @param {String} value
  * @return {String}
  */
 const cmdQuote = value => crtQuote(value)
-  .replace(CMD_SPECIAL, '^$&')
+  .replace(CMD_SPECIAL, char => (char === '^' ? '^^^^' : `^${char}`))
   .replace(/!/g, '^^!')
 
 /**
