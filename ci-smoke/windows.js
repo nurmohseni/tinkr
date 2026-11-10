@@ -36,20 +36,26 @@ const throughTypedShell = async (list, encode) => {
 
   terminal.write(`${line} & echo ${end}\r`)
 
+  // the console echoes a typed line before cmd runs it, so the marker arrives
+  // twice: once as part of the line it was typed in, and once as what the shell
+  // prints after the command has written its file. Waiting for the first is
+  // waiting for the echo, which is the moment before anything has run — the
+  // file is still absent and the run is read as one that answered nothing
+  const marks = () => buffer.split(end).length - 1
   const until = Date.now() + 30000
 
-  while (Date.now() < until && !buffer.includes(end)) {
+  while (Date.now() < until && marks() < 2) {
     await new Promise(resolve => setTimeout(resolve, 25))
   }
 
   terminal.kill()
 
-  const part = buffer.slice(0, Math.max(0, buffer.lastIndexOf(end)))
-
+  // the whole terminal is kept: a run that printed nothing says why in the
+  // prompt that came back and in the line that is still sitting there
   try {
-    return {got: JSON.parse(fs.readFileSync(out, 'utf8')), part}
+    return {got: JSON.parse(fs.readFileSync(out, 'utf8')), part: buffer}
   } catch (e) {
-    return {got: null, part}
+    return {got: null, part: buffer}
   }
 }
 
