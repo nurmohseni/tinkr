@@ -41,6 +41,11 @@ const done = (status, answer) => {
 }
 
 runCode({id: 'runone', path: process.env.APP, command: 'php artisan tinker'}, code, {timeout}).then(
-  result => done('RESULT', {value: result.value, output: String(result.output || '').slice(0, 400), len: String(result.output || '').length}),
+  result => done('RESULT', {
+    value: result.value,
+    error: result.error || null,
+    output: String(result.output || '').slice(0, 400),
+    len: String(result.output || '').length,
+  }),
   error => done('ERROR', {message: error.message, output: String(error.output || '').slice(0, 400), len: String(error.output || '').length}),
 )

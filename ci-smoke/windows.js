@@ -100,6 +100,9 @@ const throughTypedShell = async (list, encode) => {
 
   const valueOf = run => (run.seen ? run.seen.value : undefined)
   const outputOf = run => String((run.seen && run.seen.output) || '')
+  // runone keeps 400 characters of the output for the report and its length in
+  // whole, so a line of 70000 characters is measured without being carried
+  const outputLength = run => (run.seen && typeof run.seen.len === 'number' ? run.seen.len : outputOf(run).length)
 
   let x = await runOne('1 + 1', 90000)
   check(`runCode value (${x.ms} ms)`, valueOf(x) === 2, {status: x.status, seen: x.seen, tail: x.tail})
@@ -118,10 +121,10 @@ const throughTypedShell = async (list, encode) => {
   check('runCode small echo', valueOf(x) === 1 && outputOf(x).trim() === 'a\nb', {status: x.status, seen: x.seen, tail: x.tail})
 
   x = await runOne('echo str_repeat("y", 70000); 2', 30000)
-  check(`runCode 64 KB line (${x.ms} ms)`, valueOf(x) === 2 && outputOf(x).length >= 70000, {status: x.status, seen: x.seen, tail: x.tail})
+  check(`runCode 64 KB line (${x.ms} ms)`, valueOf(x) === 2 && outputLength(x) >= 70000, {status: x.status, seen: x.seen, tail: x.tail})
 
   x = await runOne('echo str_repeat("x", 2000000); 7', 120000)
-  check(`runCode 2 MB echo (${x.ms} ms)`, valueOf(x) === 7 && outputOf(x).length >= 2000000, {status: x.status, seen: {value: valueOf(x), len: outputOf(x).length}, tail: x.tail})
+  check(`runCode 2 MB echo (${x.ms} ms)`, valueOf(x) === 7 && outputLength(x) >= 2000000, {status: x.status, seen: {value: valueOf(x), len: outputLength(x)}, tail: x.tail})
 
   x = await runOne('range(1, 300)', 30000)
   check('runCode tall value (no pager)', Array.isArray(valueOf(x)) && valueOf(x).length === 300, {status: x.status, seen: x.seen, tail: x.tail})
