@@ -84,6 +84,61 @@ describe('a value as one word of a shell', () => {
     expect(shellQuote('C:\\srv\\\\', 'posix')).toBe("'C:\\srv\\\\'")
   })
 
+  test('the words a real cmd read back as themselves, typed into a session', () => {
+    // one line of them, typed into an interactive cmd started with `/V:ON` — the
+    // shell a session is — and read out of the receiving program's argv (see
+    // ci-smoke/windows.js). This is where the counts above came from: a caret
+    // written four times was read back as one, and the pair that holds a percent,
+    // a bang and a caret at once came back as it was written. Keeping the list
+    // here makes a change to either phase a failure rather than a guess
+    const words = [
+      'plain',
+      'with space',
+      'quote"inside',
+      "single'q",
+      '%PATH%',
+      '!bang!',
+      'a&b|c<d>e(f)',
+      'caret^x',
+      'ünïcødé',
+      'trail\\',
+      'comma,semi;eq=',
+      '100% !bang! ^caret',
+      'C:\\srv\\100%\\a!b^c',
+      '',
+    ]
+
+    expect(words.map(word => [word, shellQuote(word, 'win32', {delayed: true})])).toEqual([
+      ['plain', '^"plain^"'],
+      // a space is the separator a word is measured against, and the caret is
+      // what hands it to the program as part of the word
+      ['with space', '^"with^ space^"'],
+      // the program's parser reads `\"` inside a quoted run as one quote
+      ['quote"inside', '^"quote\\^"inside^"'],
+      // cmd has no single quote: it is an ordinary character and takes no escape
+      ["single'q", '^"single\'q^"'],
+      // expanded while the line is read, unless the percent is escaped
+      ['%PATH%', '^"^%PATH^%^"'],
+      // the delayed phase reads a bang after the escape phase has taken a caret
+      ['!bang!', '^"^^!bang^^!^"'],
+      ['a&b|c<d>e(f)', '^"a^&b^|c^<d^>e^(f^)^"'],
+      // two phases read a caret of the value's own, so it is written four times
+      ['caret^x', '^"caret^^^^x^"'],
+      // a console code page is not this function's business: the bytes of the
+      // value are handed over as they are
+      ['ünïcødé', '^"ünïcødé^"'],
+      // and a run at the end is doubled, so the closing quote stays a quote
+      ['trail\\', '^"trail\\\\^"'],
+      // delimiters of cmd's own, which are not delimiters inside a word
+      ['comma,semi;eq=', '^"comma^,semi^;eq=^"'],
+      // the three escapes of both phases in one word, which is what a path of
+      // this machine holds
+      ['100% !bang! ^caret', '^"100^%^ ^^!bang^^!^ ^^^^caret^"'],
+      ['C:\\srv\\100%\\a!b^c', '^"C:\\srv\\100^%\\a^^!b^^^^c^"'],
+      ['', '^"^"'],
+    ])
+  })
+
   test('a unicode value survives both', () => {
     expect(shellQuote('C:\\srv\\prøjekt', 'win32')).toBe('^"C:\\srv\\prøjekt^"')
     expect(shellQuote('ü x', 'win32')).toBe('^"ü^ x^"')

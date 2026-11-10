@@ -30,6 +30,10 @@ const cases = [
   {container_engine: 'docker', container_name: 'it\'s here', container_path: '/srv/it\'s here'},
   {container_engine: 'podman', container_name: 'app\\', path: '/srv/app\\'},
   {container_engine: 'docker', container_name: 'a^b!c', container_path: 'C:\\srv\\a^b!c'},
+  // the characters of both reading phases at once, in a value a form really
+  // takes: a percent, a bang and a caret in one word, beside the quote and
+  // apostrophe cmd has no rule for
+  {container_engine: 'docker', container_name: 'a!b%c^d"e\'f,g;h', container_path: 'C:\\srv\\a!b%c^d'},
   // a container on a server: the line is read by the far login shell, so its
   // words stay posix even in a windows app
   {is_over_ssh: true, container_engine: 'docker', container_name: 'my app', path: '/srv/my app'},
