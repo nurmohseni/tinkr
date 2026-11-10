@@ -3,13 +3,11 @@ const {
   indexFrom,
   matchingFilesIn,
   phpString,
-  containerRead,
-  inContainer,
   isApiRun,
   importsIn,
 } = require('tinkr-core')
 
-const {exec, quoted} = require('../remote')
+const {ask} = require('./php')
 
 const {
   filesFor: localFilesFor,
@@ -52,20 +50,6 @@ const maxClasses = 20000
 // how many paths: the popup offers forty and a prompt attaches three, so a
 // project of any size has answered long before this
 const maxPaths = 2000
-
-// what one answer may be before it is not an answer this can read: the paths of
-// a large project are megabytes, and a project larger than this is one whose
-// index is not worth the reading
-const maxAnswer = 8 * 1024 * 1024
-
-// how long the index walk may take. It is a walk of the whole project — every
-// php file under the project, not a question about a file — and a cold walk of a
-// large project, on a slow link to another machine's disk, is still going long
-// after the ten seconds a question about one file is given: that silence was
-// read as a machine that cannot answer, and the popup went empty. The log
-// reader keeps the shorter default, because a line of log is an answer that
-// arrives or does not
-const indexTimeout = 30000
 
 // the directory of the project's packages, as the paths of another machine's
 // project spell it: they are relative to the project, where this machine's are
@@ -142,47 +126,6 @@ const indexCode = () => 'error_reporting(0);' +
   '$tinkr_files[]=$tinkr_relative;}' +
   '}catch(\\Throwable $tinkr_unreadable){}}}' +
   "echo json_encode(['classmap'=>$tinkr_classmap,'psr4'=>$tinkr_psr4,'files'=>$tinkr_files]);"
-
-/**
- * Ask the machine a connection runs on a question in php, and answer with what
- * it printed.
- *
- * A host that runs a snippet is a host with php, which is the one thing the two
- * machines are known to have in common, and php reads no configuration to be
- * asked: one `php -r` per question, run in the project's own directory, is the
- * whole of it (see remote.exec). What comes back is the answer itself, and
- * nothing at all when the machine did not answer — an exit that is not zero, a
- * silence, an answer too large to keep — because a machine that does not answer
- * is not one holding an empty answer.
- *
- * @param {Record<String, any>} connection
- * @param {String} code the php to run
- * @return {Promise<String|null>}
- */
-const ask = async (connection, code) => {
-  // the php is read by the shell of whatever machine runs it, and the question is
-  // built before anything knows which one that is: a container's php is read by
-  // the container's own posix `sh`, and one behind ssh by the far login shell,
-  // while a local read is read by this machine's shell — cmd when the app is on
-  // windows. Only the local one is quoted for this platform (see
-  // shell.connectionShell and containerRead, which re-quotes the outer layer)
-  const inner = inContainer(connection) || (connection && connection.is_over_ssh)
-    ? 'posix'
-    : process.platform
-  const question = `php -r ${quoted(code, inner)}`
-  // a project in a container has its php in the container: the question is asked
-  // there, in the project's own directory, because the machine may hold none of
-  // the files at all (see containerRead)
-  const inside = containerRead(connection, question)
-
-  const answer = await exec(
-    connection,
-    inside || question,
-    {maxBuffer: maxAnswer, timeout: indexTimeout},
-  )
-
-  return answer.code === 0 ? answer.stdout : null
-}
 
 /**
  * The project of a connection over ssh, as the machine that holds it reads it.

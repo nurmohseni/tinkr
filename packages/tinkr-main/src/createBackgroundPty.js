@@ -3,6 +3,7 @@ const {isApiRun} = require('tinkr-core')
 const {BackgroundPty} = require('./pty/BackgroundPty')
 
 const {prefetchIndex} = require('./services/project')
+const {prefetchIntel} = require('./services/intel')
 const {ensureMaster} = require('./remote')
 
 const {
@@ -40,6 +41,11 @@ const createBackgroundPty = connection => {
   // is not read again here — the run that changed it refreshes it (see createPty)
   // — so a session booted beside a read answer costs nobody a walk.
   prefetchIndex(connection)
+
+  // and what the project holds, so that a model's columns and a facade's methods
+  // are answerable before anything is typed: the same read, for the same reason,
+  // booting the project's own app once (see services/intel)
+  prefetchIntel(connection)
 }
 
 /**

@@ -128,9 +128,10 @@ describe('a run of a connection', () => {
 
     printed[0]('the value the session printed')
 
-    // the read is the run's own, started where nobody is waiting on it, and what
-    // it answers is what the popup is answered out of
-    expect(exec).toHaveBeenCalledTimes(1)
+    // the reads are the run's own, started where nobody is waiting on them: the
+    // project's index, and the intel beside it, which is what the popup is
+    // answered out of
+    expect(exec).toHaveBeenCalledTimes(2)
 
     expect(win.webContents.send).toHaveBeenCalledWith('runResult', expect.anything())
 

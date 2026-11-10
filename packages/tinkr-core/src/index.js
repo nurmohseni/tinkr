@@ -25,7 +25,15 @@ module.exports = Object.assign(
   require('./vapor'),
   require('./remote'),
   require('./explain'),
-  // a namespace rather than flat names: `files` and `read` are what a log
-  // module calls its own, and the library already has plenty of those
-  {logs: require('./logs')},
+  // what the editor knows about a name without running anything: the members of a
+  // model, a class or a facade, and the types that follow from them
+  require('./intelScript'),
+  require('./modelIntel'),
+  require('./classIntel'),
+  require('./memberRank'),
+  require('./typeInference'),
+  require('./stringContexts'),
+  // namespaces rather than flat names: `files`, `read` and `parse` are what other
+  // modules call their own, and the library already has plenty of those
+  {logs: require('./logs'), docblock: require('./docblock')},
 )

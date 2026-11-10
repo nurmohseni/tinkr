@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const {bareClassNames} = require('./phpScanner')
+const {bareClassNames, importedClasses, stripNonCode} = require('./phpScanner')
 
 /**
  * The project's classes, by the name a snippet is likely to call them.
@@ -442,6 +442,128 @@ const importsFor = (projectPath, code) => {
 }
 
 /**
+ * The offset a line of its own starts at, when the offset it is asked about is
+ * the end of a line: the `use` statements a snippet gains go on a line of their
+ * own, and one written after a `;` on the same line is still one statement.
+ *
+ * @param {String} code
+ * @param {Number} at one past the `;` of a statement, or a tag
+ * @return {Number}
+ */
+const lineAfter = (code, at) => {
+  const match = /^[ \t]*\r?\n/.exec(code.slice(at))
+
+  return match ? at + match[0].length : at
+}
+
+/**
+ * The offset of the `;` that ends the last `use` the snippet declares at the
+ * top level, or -1 when it declares none.
+ *
+ * A `use` is at the top level when the line it starts on is: a trait's `use` is
+ * inside a class body and a closure's `use ($x)` closes over variables, and
+ * neither is a statement that imports a class. Depth is counted per line, so a
+ * `use App\Models\{Order, User};` — whose braces are its own — leaves the depth
+ * where it found it.
+ *
+ * @param {String} stripped the snippet with strings and comments blanked
+ * @return {Number}
+ */
+const lastUseEnd = stripped => {
+  let depth = 0
+  let end = -1
+  let offset = 0
+
+  for (const line of stripped.split('\n')) {
+    const start = offset
+    offset += line.length + 1
+
+    if (depth === 0 && /^[ \t]*use\s+/.test(line)) {
+      // `use ($x)`, `use function …` and `use const …` bring no class into scope
+      const isStatement = /^[ \t]*use\s+(\(|function\s|const\s)/.test(line) === false
+      const semicolon = stripped.indexOf(';', start)
+
+      if (isStatement && semicolon !== -1) {
+        end = semicolon
+      }
+    }
+
+    for (const char of line) {
+      if (char === '{') {
+        depth++
+      } else if (char === '}') {
+        depth = Math.max(0, depth - 1)
+      }
+    }
+  }
+
+  return end
+}
+
+/**
+ * Where a `use` statement for a class has to be written, if it has to be written
+ * at all.
+ *
+ * A snippet that names a class it has not imported still runs — the session
+ * aliases the classes the snippet uses — but a name that came from the popup is
+ * not in the code yet, so the class is imported along with it. The statement
+ * goes after the last `use` of the snippet, or after its opening tag when it has
+ * none; nothing is written when the name already answers, and nothing is written
+ * for a class with no namespace, which is what a builtin like `DateTime` is.
+ *
+ * @param {String} code the snippet, as the editor holds it
+ * @param {String} fqcn the class the edit is for
+ * @return {{offset: Number, text: String}|null} what to insert, and where
+ */
+const importEditAt = (code, fqcn) => {
+  const name = String(fqcn == null ? '' : fqcn).replace(/^\\+/, '').trim()
+
+  if (!name.includes('\\')) {
+    return null
+  }
+
+  const stripped = stripNonCode(code)
+  const imports = importedClasses(stripped)
+  const lower = name.toLowerCase()
+  const short = name.split('\\').pop()
+
+  for (const imported of imports.values()) {
+    // `use App\Models\User as U;` already answers for the class, under whatever
+    // name it gives it
+    if (imported.toLowerCase() === lower) {
+      return null
+    }
+  }
+
+  // another class already answers to this short name, and a second `use` of a
+  // name is a fatal error: the edit would be an edit that breaks the snippet,
+  // and the name written without it would name the other class
+  if (imports.has(short.toLowerCase())) {
+    return null
+  }
+
+  const namespace = /^[ \t]*namespace\s+([\\\w\x80-\xff]+)\s*;/m.exec(stripped)
+
+  // the class is the snippet's own, so its short name resolves where it is
+  if (namespace && lower.startsWith(`${namespace[1].replace(/^\\+/, '').toLowerCase()}\\`)) {
+    return null
+  }
+
+  const end = lastUseEnd(stripped)
+  const tag = /^[ \t]*<\?php/.exec(code)
+  const at = end !== -1 ? lineAfter(code, end + 1) : (tag ? lineAfter(code, tag[0].length) : 0)
+
+  // the statement is a line of its own, and a snippet written on one platform
+  // keeps its own line ending
+  const line = code.includes('\r\n') ? '\r\n' : '\n'
+  const statement = `use ${name};${line}`
+
+  // a snippet that starts with a tag has to keep it first, so an edit that lands
+  // at the end of the tag's line opens with a line break
+  return {offset: at, text: at > 0 && code[at - 1] !== '\n' ? `${line}${statement}` : statement}
+}
+
+/**
  * @param {String} name
  * @return {String}
  */
@@ -582,5 +704,6 @@ module.exports = {
   matchingFilesIn,
   importsFor,
   importsIn,
+  importEditAt,
   clearClassIndex,
 }

@@ -12,6 +12,7 @@ const {
   importsIn,
   projectFiles,
   matchingFiles,
+  importEditAt,
   clearClassIndex,
 } = require('../classIndex')
 
@@ -509,5 +510,83 @@ describe('the files an index offers a prompt', () => {
   test('holds the list to the number of files it was asked for', () => {
     expect(matchingFilesIn(found, 'Order', 1)).toHaveLength(1)
     expect(matchingFilesIn(null, 'Order')).toEqual([])
+  })
+})
+
+// what the edit inserts, as the editor would hold it after applying it
+const applied = (code, fqcn) => {
+  const edit = importEditAt(code, fqcn)
+
+  return edit ? code.slice(0, edit.offset) + edit.text + code.slice(edit.offset) : null
+}
+
+describe('the use line a class name needs', () => {
+  test('goes after the last use statement of the snippet', () => {
+    expect(importEditAt('<?php\n\nuse Foo\\Bar;\n\n$u = User::first();', 'App\\Models\\User'))
+      .toEqual({offset: 20, text: 'use App\\Models\\User;\n'})
+    expect(applied('<?php\nuse Foo\\Bar;\n$u = 1;', 'App\\Models\\User'))
+      .toBe('<?php\nuse Foo\\Bar;\nuse App\\Models\\User;\n$u = 1;')
+  })
+
+  test('keeps a group use together when it is the last one', () => {
+    expect(applied('<?php\nuse App\\Models\\{Order, User};\n$x = 1;', 'App\\Models\\Post'))
+      .toBe('<?php\nuse App\\Models\\{Order, User};\nuse App\\Models\\Post;\n$x = 1;')
+  })
+
+  test('goes after the opening tag when there is no use statement', () => {
+    expect(importEditAt('<?php\n\n$x = 1;', 'App\\Models\\User')).toEqual({offset: 6, text: 'use App\\Models\\User;\n'})
+    // a tag and the code on one line: the statement needs the line break
+    expect(applied('<?php $x = 1;', 'App\\Models\\User')).toBe('<?php\nuse App\\Models\\User;\n $x = 1;')
+  })
+
+  test('goes at the start of a snippet that has no tag, since the run adds one', () => {
+    expect(importEditAt('$u = User::first();', 'App\\Models\\User'))
+      .toEqual({offset: 0, text: 'use App\\Models\\User;\n'})
+  })
+
+  test('leaves a trait use and a closure use alone', () => {
+    expect(applied('<?php\nclass A {\n  use HasThing;\n}\n$x = 1;', 'App\\Models\\User'))
+      .toBe('<?php\nuse App\\Models\\User;\nclass A {\n  use HasThing;\n}\n$x = 1;')
+    expect(applied('<?php\n$f = function () use ($x) { return $x; };\n', 'App\\Models\\User'))
+      .toBe('<?php\nuse App\\Models\\User;\n$f = function () use ($x) { return $x; };\n')
+  })
+
+  test('writes nothing for a name that already answers', () => {
+    expect(importEditAt('<?php\nuse App\\Models\\User;\n$u = User::first();', 'App\\Models\\User')).toBe(null)
+    // an alias answers for the class too
+    expect(importEditAt('<?php\nuse App\\Models\\User as U;\n$u = U::first();', 'App\\Models\\User')).toBe(null)
+    // a group use imports it as well
+    expect(importEditAt('<?php\nuse App\\Models\\{Order, User};\n', 'App\\Models\\User')).toBe(null)
+    // a leading separator is how a name is written, not another class
+    expect(importEditAt('<?php\nuse App\\Models\\User;\n', '\\App\\Models\\User')).toBe(null)
+  })
+
+  test('writes nothing for the snippet\'s own namespace', () => {
+    expect(importEditAt('<?php\nnamespace App\\Models;\n$u = new User;', 'App\\Models\\User')).toBe(null)
+    // the same short name in another namespace is another class
+    expect(importEditAt('<?php\nnamespace App\\Models;\n', 'Other\\Models\\User')).not.toBe(null)
+  })
+
+  test('writes nothing for a class of the global namespace', () => {
+    expect(importEditAt('<?php\n$x = new DateTime;', 'DateTime')).toBe(null)
+    expect(importEditAt('<?php\n$x = 1;', '')).toBe(null)
+  })
+
+  test('writes nothing when the short name already names another class', () => {
+    // two classes of one name in scope is a fatal error, and the name written
+    // without the import would be the other class
+    expect(importEditAt('<?php\nuse Other\\User;\n$u = 1;', 'App\\Models\\User')).toBe(null)
+  })
+
+  test('reads a use statement out of code, not out of a string or a comment', () => {
+    expect(applied('<?php\n// use App\\Models\\User;\n$x = 1;', 'App\\Models\\User'))
+      .toBe('<?php\nuse App\\Models\\User;\n// use App\\Models\\User;\n$x = 1;')
+    expect(applied('<?php\n$s = "use Foo\\Bar;";\n$x = 1;', 'App\\Models\\User'))
+      .toBe('<?php\nuse App\\Models\\User;\n$s = "use Foo\\Bar;";\n$x = 1;')
+  })
+
+  test('keeps the snippet\'s own line ending', () => {
+    expect(importEditAt('<?php\r\nuse Foo\\Bar;\r\n$x = 1;', 'App\\Models\\User'))
+      .toEqual({offset: 21, text: 'use App\\Models\\User;\r\n'})
   })
 })

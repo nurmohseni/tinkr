@@ -20,6 +20,7 @@ const {
 } = require('./processes')
 const {appendHistory} = require('./services/history')
 const {importsForRun, refreshIndex} = require('./services/project')
+const {refreshIntel} = require('./services/intel')
 const secrets = require('./database/secrets')
 const {dataDir} = require('./utils/dataDir')
 
@@ -129,6 +130,10 @@ const createPty = (connection, code, guard = null, timeout = null) => {
     pty.running = false
 
     refreshIndex(connection)
+
+    // a run can create a class, migrate a table or write a config key, and what
+    // the editor offers is read again afterwards — nothing waits on it
+    refreshIntel(connection)
 
     const win = getEditorWindow(id)
 
@@ -436,6 +441,10 @@ const runRemote = (connection, code, guard, timeout) => {
     const history = appendHistory(id, code, result)
 
     refreshIndex(connection)
+
+    // a run can create a class, migrate a table or write a config key, and what
+    // the editor offers is read again afterwards — nothing waits on it
+    refreshIntel(connection)
 
     const win = getEditorWindow(id)
 
