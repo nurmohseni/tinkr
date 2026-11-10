@@ -437,10 +437,21 @@ class Session {
       cwd: env.HOME || os.homedir(),
       env,
       encoding: 'utf-8',
-      // node-pty's conpty backend deadlocks inside spawn on windows: the call
-      // never returns, so the window that made it never gets another line of
-      // its boot done. winpty is the backend that answers.
-      useConpty: false,
+      // The pty on windows is conpty — the windows pseudo console — and not
+      // winpty. winpty is not a console: it reads the console's screen buffer and
+      // reports the cells that changed, so what a program writes is not what the
+      // session reads. A `>>> ` prompt arrives as `>` and a cursor move, which no
+      // prompt can be read from, and a burst of output wider than the buffer
+      // arrives without its beginning — a 2 MB `echo` reached the app as 68 KB,
+      // and without the marker a run is read from, so the run answered nothing
+      // about what it printed.
+      //
+      // conpty hands over the bytes the program wrote, which is what every other
+      // platform's pty does, and what the readiness of a session and the envelope
+      // of a run are read from. node-pty falls back to winpty by itself on a
+      // windows old enough to have no conpty (before build 18309), so this is the
+      // platform's own backend rather than one of two to keep working.
+      useConpty: true,
     }
 
     if (!this.connection.is_over_ssh) {

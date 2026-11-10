@@ -100,7 +100,7 @@ describe('what a windows session is started with', () => {
     expect(spawn).toHaveBeenCalledWith(
       'C:\\Windows\\system32\\cmd.exe',
       ['/V:ON'],
-      expect.objectContaining({useConpty: false, encoding: 'utf-8'}),
+      expect.objectContaining({useConpty: true, encoding: 'utf-8'}),
     )
 
     // one line: the command with its pager out of the way, then the status of it
