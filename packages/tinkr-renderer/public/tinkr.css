@@ -1000,6 +1000,10 @@ details:not([open]) > summary .tree__caret::before {
 }
 .statusbar__item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .statusbar__item.error { color: var(--error); }
+/* a status item that is also a control: the same strip, a click that reads the
+   project again */
+.statusbar__item--action { background: none; border: 0; padding: 0; cursor: pointer; }
+.statusbar__item--action:hover { color: var(--text); }
 
 /* scrollbars follow the theme: thin, no track, no arrow buttons */
 .editor, .output__body, .sidebar, .settings, .modal__body, ::-webkit-scrollbar {

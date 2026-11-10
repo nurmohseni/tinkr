@@ -75,6 +75,9 @@ export const aiCheck = api.aiCheck
 export const parsePhpForm = api.parsePhpForm
 export const stringifyPhpForm = api.stringifyPhpForm
 export const phpCompletions = api.phpCompletions
+export const phpSignature = api.phpSignature
+export const intelStatus = api.intelStatus
+export const refreshIntel = api.refreshIntel
 export const explainQuery = api.explainQuery
 
 export const cloudStatus = api.cloudStatus

@@ -42,7 +42,8 @@ const {createSnippet, allSnippets, updateSnippet, deleteSnippet} = require('./se
 const {allHistory, clearHistory} = require('./services/history')
 const {parsePhpForm, stringifyPhpForm} = require('./services/php')
 const {drawsControls} = require('./utils/frame')
-const {phpCompletions} = require('./completion')
+const {phpCompletions, phpSignature} = require('./completion')
+const {intelStatus, refreshIntel} = require('./services/intel')
 const {explainQuery} = require('./explain')
 const {complete, ask, check} = require('./services/ai')
 const {providers} = require('./aiProviders')
@@ -671,6 +672,26 @@ ipcMain.handle('stringifyPhpForm', async (event, fields, code) => {
 
 ipcMain.handle('phpCompletions', async (event, connectionId, request) => {
   return await phpCompletions(connectionId, request)
+})
+
+// what the read of a connection's project holds, and a way to ask for it again:
+// the status line shows the one, the click on it the other
+ipcMain.handle('intelStatus', (event, connectionId) => {
+  return intelStatus(getEditorConnection(connectionId))
+})
+
+ipcMain.handle('refreshIntel', async (event, connectionId) => {
+  const connection = getEditorConnection(connectionId)
+
+  await refreshIntel(connection)
+
+  return intelStatus(connection)
+})
+
+// the parameters of the call the caret is in, answered from the same read: a `(`
+// or a `,` is no moment to boot a project
+ipcMain.handle('phpSignature', (event, connectionId, request) => {
+  return phpSignature(connectionId, request)
 })
 
 // a plan is asked of the connection's background session, out of band: the

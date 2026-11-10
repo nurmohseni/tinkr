@@ -543,7 +543,16 @@
     "autocomplete": "自动补全 {state}",
     "on": "开",
     "off": "关",
-    "php": "PHP {version}"
+    "php": "PHP {version}",
+    "intel_ready": "已读取项目 {age} · {models} 个模型 · {keys} 个配置项",
+    "intel_reading": "正在读取项目…",
+    "intel_none": "项目未读取",
+    "intel_failed": "项目读取失败",
+    "intel_hint": "重新读取项目",
+    "intel_now": "刚刚",
+    "intel_minutes": "{count} 分钟前",
+    "intel_hours": "{count} 小时前",
+    "intel_days": "{count} 天前"
   },
   "update": {
     "available_title": "有新版本可用",

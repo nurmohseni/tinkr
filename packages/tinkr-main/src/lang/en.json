@@ -543,7 +543,16 @@
     "autocomplete": "autocomplete {state}",
     "on": "on",
     "off": "off",
-    "php": "PHP {version}"
+    "php": "PHP {version}",
+    "intel_ready": "project read {age} · {models} models · {keys} keys",
+    "intel_reading": "reading the project…",
+    "intel_none": "project not read",
+    "intel_failed": "project read failed",
+    "intel_hint": "Read the project again",
+    "intel_now": "just now",
+    "intel_minutes": "{count} min ago",
+    "intel_hours": "{count} h ago",
+    "intel_days": "{count} d ago"
   },
   "update": {
     "available_title": "A new version is ready",

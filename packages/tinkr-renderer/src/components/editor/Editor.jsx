@@ -10,6 +10,7 @@ import debounce from 'lodash/debounce'
 
 import {registerPHPSnippetLanguage} from '../../utils/registerPHPSnippetLanguage'
 import {registerPHPCompletionProvider} from '../../utils/phpCompletion'
+import {registerPHPSignatureProvider} from '../../utils/phpSignature'
 import {editorFont, watchEditorTheme} from '../../utils/monacoTheme'
 import {documentAtomWithId, isSessionId, writeCodeAtom} from '../../stores/sessions'
 import {applyCodeAtom, outputTabIndexAtom, runAtom, runningAtom, sizesAtom} from '../../stores/editor'
@@ -17,7 +18,7 @@ import {aiFocusAtom} from '../../stores/ai'
 import {configAtom} from '../../stores/config'
 import {isMatchShortcut} from '../../utils/isMatchShortcut'
 import useDocumentId from '../../hooks/useDocumentId'
-import {aiComplete, phpCompletions} from '../../utils/api'
+import {aiComplete, phpCompletions, phpSignature} from '../../utils/api'
 
 // the wait before a suggestion is asked for, when the preference holds nothing
 // the timer can take
@@ -227,11 +228,14 @@ const Editor = () => {
       language: 'php-snippet',
       lineNumbers: 'on',
       // the snippet's own words are not the project's classes, and the suggestion
-      // popup is what the class index answers, so monaco's two other sources of
-      // completion are off: words from the document, and quick suggestions held
-      // back while the AI ghost text is showing
+      // popup is what the class index answers, so monaco's other source of
+      // completion is off: words from the document. A string is a place to be
+      // completed, though — a config key, a route name, a view, an env key, a
+      // translation key and a binding are all written inside one — so quick
+      // suggestions stay on there, and a comment, where nothing is a name, does
+      // without
       wordBasedSuggestions: 'off',
-      quickSuggestions: {other: 'on', comments: 'off', strings: 'off'},
+      quickSuggestions: {other: 'on', comments: 'off', strings: 'on'},
       ...editorFont(),
     })
 
@@ -304,14 +308,21 @@ const Editor = () => {
       disposeInlineCompletions: () => {},
     })
 
-    // the classes of the connection's project, and the methods of the class a
-    // `::` was written after: the same popup, two answers
+    // the popup: the project's classes, the members of the class or value on
+    // the left of a `::` or a `->`, the snippet's own variables, and the names a
+    // string argument holds — one provider, one answer per question
     const completionProvider = registerPHPCompletionProvider(monaco, phpCompletions)
+
+    // the parameter hint of the call the caret is in: the same answer's other
+    // half — a `(` or a `,` asks which arguments a method takes, and what has
+    // been read of the project says
+    const signatureProvider = registerPHPSignatureProvider(monaco, phpSignature)
 
     editorRef.current = editor
 
     return () => {
       completionProvider.dispose()
+      signatureProvider.dispose()
       inlineProvider.dispose()
       editor.dispose()
 

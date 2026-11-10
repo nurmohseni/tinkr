@@ -176,6 +176,9 @@ contextBridge.exposeInMainWorld('api', {
   parsePhpForm: code => invoke('parsePhpForm', connectionId(), code),
   stringifyPhpForm: (fields, code) => invoke('stringifyPhpForm', fields, code),
   phpCompletions: request => invoke('phpCompletions', connectionId(), request),
+  phpSignature: request => invoke('phpSignature', connectionId(), request),
+  intelStatus: () => invoke('intelStatus', connectionId()),
+  refreshIntel: () => invoke('refreshIntel', connectionId()),
   explainQuery: request => invoke('explainQuery', connectionId(), request),
 
   onSetIntlConfig: cb => {
