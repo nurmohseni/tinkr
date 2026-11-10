@@ -82,6 +82,54 @@ const throughTypedShell = async (list, encode) => {
   try { oddGot = JSON.parse(String(odd.stdout || '').trim().split('\n').pop()) } catch (e) {}
   check('a path with % ! & ^ survives the line', JSON.stringify(oddGot) === JSON.stringify([oddWord]), {oddWord, odd})
 
+  // --- the floor -------------------------------------------------------------
+  //
+  // before any of the app's own waits: what php itself costs on this runner, and
+  // what cmd plus psysh cost when nothing of the session's logic is involved
+
+  const timed = label => {
+    const at = Date.now()
+    const child = spawnSync(label, {shell: true, cwd: app, encoding: 'utf8', timeout: 120000})
+
+    return {ms: Date.now() - at, status: child.status, out: `${child.stdout || ''}${child.stderr || ''}`.trim().slice(0, 200)}
+  }
+
+  const bare = timed('php -r 1;')
+  check(`floor php -r (${bare.ms} ms)`, bare.status === 0, bare)
+  const artisan = timed('php artisan --version')
+  check(`floor php artisan --version (${artisan.ms} ms)`, artisan.status === 0 && /Laravel Framework/.test(artisan.out), artisan)
+
+  // the same boot the session waits on, with none of the session's code: cmd with
+  // delayed expansion, the command typed into it, and the prompt it comes back with
+  const bootFloor = async () => {
+    const at = Date.now()
+    const terminal = pty.spawn(process.env.ComSpec, ['/V:ON'], {cwd: app, env: process.env})
+    let buffer = ''
+    let bannerAt = null
+    let promptAt = null
+
+    terminal.onData(data => {
+      buffer += data
+
+      if (bannerAt === null && /Psy Shell/.test(buffer)) bannerAt = Date.now() - at
+      if (promptAt === null && bannerAt !== null && /(?:^|[\r\n])>>> $/.test(buffer.slice(-256))) promptAt = Date.now() - at
+    })
+
+    terminal.write('php artisan tinker\r')
+
+    const until = Date.now() + 60000
+    while (Date.now() < until && promptAt === null) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+
+    terminal.kill()
+
+    return {ms: Date.now() - at, bannerAt, promptAt, cols: terminal.cols, tail: buffer.slice(-400)}
+  }
+
+  const boot = await bootFloor()
+  check(`floor cmd + php artisan tinker prompt (${boot.ms} ms, banner ${boot.bannerAt} ms, prompt ${boot.promptAt} ms)`, boot.promptAt !== null, boot)
+
   // --- a session -------------------------------------------------------------
   //
   // each run in a process of its own: what a run answers must be its own doing,
@@ -89,12 +137,20 @@ const throughTypedShell = async (list, encode) => {
 
   const runOne = async (code, timeout) => {
     const started = Date.now()
+    const traceFile = path.join(app, 'timeline.json')
+    try { fs.unlinkSync(traceFile) } catch (e) {}
     const child = spawnSync(process.execPath, [path.join(__dirname, 'runone.js'), code], {
       cwd: app,
-      env: Object.assign({}, process.env, {APP: app, RUN_TIMEOUT: String(timeout)}),
+      env: Object.assign({}, process.env, {APP: app, RUN_TIMEOUT: String(timeout), TRACE: traceFile}),
       encoding: 'utf8',
       timeout: timeout + 120000,
     })
+    // the timeline is printed for every run: it is how a slow one says where
+    // its seconds went without the run's own output being cut
+    let timeline = []
+    try { timeline = JSON.parse(fs.readFileSync(traceFile, 'utf8')) } catch (e) {}
+    console.log(`TIMELINE ${JSON.stringify(code)}`)
+    timeline.forEach(([at, event, detail]) => console.log(`  ${String(at).padStart(7)} ${event} ${detail}`))
     const text = `${child.stdout || ''}${child.stderr || ''}`
     const line = text.split(/\r?\n/).reverse().find(part => /^(?:RESULT|ERROR) \{/.test(part))
     let seen = null
