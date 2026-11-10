@@ -1314,8 +1314,19 @@ const printer = (keys, close = '') => {
   // one — then lands before the marker, where it is the run's output. Printed
   // between the markers instead, it would corrupt the base64 and the run would
   // have no answer at all
+  // the payload is printed in lines short enough that a console never wraps
+  // them: a line past the console's width is written by moving the cursor and
+  // rewriting the row, so what goes over the stream is the row as the console
+  // drew it, and characters of the payload it drew over are not in it. Base64
+  // that lost or repeated a character decodes to nothing, which is a run that
+  // answers and is never read as answering — it waits out its timeout instead.
+  // A `\n` costs the reader nothing: the payload is stripped of everything
+  // outside the base64 alphabet before it is decoded
   const echo = `$tinkr_payload=base64_encode(json_encode(${keys},JSON_PARTIAL_OUTPUT_ON_ERROR));` +
-    'echo $tinkr,"@",$tinkr_payload,"@";'
+    'echo $tinkr,"@\n";' +
+    `for($tinkr_at=0,$tinkr_len=strlen($tinkr_payload);$tinkr_at<$tinkr_len;$tinkr_at+=${payloadLineLength}){` +
+    `echo substr($tinkr_payload,$tinkr_at,${payloadLineLength}),"\n";}` +
+    'echo "@";'
   const stopped = '$tinkr_last=error_get_last();' +
     'if($tinkr_error===null&&$tinkr_last!==null&&in_array($tinkr_last["type"],' +
     '[E_ERROR,E_PARSE,E_CORE_ERROR,E_COMPILE_ERROR,E_USER_ERROR,E_RECOVERABLE_ERROR],true)){' +
@@ -1609,6 +1620,20 @@ const TYPED_END = '/*tinkr:end*/'
  * waits on (see Session#type) costs well under a second over ssh.
  */
 const typedLineLength = 1000
+
+/**
+ * How much of the run's envelope one printed line carries.
+ *
+ * The envelope is the session's own answer, and it is read out of the console's
+ * stream rather than from a file. A console wraps a line at its width by moving
+ * the cursor and drawing the row again, so a payload printed as one line is a row
+ * the console rewrote: characters of it that it drew over are not in the stream.
+ * Base64 that lost or repeated one character decodes to nothing, and nothing is
+ * not an answer — the run then waits out its whole timeout for an envelope that
+ * was printed. Printed in lines that never wrap, the payload arrives as it was
+ * written, and the reader strips the line endings before it decodes.
+ */
+const payloadLineLength = 64
 
 /**
  * How much of an unfinished line the filter holds before it lets it through.

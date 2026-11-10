@@ -53,6 +53,18 @@ describe('the run result filter', () => {
     expect(filter.printed).toBe('array:1 [\n  0 => "a"\n]\n')
   })
 
+  // a console wraps a line it is too narrow for by drawing the row again, so a
+  // payload printed as one line reaches the filter as the rows the console drew:
+  // what is not base64 is dropped, and what is left is the payload
+  test('reads an envelope whose payload a console put on lines of its own', () => {
+    const filter = new RunResultFilter(marker, start)
+    const value = 'a'.repeat(400)
+    const lines = envelope({value, error: null}).slice(marker.length + 1, -1).match(/.{1,64}/g)
+    const {result} = filter.push(`> ${start}\n${marker}@\n${lines.join('\r\n')}\r\n@\r\n> `)
+
+    expect(result).toEqual({value, error: null})
+  })
+
   test('drops a line of the echo the terminal wrapped onto a line of its own', () => {
     const filter = new RunResultFilter(marker, start)
     const [first, ...rest] = typedRun(wrapRun("$a = str_repeat('x', 3000);").code)
