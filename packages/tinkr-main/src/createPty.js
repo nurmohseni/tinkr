@@ -1,6 +1,5 @@
 const {
   wrapRun,
-  typedRun,
   RunResultFilter,
   runOutput,
   isApiRun,
@@ -85,6 +84,10 @@ const createPty = (connection, code, guard = null, timeout = null) => {
   const startedAt = Date.now()
   let run = null
   let filter = null
+  // the run as what was typed into the session, and what has to go once it has
+  // answered: a local windows console is handed a file instead of the run (see
+  // Session#runLines)
+  let typed = null
   let timer = null
   let settled = false
   let booted = false
@@ -111,6 +114,11 @@ const createPty = (connection, code, guard = null, timeout = null) => {
 
     settled = true
     clearTimeout(timer)
+
+    // the run has answered: what it was typed out of a file is finished with
+    if (typed) {
+      typed.remove()
+    }
 
     // what the run printed is the filter's; a run that never reached the
     // session brings its own output, because there was no run to print
@@ -331,10 +339,12 @@ const createPty = (connection, code, guard = null, timeout = null) => {
 
         run = wrapRun(code, aliases, guard, timeout)
         filter = new RunResultFilter(run.marker, run.start)
+        typed = pty.runLines(run)
 
         // a line at a time on posix, where one line of the whole run is more
-        // than libedit reads; windows hands over the lot (see Session#type)
-        return pty.type(typedRun(run.code))
+        // than libedit reads; windows hands over the lot, out of a file on a
+        // local one (see Session#type and Session#runLines)
+        return pty.type(typed.lines)
       }).catch(error => {
         // the command never became the session — a missing `artisan`, a platform
         // check, a php that is not there — so the run did not happen and the

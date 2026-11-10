@@ -14,12 +14,14 @@ const {spawn} = require('node-pty')
 const {
   Session,
   SessionError,
+  runCode,
   statusFrame,
   statusSentinel,
   bootSentinel,
   windowsBootSentinel,
   withoutPager,
 } = require('../session')
+const {RunResultFilter, typedRun} = require('../runResult')
 const {parseSSHCommand} = require('../parseSSHCommand')
 
 /**
@@ -379,6 +381,124 @@ describe('the lines a windows session types into psysh', () => {
     session.pty = null
 
     await session.type(['one'])
+  })
+})
+
+describe('the run a local windows console is handed', () => {
+  const run = {code: '<?php echo "hello";', marker: 'TINKR1', start: 'STRT1'}
+
+  // the console echoes every character typed into it, a render at a time, so a
+  // run of forty lines costs seventeen seconds of echo before the run's own
+  // answer can arrive behind them. The run goes into a file, and the console is
+  // given the one line that reads it back, which is echoed in a blink
+  test('goes into a file, and the console is given the line that reads it', () => {
+    const typed = windowsSession({path: '', command: 'php artisan tinker'}).runLines(run)
+
+    expect(typed.lines).toHaveLength(1)
+
+    const line = typed.lines[0]
+    const file = /file_get_contents\('((?:[^'\\]|\\.)*)'\)/.exec(line)[1].replace(/\\(.)/g, '$1')
+
+    expect(line).toMatch(/^echo eval\(base64_decode\(\/\*tinkr\*\/file_get_contents\('(?:[^'\\]|\\.)*'\)\)\);\/\*tinkr:end\*\/$/)
+    expect(file).toMatch(/tinkr-run-[0-9a-f]{12}\.txt$/)
+    // the same base64 a typed run carries, in one piece: nothing reads it but
+    // php, so the lines a console is typed are not needed
+    expect(fs.readFileSync(file, 'utf8')).toBe(Buffer.from(run.code, 'utf8').toString('base64'))
+
+    typed.remove()
+
+    expect(fs.existsSync(file)).toBe(false)
+  })
+
+  // the line carries the markers the typed run carries, so the console echoing
+  // it back is the session talking about the run rather than the run printing:
+  // the terminal drops it, and so does the run's own stream
+  test('is echoed into a line that closes the echo it opened', () => {
+    const typed = windowsSession({path: ''}).runLines(run)
+    const filter = new RunResultFilter(run.marker, run.start)
+
+    expect(typed.lines[0]).toContain('/*tinkr*/')
+    expect(typed.lines[0]).toContain('/*tinkr:end*/')
+    expect(filter.push(`${typed.lines[0]}\r\n`)).toEqual({output: '', run: '', result: null})
+
+    typed.remove()
+  })
+
+  test('stays in the terminal when php is not on this machine', () => {
+    // a file this app writes is not in a container, nor on a server: those keep
+    // the run in the terminal, where it is read by their own psysh
+    const container = windowsSession({path: '', container_engine: 'docker', container: 'app'})
+    const ssh = windowsSession({path: '/srv/app', is_over_ssh: true})
+
+    ;[container, ssh].forEach(session => {
+      const typed = session.runLines(run)
+
+      expect(typed.lines.length).toBeGreaterThan(1)
+      expect(typed.lines).toEqual(typedRun(run.code))
+      expect(() => typed.remove()).not.toThrow()
+    })
+  })
+
+  test('stays in the terminal on posix, where the console does not echo what it is given', () => {
+    const session = new Session({path: ''}, {platform: 'linux', log: {error: () => {}}})
+    const typed = session.runLines(run)
+
+    expect(typed.lines).toEqual(typedRun(run.code))
+  })
+})
+
+describe('a run of a local windows connection', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+    spawn.mockReset()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  // the console echoes every character typed into it a render at a time, so a run
+  // of forty lines is seventeen seconds of echo before the run's own answer can
+  // arrive behind it. It goes into a file instead, and the console is given the
+  // one line that reads it: what psysh evaluates is the same wrapper either way,
+  // and the file is nothing once the run has answered
+  test('is typed as one line, and its file is gone once it has answered', async () => {
+    const terminal = fakeTerminal()
+
+    spawn.mockReturnValue(terminal)
+
+    const run = runCode({path: ''}, 'return 1;', {
+      command: 'php artisan tinker',
+      timeout: 0,
+      platform: 'win32',
+    })
+
+    terminal.print('C:\\app>php artisan tinker & echo ::tinkr-exit:!ERRORLEVEL!::\r\n')
+    terminal.print('Psy Shell v0.12.18 (PHP 8.2.34 — cli) by Justin Hileman\r\n')
+    terminal.print('> ')
+    await flush()
+
+    const typed = terminal.written.filter(data => data.includes('file_get_contents'))
+
+    expect(typed).toHaveLength(1)
+
+    const file = /file_get_contents\('(.*)'\)/.exec(typed[0])[1].replace(/\\(.)/g, '$1')
+    // the wrapper is in the file, whole: the marker and the start marker are the
+    // wrapper's own, and what answers the run is printed inside them
+    const wrapper = Buffer.from(fs.readFileSync(file, 'utf8'), 'base64').toString('utf8')
+    const marker = `TINKR${/\$tinkr='TINK'\.'R([0-9A-F]{12})'/.exec(wrapper)[1]}`
+    const start = `STRT${/\$tinkr_start='STRT'\.'([0-9A-F]{12})'/.exec(wrapper)[1]}`
+
+    // the console echoing the line back, which the terminal drops, and then the
+    // run's own stream: the start marker, and the value inside the envelope
+    terminal.print(`${typed[0]}\r\n`)
+    terminal.print(start)
+    terminal.print(`${marker}@${Buffer.from(JSON.stringify({value: 1, error: null})).toString('base64')}@`)
+
+    const result = await run
+
+    expect(result.value).toBe(1)
+    expect(fs.existsSync(file)).toBe(false)
   })
 })
 

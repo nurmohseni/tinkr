@@ -81,6 +81,9 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       type: jest.fn(() => Promise.resolve()),
+      // a run is typed as the lines it is, and a local windows session would
+      // hand it a file instead (see Session#runLines)
+      runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
       ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(cb => {
         printed.push(cb)
@@ -161,6 +164,9 @@ describe('a run of a connection', () => {
       pty = {
         connect: jest.fn(),
         type: jest.fn(() => Promise.resolve()),
+        // a run is typed as the lines it is, and a local windows session would
+        // hand it a file instead (see Session#runLines)
+        runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
         ready: jest.fn(() => new Promise(resolve => {
           reading = resolve
         })),
@@ -190,6 +196,50 @@ describe('a run of a connection', () => {
     expect(pty.type).toHaveBeenCalledWith(typedRun('the snippet'))
   })
 
+  // what is typed into a local windows console is one line reading the run out of
+  // a file, because the console echoes a run slowly enough to be the run's wait
+  // (see Session#runLines). The file is the run's own, and the answer is what
+  // makes it nothing the app has to keep
+  test('removes the file a run was typed out of once it has answered', async () => {
+    let reading = null
+    let pty = null
+
+    Pty.mockImplementation(() => {
+      pty = {
+        connect: jest.fn(),
+        type: jest.fn(() => Promise.resolve()),
+        runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
+        ready: jest.fn(() => new Promise(resolve => {
+          reading = resolve
+        })),
+        onData: jest.fn(cb => {
+          printed.push(cb)
+
+          return {dispose: jest.fn()}
+        }),
+        onExit: jest.fn(),
+        onCommandExit: jest.fn(),
+      }
+
+      return pty
+    })
+
+    createPty(connection, 'the snippet')
+    reading()
+    await new Promise(resolve => setImmediate(resolve))
+
+    const typed = pty.runLines.mock.results[0].value
+
+    expect(typed.remove).not.toHaveBeenCalled()
+
+    // the run's value came in: the session printed the envelope the filter answers
+    // with, and there is nothing more to read the run out of
+    printed[0]('the run answered')
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(typed.remove).toHaveBeenCalledTimes(1)
+  })
+
   test('writes nothing into a session that was replaced while it was booting', async () => {
     let reading = null
     let pty = null
@@ -198,6 +248,9 @@ describe('a run of a connection', () => {
       pty = {
         connect: jest.fn(),
         type: jest.fn(() => Promise.resolve()),
+        // a run is typed as the lines it is, and a local windows session would
+        // hand it a file instead (see Session#runLines)
+        runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
         ready: jest.fn(() => new Promise(resolve => {
           reading = resolve
         })),
@@ -230,6 +283,9 @@ describe('a run of a connection', () => {
         pty = {
           connect: jest.fn(),
           type: jest.fn(() => Promise.resolve()),
+          // a run is typed as the lines it is, and a local windows session would
+          // hand it a file instead (see Session#runLines)
+          runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
           kill: jest.fn(),
           ready: jest.fn(() => new Promise(() => {})),
           onData: jest.fn(() => ({dispose: jest.fn()})),
@@ -286,6 +342,9 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       type: jest.fn(() => Promise.resolve()),
+      // a run is typed as the lines it is, and a local windows session would
+      // hand it a file instead (see Session#runLines)
+      runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
       ready: jest.fn(() => Promise.reject(
         Object.assign(new Error('the session\'s command exited before it was ready (exit status 1): Could not open input file: artisan'), {
           name: 'SessionError',
@@ -323,6 +382,9 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       type: jest.fn(() => Promise.resolve()),
+      // a run is typed as the lines it is, and a local windows session would
+      // hand it a file instead (see Session#runLines)
+      runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
       ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(() => ({dispose: jest.fn()})),
       onExit: jest.fn(),
@@ -368,6 +430,9 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       type: jest.fn(() => Promise.resolve()),
+      // a run is typed as the lines it is, and a local windows session would
+      // hand it a file instead (see Session#runLines)
+      runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
       ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(cb => {
         printed.push(cb)
@@ -406,6 +471,9 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       type: jest.fn(() => Promise.resolve()),
+      // a run is typed as the lines it is, and a local windows session would
+      // hand it a file instead (see Session#runLines)
+      runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
       ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(cb => {
         printed.push(cb)
@@ -440,6 +508,9 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       type: jest.fn(() => Promise.resolve()),
+      // a run is typed as the lines it is, and a local windows session would
+      // hand it a file instead (see Session#runLines)
+      runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
       ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(() => ({dispose: jest.fn()})),
       onExit: jest.fn(cb => {
@@ -500,6 +571,9 @@ describe('a run of a connection', () => {
     Pty.mockImplementation(() => ({
       connect: jest.fn(),
       type: jest.fn(() => Promise.resolve()),
+      // a run is typed as the lines it is, and a local windows session would
+      // hand it a file instead (see Session#runLines)
+      runLines: jest.fn(run => ({lines: typedRun(run.code), remove: jest.fn()})),
       ready: jest.fn(() => Promise.resolve()),
       onData: jest.fn(cb => {
         printed.push(cb)

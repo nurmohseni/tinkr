@@ -1,4 +1,7 @@
 const {randomBytes} = require('crypto')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 
 const {stripRendering} = require('./terminalOutput')
 const sandbox = require('./sandbox')
@@ -1679,6 +1682,52 @@ const typedRun = code => {
   return lines
 }
 
+/**
+ * The run as one line of a console, read back out of a file.
+ *
+ * A windows console echoes what is typed into it, and conpty carries that echo
+ * back a render at a time — some twenty bytes every ten milliseconds — so the
+ * forty lines a run is typed as cost seventeen seconds of echo before the run's
+ * own answer can arrive behind them, a snippet of two words or not. Handing the
+ * lines over in one write does not change that: the echo is what the console does
+ * with what it was given, and it carries it back at its own pace whatever shape
+ * it arrived in. The run is worth none of that cost. It goes into a file, and the
+ * console is given the one line that reads it, which is echoed in a blink, and
+ * psysh evaluates the same wrapper either way.
+ *
+ * The line carries the same markers the typed run carries, so the echo of it is
+ * dropped from the terminal and from the run's output the way every other echo
+ * is, and a line holding both markers closes the echo it opened (see
+ * RunResultFilter#line).
+ *
+ * A file is only there where the code runs, which is why the callers keep this
+ * for a connection that runs php on this machine: a container and a server each
+ * see their own filesystem, and this one is not in it.
+ *
+ * @param {String} code `run.code` from wrapRun
+ * @return {{line: String, remove: Function}} the line to type, and what deletes
+ * the file once the run has answered
+ */
+const typedRunInFile = code => {
+  const file = path.join(os.tmpdir(), `tinkr-run-${randomBytes(6).toString('hex')}.txt`)
+
+  // one line, because nothing reads this but php: the base64 a run is typed as is
+  // cut into lines for the console's sake alone
+  fs.writeFileSync(file, Buffer.from(code, 'utf8').toString('base64'), {mode: 0o600})
+
+  return {
+    line: `echo eval(base64_decode(${TYPED}file_get_contents(${phpString(file)})));${TYPED_END}`,
+    remove: () => {
+      try {
+        fs.unlinkSync(file)
+      } catch (error) {
+        // a file that is already gone is what was wanted: the run may have been
+        // stopped, or answered, twice over
+      }
+    },
+  }
+}
+
 class RunResultFilter {
   /**
    * @param {String} marker the marker the value is printed inside
@@ -2194,5 +2243,6 @@ module.exports = {
   RunResultFilter,
   phpString,
   typedRun,
+  typedRunInFile,
   parseResult,
 }

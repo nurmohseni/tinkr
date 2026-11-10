@@ -108,6 +108,17 @@ class Pty {
   }
 
   /**
+   * The lines a run is typed into this session as, and what cleans up after it
+   * (see Session#runLines).
+   *
+   * @param {Object} run what runResult.wrapRun returned
+   * @return {{lines: Array<String>, remove: Function}}
+   */
+  runLines(run) {
+    return this.session.runLines(run)
+  }
+
+  /**
    * The session is reading the terminal, so the run it was started with can go
    * in without being dropped. See Session#ready.
    *

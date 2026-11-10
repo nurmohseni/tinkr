@@ -4,12 +4,12 @@ const osLocale = require('os-locale')
 const os = require('os')
 const fs = require('fs')
 
-const {wrapRun, typedRun, RunResultFilter} = require('./runResult')
+const {wrapRun, typedRun, typedRunInFile, RunResultFilter} = require('./runResult')
 const {stripRendering, stripSessionNotes} = require('./terminalOutput')
 const {importsFor} = require('./classIndex')
 const {parseSSHCommand} = require('./parseSSHCommand')
 const {askpassEnvironment} = require('./sshAskpass')
-const {sessionCommand} = require('./containerCommand')
+const {sessionCommand, connectionKind} = require('./containerCommand')
 const {isCloud, runCloud, cloudTokenOf} = require('./cloud')
 const {isVapor, runVapor, vaporTokenOf} = require('./vapor')
 
@@ -982,9 +982,15 @@ class Session {
    * and costs the run its whole length: the console echoes what it is typed, and
    * conpty carries that echo back a render at a time — some twenty bytes every
    * ten milliseconds — so a line of base64 takes four hundred milliseconds to
-   * come back and a run of forty of them takes seventeen seconds to type a
-   * snippet of two words. Handed over in one write, the same forty lines are one
-   * scroll of the same console, and psysh reads them as it comes to them.
+   * come back, and a run of forty of them seventeen seconds to type a snippet of
+   * two words. The whole run is written at once, and psysh reads it as it comes
+   * to it.
+   *
+   * Writing it at once does not make the echo cheap: the console still echoes
+   * every character it was given, at the pace it echoes at, whatever shape the
+   * characters arrived in. A run typed into a local windows session therefore
+   * goes into a file instead, and one line reads it (see `runLines` and
+   * runResult.typedRunInFile): what is left to echo is the line, not the run.
    *
    * @param {Array<String>} lines without their line endings
    * @return {Promise<void>} once the last line is written
@@ -1058,6 +1064,33 @@ class Session {
 
       next()
     })
+  }
+
+  /**
+   * The lines a run is typed into this session as, and what cleans up after it.
+   *
+   * Everywhere but a local windows console this is the run itself, line by line
+   * (see runResult.typedRun and `type`). On a local windows console it is one
+   * line reading a file, because the console echoes what it is typed at a pace
+   * that makes a run of forty lines seventeen seconds (see `type` and
+   * runResult.typedRunInFile).
+   *
+   * Only a connection whose php runs on this machine can read a file this app
+   * writes: a container, a server and a cloud environment each run php where
+   * their own files are, so those keep the run in the terminal.
+   *
+   * @param {Object} run what runResult.wrapRun returned
+   * @return {{lines: Array<String>, remove: Function}} the lines to type, and
+   * what deletes the file once the run has answered
+   */
+  runLines(run) {
+    if (this.platform === 'win32' && connectionKind(this.connection) === 'local') {
+      const typed = typedRunInFile(run.code)
+
+      return {lines: [typed.line], remove: typed.remove}
+    }
+
+    return {lines: typedRun(run.code), remove: () => {}}
   }
 
   /**
@@ -1233,6 +1266,9 @@ const runCode = (connection, code, options = {}) => {
     : {}
   const run = wrapRun(code, imports, guard, timeout)
   const filter = new RunResultFilter(run.marker, run.start)
+  // the run as what is typed, and what has to go once it has answered: a local
+  // windows console is handed a file instead of the run (see Session#runLines)
+  const typed = session.runLines(run)
 
   return new Promise((resolve, reject) => {
     let settled = false
@@ -1249,6 +1285,7 @@ const runCode = (connection, code, options = {}) => {
 
       settled = true
       clearTimeout(timer)
+      typed.remove()
       session.kill()
 
       if (error) {
@@ -1322,8 +1359,9 @@ const runCode = (connection, code, options = {}) => {
       booted = true
 
       // a line at a time: one line of the whole run is more than libedit reads
-      // (see runResult.typedRun)
-      return session.type(typedRun(run.code))
+      // (see runResult.typedRun), and on a local windows console a single line
+      // that reads the run out of its file
+      return session.type(typed.lines)
     }).catch(error => finish(error))
 
     session.onExit(() => {
