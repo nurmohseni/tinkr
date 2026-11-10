@@ -100,6 +100,13 @@ const throughTypedShell = async (list, encode) => {
   const artisan = timed('php artisan --version')
   check(`floor php artisan --version (${artisan.ms} ms)`, artisan.status === 0 && /Laravel Framework/.test(artisan.out), artisan)
 
+  // what a run pays before the pty exists: the app loads its own modules once
+  // per process, and asks the platform for a locale to put in the environment
+  const loaded = timed('node -e "require(\'./packages/tinkr-core/src/session\')"')
+  check(`floor tinkr-core loaded (${loaded.ms} ms)`, loaded.status === 0, loaded)
+  const locale = timed('node -e "const at=Date.now();const l=require(\'os-locale\').sync();console.log(JSON.stringify({locale:l,ms:Date.now()-at}))"')
+  check(`floor os locale (${locale.ms} ms) ${locale.out}`, locale.status === 0, locale)
+
   // the same boot the session waits on, with none of the session's code: cmd with
   // delayed expansion, the command typed into it, and the prompt it comes back with
   const bootFloor = async () => {
@@ -113,7 +120,7 @@ const throughTypedShell = async (list, encode) => {
       buffer += data
 
       if (bannerAt === null && /Psy Shell/.test(buffer)) bannerAt = Date.now() - at
-      if (promptAt === null && bannerAt !== null && /(?:^|[\r\n])> $/.test(buffer.slice(-256))) promptAt = Date.now() - at
+      if (promptAt === null && bannerAt !== null && /(?:^|[\r\n])>(?: |$|\u001b)/.test(buffer.slice(-256))) promptAt = Date.now() - at
     })
 
     terminal.write('php artisan tinker\r')
@@ -153,7 +160,7 @@ const throughTypedShell = async (list, encode) => {
       state.buffer += data
 
       if (state.bannerAt === null && /Psy Shell/.test(state.buffer)) state.bannerAt = Date.now() - at
-      if (state.promptAt === null && state.bannerAt !== null && /(?:^|[\r\n])> $/.test(state.buffer.slice(-256))) state.promptAt = Date.now() - at
+      if (state.promptAt === null && state.bannerAt !== null && /(?:^|[\r\n])>(?: |$|\u001b)/.test(state.buffer.slice(-256))) state.promptAt = Date.now() - at
       if (state.answeredAt !== null) return
       const found = state.buffer.indexOf(run.marker)
       const opens = found === -1 ? -1 : state.buffer.indexOf('@', found + run.marker.length)
