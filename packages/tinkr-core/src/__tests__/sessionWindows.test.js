@@ -342,6 +342,48 @@ describe('what a windows session waits for before it is handed a run', () => {
   })
 })
 
+describe('the lines a windows session types into psysh', () => {
+  let session = null
+  let terminal = null
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    terminal = fakeTerminal()
+    session = windowsSession()
+    session.pty = terminal
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  // psysh reads a statement it has not finished behind a prompt of dots, and a
+  // console prints the space that separates them as a cursor move: what reaches
+  // the session is `.` and `.`, not `. `. A run waits for that prompt between
+  // its lines, and a run that does not see it is written in one go at the
+  // readiness limit — late, and ahead of the readline rather than read by it
+  test('takes the prompt of a statement that is not finished as psysh reading', async () => {
+    let typed = false
+
+    session.type(['one', 'two', 'three']).then(() => {
+      typed = true
+    })
+
+    expect(terminal.written).toEqual(['one\r'])
+
+    terminal.print('one\r\n.\u001b[1C.\u001b[K')
+    await flush()
+
+    expect(terminal.written).toEqual(['one\r', 'two\r'])
+
+    terminal.print('two\r\n.\u001b[1C.')
+    await flush()
+
+    expect(terminal.written).toEqual(['one\r', 'two\r', 'three\r'])
+    expect(typed).toBe(true)
+  })
+})
+
 describe('the line a windows session starts php with', () => {
   test('keeps the pager out of the way of a cmd command as it did on posix', () => {
     expect(withoutPager('php artisan tinker')).toBe('php -d cli.pager=cat artisan tinker')

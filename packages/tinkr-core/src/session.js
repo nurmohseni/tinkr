@@ -85,8 +85,14 @@ const psyshPrompt = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) $/
  * without the space after it, which is psysh's prompt still — and it is only
  * read as one once the banner has said it is psysh's and not a shell's own
  * `C:\app>` (see `psyshBanner`).
+ *
+ * The prompt psysh reads an unfinished statement behind is written the same way
+ * and is a run of dots rather than one: the console drops the space that
+ * separates them, so `. ` repeated reaches here as `. .`, or as `.` when the
+ * statement was written whole. Any run of dots is that prompt, and a run typed
+ * into a statement that psysh is still reading is a run the readline drops.
  */
-const psyshPromptOnWindows = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) ?$/
+const psyshPromptOnWindows = /(?:^|[\r\n])(?:>+|(?:\. ?)+) ?$/
 
 /**
  * Whether the text ends in a prompt waiting for a line, read the way the
