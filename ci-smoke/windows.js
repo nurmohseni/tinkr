@@ -15,7 +15,7 @@ const check = (name, ok, detail) => {
   if (!ok) failed++
 }
 
-const words = ['plain', 'with space', 'quote"inside', "single'q", '%PATH%', '!bang!', 'a&b|c<d>e(f)', 'caret^x', 'ünïcødé', 'trail\\', 'comma,semi;eq=', '']
+const words = ['plain', 'with space', 'quote"inside', "single'q", '%PATH%', '!bang!', 'a&b|c<d>e(f)', 'caret^x', 'ünïcødé', 'trail\\', 'comma,semi;eq=', '100% !bang! ^caret', 'C:\\srv\\100%\\a!b^c', '']
 
 // a word as the shell of a session reads it: cmd started with /V:ON, which is
 // where a `!` takes one caret more than it does in a `/c` line
