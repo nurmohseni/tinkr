@@ -231,6 +231,27 @@ describe('what a windows session waits for before it is handed a run', () => {
     expect(readied).toBe(true)
   })
 
+  // a console prints no space that moves nothing: psysh's `> ` reaches the run
+  // as the prompt and a cursor move, and the prompt is what is left of it
+  test('reads a prompt whose trailing space the console rendered as a cursor move', async () => {
+    let readied = false
+
+    session.ready().then(() => {
+      readied = true
+    })
+
+    terminal.print('C:\\app>php artisan tinker & echo ::tinkr-exit:!ERRORLEVEL!::\r\n')
+    terminal.print('Psy Shell v0.12.18 (PHP 8.2.34 — cli) by Justin Hileman\r\n')
+    await flush()
+
+    expect(readied).toBe(false)
+
+    terminal.print('>\u001b[K\u001b[1C')
+    await flush()
+
+    expect(readied).toBe(true)
+  })
+
   test('does not take the shell\'s own prompt for psysh\'s', async () => {
     let readied = false
 

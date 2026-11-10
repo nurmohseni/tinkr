@@ -77,6 +77,28 @@ const terminalGivenUp = '\u001b[?2004l'
 const psyshPrompt = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) $/
 
 /**
+ * The same prompt after a windows console has had it.
+ *
+ * A console does not print a space that moves nothing: psysh's `> ` arrives as
+ * the `>` and a cursor move one column to the right, and the move is gone by the
+ * time the text is read (see `stripRendering`). What is left is the prompt
+ * without the space after it, which is psysh's prompt still — and it is only
+ * read as one once the banner has said it is psysh's and not a shell's own
+ * `C:\app>` (see `psyshBanner`).
+ */
+const psyshPromptOnWindows = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) ?$/
+
+/**
+ * Whether the text ends in a prompt waiting for a line, read the way the
+ * platform's own terminal leaves it.
+ *
+ * @param {string} text what the command has printed, its tail
+ * @param {boolean} win32 whether the session runs under cmd.exe
+ * @return {boolean}
+ */
+const promptWaiting = (text, win32) => (win32 ? psyshPromptOnWindows : psyshPrompt).test(stripRendering(text))
+
+/**
  * What psysh prints once it has booted, before it prints the first prompt.
  *
  * It is only needed on windows. There the shell prints no handover escape (see
@@ -835,7 +857,7 @@ class Session {
 
           psyshSeen = psyshSeen || psyshBanner.test(booted)
 
-          if (psyshSeen && psyshPrompt.test(stripRendering(booted.slice(-256)))) {
+          if (psyshSeen && promptWaiting(booted.slice(-256), true)) {
             settle()
 
             return
@@ -848,7 +870,7 @@ class Session {
           // psysh printed its prompt: libedit has the terminal, and says so no
           // other way. Only the end of what came back is read, which is where a
           // prompt that is waiting for a line is
-          if (psyshPrompt.test(stripRendering(booted.slice(-256)))) {
+          if (promptWaiting(booted.slice(-256), win32)) {
             settle()
 
             return
@@ -1003,7 +1025,7 @@ class Session {
       listener = pty.onData(data => {
         since = (since + data).slice(-256)
 
-        if (psyshPrompt.test(stripRendering(since))) {
+        if (promptWaiting(since, this.platform === 'win32')) {
           next()
         }
       })
