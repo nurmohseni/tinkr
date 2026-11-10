@@ -88,7 +88,7 @@ const psyshPrompt = /(?:^|[\r\n])(?:>>>|>|\.\.\.|\.) $/
  *
  * The prompt psysh reads an unfinished statement behind is written the same way
  * and is a run of dots rather than one: the console drops the space that
- * separates them, so `. ` repeated reaches here as `. .`, or as `.` when the
+ * separates them, so `. ` repeated reaches here as `..`, or as `.` when the
  * statement was written whole. Any run of dots is that prompt, and a run typed
  * into a statement that psysh is still reading is a run the readline drops.
  */
