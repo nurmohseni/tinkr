@@ -7,7 +7,8 @@ const pty = require('node-pty')
 
 const {exec} = require('../packages/tinkr-core/src/remote')
 const {shellQuote} = require('../packages/tinkr-core/src/shell')
-const {wrapRun, typedRun} = require('../packages/tinkr-core/src/runResult')
+const {wrapRun, typedRun, typedRunInFile} = require('../packages/tinkr-core/src/runResult')
+const {stripRendering} = require('../packages/tinkr-core/src/terminalOutput')
 
 const app = process.env.APP
 let failed = 0
@@ -101,11 +102,16 @@ const throughTypedShell = async (list, encode) => {
   check(`floor php artisan --version (${artisan.ms} ms)`, artisan.status === 0 && /Laravel Framework/.test(artisan.out), artisan)
 
   // what a run pays before the pty exists: the app loads its own modules once
-  // per process, and asks the platform for a locale to put in the environment
-  const loaded = timed('node -e "require(\'./packages/tinkr-core/src/session\')"')
-  check(`floor tinkr-core loaded (${loaded.ms} ms)`, loaded.status === 0, loaded)
-  const locale = timed('node -e "const at=Date.now();const l=require(\'os-locale\').sync();console.log(JSON.stringify({locale:l,ms:Date.now()-at}))"')
-  check(`floor os locale (${locale.ms} ms) ${locale.out}`, locale.status === 0, locale)
+  // per process, and asks the platform for a locale to put in the environment.
+  // Both are timed in this process, because this one is already up: what they
+  // cost a run is the same work done again per run
+  const loadedAt = Date.now()
+  require(path.join(__dirname, '..', 'packages', 'tinkr-core', 'src', 'session'))
+  const loadedMs = Date.now() - loadedAt
+  check(`floor tinkr-core loaded (${loadedMs} ms)`, true, {loadedMs})
+  const localeAt = Date.now()
+  const locale = require('os-locale').sync()
+  check(`floor os locale (${Date.now() - localeAt} ms) ${locale}`, true, {locale})
 
   // the same boot the session waits on, with none of the session's code: cmd with
   // delayed expansion, the command typed into it, and the prompt it comes back with
@@ -113,14 +119,19 @@ const throughTypedShell = async (list, encode) => {
     const at = Date.now()
     const terminal = pty.spawn(process.env.ComSpec, ['/V:ON'], {cwd: app, env: process.env})
     let buffer = ''
+    let tail = ''
     let bannerAt = null
     let promptAt = null
 
     terminal.onData(data => {
       buffer += data
+      // the console draws the prompt's trailing space as a cursor move, so what
+      // a prompt looks like is read the way the session reads it: with the
+      // rendering taken off
+      tail = (tail + stripRendering(data)).slice(-1024)
 
       if (bannerAt === null && /Psy Shell/.test(buffer)) bannerAt = Date.now() - at
-      if (promptAt === null && bannerAt !== null && /(?:^|[\r\n])>(?: |$|\u001b)/.test(buffer.slice(-256))) promptAt = Date.now() - at
+      if (promptAt === null && bannerAt !== null && /(?:^|[\r\n])(?:>+|(?:\. ?)+) ?$/.test(tail)) promptAt = Date.now() - at
     })
 
     terminal.write('php artisan tinker\r')
@@ -140,32 +151,32 @@ const throughTypedShell = async (list, encode) => {
 
   // --- what the typing costs -------------------------------------------------
   //
-  // a run is 41 lines of base64 for a one-line snippet, and the console echoes
-  // every character of it back through conpty: this measures what that echo
-  // costs when the lines are handed over in one write, in fours, and one at a
-  // time, and whether the console takes the whole run in a single write at all
+  // a run is 41 lines of base64 for a one-line snippet, the console echoes every
+  // character of it back through conpty a render at a time, and that echo is what
+  // a run waits behind: measured here as the lines themselves, and as the one
+  // line a local windows session types instead, which reads the run out of a file
+  // (see Session#runLines)
 
   const nap = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-  const typedProbe = async (batch) => {
+  const typedProbe = async (run, lines, remove) => {
     const at = Date.now()
-    const run = wrapRun('1 + 1')
-    const lines = typedRun(run.code)
     const terminal = pty.spawn(process.env.ComSpec, ['/V:ON'], {cwd: app, env: process.env})
-    const state = {buffer: '', bannerAt: null, promptAt: null, answeredAt: null, chunks: 0, bytes: 0}
+    const state = {buffer: '', tail: '', bannerAt: null, promptAt: null, answeredAt: null, chunks: 0, bytes: 0}
 
     terminal.onData(data => {
       state.chunks += 1
       state.bytes += data.length
       state.buffer += data
+      state.tail = (state.tail + stripRendering(data)).slice(-1024)
 
       if (state.bannerAt === null && /Psy Shell/.test(state.buffer)) state.bannerAt = Date.now() - at
-      if (state.promptAt === null && state.bannerAt !== null && /(?:^|[\r\n])>(?: |$|\u001b)/.test(state.buffer.slice(-256))) state.promptAt = Date.now() - at
+      if (state.promptAt === null && state.bannerAt !== null && /(?:^|[\r\n])(?:>+|(?:\. ?)+) ?$/.test(state.tail)) state.promptAt = Date.now() - at
       if (state.answeredAt !== null) return
       const found = state.buffer.indexOf(run.marker)
       const opens = found === -1 ? -1 : state.buffer.indexOf('@', found + run.marker.length)
       const closes = opens === -1 ? -1 : state.buffer.indexOf('@', opens + 1)
-      if (closes !== -1) state.answeredAt = Date.now() - at
+      if (closes !== -1) state.answeredAt = Date.now()
     })
 
     terminal.write('php artisan tinker\r')
@@ -174,11 +185,9 @@ const throughTypedShell = async (list, encode) => {
     while (Date.now() < until && state.promptAt === null) await nap(10)
 
     const typedAt = Date.now()
-    let writtenAt = null
-    for (let at2 = 0; at2 < lines.length; at2 += batch) {
-      terminal.write(lines.slice(at2, at2 + batch).map(line => `${line}\r`).join(''))
-      writtenAt = Date.now()
-    }
+    terminal.write(lines.map(line => `${line}\r`).join(''))
+
+    while (Date.now() < until && state.answeredAt === null) await nap(10)
 
     while (Date.now() < until && state.answeredAt === null) await nap(10)
 
@@ -194,13 +203,13 @@ const throughTypedShell = async (list, encode) => {
     }
     terminal.kill()
 
+    if (remove) remove()
+
     return {
-      batch,
       lines: lines.length,
-      bytesTyped: lines.reduce((sum, line) => sum + line.length + 1, 0),
+      charsTyped: lines.reduce((sum, line) => sum + line.length + 1, 0),
       ms: Date.now() - at,
       bootAt: state.promptAt,
-      writeAt: writtenAt === null ? null : writtenAt - typedAt,
       answeredAt: state.answeredAt === null ? null : state.answeredAt - typedAt,
       chunks: state.chunks,
       echoed: state.bytes,
@@ -208,11 +217,13 @@ const throughTypedShell = async (list, encode) => {
     }
   }
 
-  for (const size of [1000, 8, 1]) {
-    const probe = await typedProbe(size)
-    const how = size === 1 || size === 8 ? `in ${size}s` : 'in one write'
-    check(`typing ${probe.lines} lines ${how} (${probe.ms} ms, echo ${probe.echoed} bytes in ${probe.chunks} chunks, write ${probe.writeAt} ms, answer ${probe.answeredAt} ms)`, probe.value === 2, probe)
-  }
+  const snippet = wrapRun('1 + 1')
+  const asLines = await typedProbe(snippet, typedRun(snippet.code))
+  check(`typing ${asLines.lines} lines in one write (${asLines.ms} ms, echo ${asLines.echoed} bytes in ${asLines.chunks} chunks, answer ${asLines.answeredAt} ms)`, asLines.value === 2, asLines)
+
+  const inFile = typedRunInFile(snippet.code)
+  const asLine = await typedProbe(snippet, [inFile.line], inFile.remove)
+  check(`typing the one line that reads a file (${asLine.ms} ms, ${asLine.charsTyped} chars typed, echo ${asLine.echoed} bytes in ${asLine.chunks} chunks, answer ${asLine.answeredAt} ms)`, asLine.value === 2 && asLine.answeredAt !== null && asLine.answeredAt < 2000, asLine)
 
   // --- a session -------------------------------------------------------------
   //
