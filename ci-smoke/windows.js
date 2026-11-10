@@ -1,11 +1,12 @@
 // Throwaway: drives the real command layer on a real cmd.exe.
+const fs = require('fs')
 const path = require('path')
 
+const {spawnSync} = require('child_process')
 const pty = require('node-pty')
 
 const {exec} = require('../packages/tinkr-core/src/remote')
 const {shellQuote} = require('../packages/tinkr-core/src/shell')
-const {runCode} = require('../packages/tinkr-core/src/session')
 
 const app = process.env.APP
 let failed = 0
@@ -13,7 +14,6 @@ const check = (name, ok, detail) => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' :: ' + JSON.stringify(detail).slice(0, 3000)}`)
   if (!ok) failed++
 }
-const timed = async (fn) => { const t = Date.now(); try { return {r: await fn(), ms: Date.now() - t} } catch (e) { return {e, ms: Date.now() - t} } }
 
 const words = ['plain', 'with space', 'quote"inside', "single'q", '%PATH%', '!bang!', 'a&b|c<d>e(f)', 'caret^x', 'ünïcødé', 'trail\\', 'comma,semi;eq=', '']
 
@@ -62,12 +62,12 @@ const throughTypedShell = async (list, encode) => {
   try { got = JSON.parse(String(read.stdout || read.output || '').trim().split('\n').pop()) } catch (e) {}
   check('cmd quoting round trip through remote.exec', JSON.stringify(got) === JSON.stringify(words), {words, read})
 
-  const typed = await throughTypedShell(words, word => shellQuote(word, 'win32', {delayed: true}))
-  check('cmd quoting round trip through the session shell (/V:ON)', JSON.stringify(typed.got) === JSON.stringify(words), {words, got: typed.got, part: typed.part.slice(-1500)})
-
-  const phpCode = 'echo json_encode(["a" => "100%", "b" => "x&y", "c" => "it\'s", "d" => "a b"]);'
+  // a variable that was never set here, and a percent that is part of no name:
+  // both a caret escape has to hand to the program as they were written
+  const undefinedVariable = '__TINKR_SMOKE_UNDEFINED__'
+  const phpCode = `echo json_encode(["a" => "%${undefinedVariable}%", "b" => "100%", "c" => "x&y", "d" => "it's", "e" => "a b"]);`
   const phpRead = await exec({path: app}, `php -r ${shellQuote(phpCode, 'win32')}`, {timeout: 30000})
-  check('php -r through cmd keeps %, & and quotes', String(phpRead.stdout || '').includes(`{"a":"100%","b":"x&y","c":"it's","d":"a b"}`), phpRead)
+  check('php -r through cmd keeps %, & and quotes', String(phpRead.stdout || '').includes(`{"a":"%${undefinedVariable}%","b":"100%","c":"x&y","d":"it's","e":"a b"}`), phpRead)
 
   // a path of the machine's that holds what cmd expands, as a word of a line
   const oddWord = 'C:\\100%\\a!b&c^d'
@@ -77,34 +77,64 @@ const throughTypedShell = async (list, encode) => {
   check('a path with % ! & ^ survives the line', JSON.stringify(oddGot) === JSON.stringify([oddWord]), {oddWord, odd})
 
   // --- a session -------------------------------------------------------------
+  //
+  // each run in a process of its own: what a run answers must be its own doing,
+  // and a run that answers nothing reports the tail of its terminal with it
 
-  const conn = {id: 'w', path: app, command: 'php artisan tinker'}
-  let x = await timed(() => runCode(conn, '1 + 1', {timeout: 90000}))
-  check(`runCode value (${x.ms} ms)`, x.r && x.r.value === 2, x.e ? {message: x.e.message, output: x.e.output} : x.r)
+  const runOne = async (code, timeout) => {
+    const started = Date.now()
+    const child = spawnSync(process.execPath, [path.join(__dirname, 'runone.js'), code], {
+      cwd: app,
+      env: Object.assign({}, process.env, {APP: app, RUN_TIMEOUT: String(timeout)}),
+      encoding: 'utf8',
+      timeout: timeout + 120000,
+    })
+    const text = `${child.stdout || ''}${child.stderr || ''}`
+    const line = text.split(/\r?\n/).reverse().find(part => /^(?:RESULT|ERROR) \{/.test(part))
+    let seen = null
+    try { seen = line ? JSON.parse(line.slice(line.indexOf(' '))) : null } catch (e) {}
+    const tail = seen ? seen.raw.slice(-1200) : text.slice(-1200)
 
-  x = await timed(() => runCode(conn, '1 + 2', {timeout: 90000}))
-  check(`runCode second value (${x.ms} ms)`, x.r && x.r.value === 3, x.e ? {message: x.e.message, output: x.e.output} : x.r)
+    return {ms: Date.now() - started, seen, tail, status: child.status}
+  }
 
-  x = await timed(() => runCode(conn, `$s = "it's \\"q\\" $"; echo "printed\\n"; $s`, {timeout: 90000}))
-  check('runCode quotes + echo', x.r && x.r.value === `it's "q" $` && /printed/.test(x.r.output || ''), x.e ? {message: x.e.message, output: x.e.output} : x.r)
+  const valueOf = run => (run.seen ? run.seen.value : undefined)
+  const outputOf = run => String((run.seen && run.seen.output) || '')
 
-  x = await timed(() => runCode(conn, "throw new RuntimeException('boom');", {timeout: 90000}))
-  check('runCode exception with line', x.r && x.r.error && x.r.error.message === 'boom' && x.r.error.line === 1, x.e ? {message: x.e.message} : x.r && x.r.error)
+  let x = await runOne('1 + 1', 90000)
+  check(`runCode value (${x.ms} ms)`, valueOf(x) === 2, {status: x.status, seen: x.seen, tail: x.tail})
 
-  x = await timed(() => runCode(conn, 'echo "a\\nb"; 1', {timeout: 90000}))
-  check('runCode small echo', x.r && x.r.value === 1 && (x.r.output || '').trim() === 'a\nb', x.e ? {message: x.e.message} : {value: x.r && x.r.value, output: x.r && x.r.output})
+  x = await runOne('1 + 2', 30000)
+  check(`runCode second value (${x.ms} ms)`, valueOf(x) === 3, {status: x.status, seen: x.seen, tail: x.tail})
 
-  x = await timed(() => runCode(conn, 'echo str_repeat("y", 70000); 2', {timeout: 90000}))
-  check(`runCode 64 KB line (${x.ms} ms)`, x.r && x.r.value === 2 && (x.r.output || '').length >= 70000, x.e ? {message: x.e.message} : {value: x.r && x.r.value, len: (x.r.output || '').length})
+  x = await runOne(`$s = "it's \\"q\\" $"; echo "printed\\n"; $s`, 30000)
+  check('runCode quotes + echo', valueOf(x) === `it's "q" $` && /printed/.test(outputOf(x)), {status: x.status, seen: x.seen, tail: x.tail})
 
-  x = await timed(() => runCode(conn, 'echo str_repeat("x", 2000000); 7', {timeout: 90000}))
-  check(`runCode 2 MB echo (${x.ms} ms)`, x.r && x.r.value === 7 && (x.r.output || '').length >= 2000000, x.e ? {message: x.e.message} : {value: x.r && x.r.value, len: (x.r.output || '').length})
+  x = await runOne("throw new RuntimeException('boom');", 30000)
+  const thrown = x.seen && x.seen.value ? x.seen.value : (x.seen && x.seen.error)
+  check('runCode exception with line', !!(thrown && thrown.message === 'boom' && thrown.line === 1), {status: x.status, seen: x.seen, tail: x.tail})
 
-  x = await timed(() => runCode(conn, 'range(1, 300)', {timeout: 90000}))
-  check('runCode tall value (no pager)', x.r && Array.isArray(x.r.value) && x.r.value.length === 300, x.e ? {message: x.e.message, output: x.e.output} : 'ok')
+  x = await runOne('echo "a\\nb"; 1', 30000)
+  check('runCode small echo', valueOf(x) === 1 && outputOf(x).trim() === 'a\nb', {status: x.status, seen: x.seen, tail: x.tail})
 
-  x = await timed(() => runCode(conn, 'sleep(60); 1', {timeout: 10000}))
-  check(`runCode timeout ends the run (${x.ms} ms)`, x.e && x.ms < 30000, x.e ? x.e.message : x.r)
+  x = await runOne('echo str_repeat("y", 70000); 2', 30000)
+  check(`runCode 64 KB line (${x.ms} ms)`, valueOf(x) === 2 && outputOf(x).length >= 70000, {status: x.status, seen: x.seen, tail: x.tail})
+
+  x = await runOne('echo str_repeat("x", 2000000); 7', 120000)
+  check(`runCode 2 MB echo (${x.ms} ms)`, valueOf(x) === 7 && outputOf(x).length >= 2000000, {status: x.status, seen: {value: valueOf(x), len: outputOf(x).length}, tail: x.tail})
+
+  x = await runOne('range(1, 300)', 30000)
+  check('runCode tall value (no pager)', Array.isArray(valueOf(x)) && valueOf(x).length === 300, {status: x.status, seen: x.seen, tail: x.tail})
+
+  x = await runOne('sleep(60); 1', 10000)
+  check(`runCode timeout ends the run (${x.ms} ms)`, !!(x.seen && x.seen.message) && x.ms < 40000, {status: x.status, seen: x.seen, tail: x.tail})
+
+  // --- the shell a session types into ----------------------------------------
+  //
+  // last, because a terminal that a run left behind is not what this measures
+
+  const typed = await throughTypedShell(words, word => shellQuote(word, 'win32', {delayed: true}))
+  check('cmd quoting round trip through the session shell (/V:ON)', JSON.stringify(typed.got) === JSON.stringify(words), {words, got: typed.got, part: typed.part.slice(-1500)})
 
   console.log(failed ? `${failed} FAILED` : 'ALL PASSED')
   process.exit(failed ? 1 : 0)
