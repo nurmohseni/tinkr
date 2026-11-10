@@ -11,7 +11,7 @@ const {shellQuote} = require('../packages/tinkr-core/src/shell')
 const app = process.env.APP
 let failed = 0
 const check = (name, ok, detail) => {
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' :: ' + JSON.stringify(detail).slice(0, 3000)}`)
+  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ' :: ' + JSON.stringify(detail).slice(0, 12000)}`)
   if (!ok) failed++
 }
 

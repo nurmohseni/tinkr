@@ -27,6 +27,9 @@ jobs:
       - run: node ci-smoke/probe6.js
         env:
           APP: ${{ runner.temp }}\app
+      - run: node ci-smoke/probe7.js
+        env:
+          APP: ${{ runner.temp }}\app
       - run: node ci-smoke/windows.js
         env:
           APP: ${{ runner.temp }}\app
