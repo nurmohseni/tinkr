@@ -332,8 +332,8 @@ const createPty = (connection, code, guard = null, timeout = null) => {
         run = wrapRun(code, aliases, guard, timeout)
         filter = new RunResultFilter(run.marker, run.start)
 
-        // typed a line at a time: one line of the whole run is more than
-        // libedit reads (see runResult.typedRun)
+        // a line at a time on posix, where one line of the whole run is more
+        // than libedit reads; windows hands over the lot (see Session#type)
         return pty.type(typedRun(run.code))
       }).catch(error => {
         // the command never became the session — a missing `artisan`, a platform

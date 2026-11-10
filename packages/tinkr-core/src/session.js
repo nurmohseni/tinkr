@@ -99,10 +99,11 @@ const psyshPromptOnWindows = /(?:^|[\r\n])(?:>+|(?:\. ?)+) ?$/
  * platform's own terminal leaves it.
  *
  * @param {string} text what the command has printed, its tail
- * @param {boolean} win32 whether the session runs under cmd.exe
+ * @param {boolean} [win32] whether the session runs under cmd.exe, which is
+ *   only where a run waits between its lines any more (see Session#type)
  * @return {boolean}
  */
-const promptWaiting = (text, win32) => (win32 ? psyshPromptOnWindows : psyshPrompt).test(stripRendering(text))
+const promptWaiting = (text, win32 = false) => (win32 ? psyshPromptOnWindows : psyshPrompt).test(stripRendering(text))
 
 /**
  * What psysh prints once it has booted, before it prints the first prompt.
@@ -974,10 +975,29 @@ class Session {
    * not psysh — is handed the rest at once at the readiness limit rather than
    * left waiting on a prompt that is not coming.
    *
+   * Windows has no readline to hand the terminal back and forth with: php's
+   * readline is not built for windows, so psysh reads the console with `fgets`
+   * and the console itself does the line editing, keeping every line it was given
+   * until the reader asks for it. Waiting between the lines there buys nothing
+   * and costs the run its whole length: the console echoes what it is typed, and
+   * conpty carries that echo back a render at a time — some twenty bytes every
+   * ten milliseconds — so a line of base64 takes four hundred milliseconds to
+   * come back and a run of forty of them takes seventeen seconds to type a
+   * snippet of two words. Handed over in one write, the same forty lines are one
+   * scroll of the same console, and psysh reads them as it comes to them.
+   *
    * @param {Array<String>} lines without their line endings
    * @return {Promise<void>} once the last line is written
    */
   type(lines) {
+    if (this.platform === 'win32') {
+      if (this.pty && lines.length > 0) {
+        this.pty.write(lines.map(line => `${line}\r`).join(''))
+      }
+
+      return Promise.resolve()
+    }
+
     return new Promise(resolve => {
       const pty = this.pty
 
@@ -1031,7 +1051,7 @@ class Session {
       listener = pty.onData(data => {
         since = (since + data).slice(-256)
 
-        if (promptWaiting(since, this.platform === 'win32')) {
+        if (promptWaiting(since)) {
           next()
         }
       })
