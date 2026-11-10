@@ -25,8 +25,13 @@ const code = process.argv[2]
 const timeout = Number(process.env.RUN_TIMEOUT || 30000)
 const started = Date.now()
 
-// the tail is where a lost answer shows: the prompt that came back without it
-const raw = () => kept.map(record => record.join('')).join('').slice(-5000)
+// the head says whether the command ever booted, and the tail is where a lost
+// answer shows: the prompt that came back without it
+const raw = () => {
+  const text = kept.map(record => record.join('')).join('')
+
+  return text.length <= 6000 ? text : `${text.slice(0, 1500)}\n~~~\n${text.slice(-4000)}`
+}
 
 const done = (status, answer) => {
   const line = `${status} ${JSON.stringify(Object.assign({ms: Date.now() - started}, answer, {raw: raw()}))}\n`
